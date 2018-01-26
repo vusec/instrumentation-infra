@@ -1,8 +1,8 @@
 --- a/lib/Support/Statistic.cpp
 +++ b/lib/Support/Statistic.cpp
-@@ -43,6 +43,25 @@ Enabled(
-     cl::desc("Enable statistics output from program (available with Asserts)"));
-
+@@ -46,6 +46,25 @@ Enabled(
+ static cl::opt<bool> StatsAsJSON("stats-json",
+                                  cl::desc("Display statistics as json data"));
 
 +static ManagedStatic<std::vector<std::string>> FilteredStatsTypes;
 +
@@ -26,8 +26,8 @@
  namespace {
  /// StatisticInfo - This class is used in a ManagedStatic so that it is created
  /// on demand (when the first statistic is bumped) and destroyed only when
-@@ -95,20 +114,35 @@ bool llvm::AreStatisticsEnabled() {
-   return Enabled;
+@@ -115,31 +134,46 @@ void StatisticInfo::sort() {
+   });
  }
 
 +bool shouldPrintStatistic(const Statistic *S) {
@@ -39,34 +39,34 @@
 +  return false;
 +}
 +
++
  void llvm::PrintStatistics(raw_ostream &OS) {
    StatisticInfo &Stats = *StatInfo;
 
++  Stats.sort();
++
 +  std::vector<const Statistic*> FilteredStats;
 +  for (size_t i = 0, e = Stats.Stats.size(); i != e; ++i)
 +    if (shouldPrintStatistic(Stats.Stats[i]))
 +      FilteredStats.push_back(Stats.Stats[i]);
 +
-+
    // Figure out how long the biggest Value and Name fields are.
-   unsigned MaxNameLen = 0, MaxValLen = 0;
+   unsigned MaxDebugTypeLen = 0, MaxValLen = 0;
 -  for (size_t i = 0, e = Stats.Stats.size(); i != e; ++i) {
 +  for (const Statistic *S : FilteredStats) {
      MaxValLen = std::max(MaxValLen,
 -                         (unsigned)utostr(Stats.Stats[i]->getValue()).size());
 +                         (unsigned)utostr(S->getValue()).size());
-     MaxNameLen = std::max(MaxNameLen,
--                          (unsigned)std::strlen(Stats.Stats[i]->getName()));
-+                          (unsigned)std::strlen(S->getName()));
+     MaxDebugTypeLen = std::max(MaxDebugTypeLen,
+-                         (unsigned)std::strlen(Stats.Stats[i]->getDebugType()));
++                         (unsigned)std::strlen(S->getDebugType()));
    }
 
-   // Sort the fields by name.
--  std::stable_sort(Stats.Stats.begin(), Stats.Stats.end(),
-+  std::stable_sort(FilteredStats.begin(), FilteredStats.end(),
-                    [](const Statistic *LHS, const Statistic *RHS) {
-     if (int Cmp = std::strcmp(LHS->getName(), RHS->getName()))
-       return Cmp < 0;
-@@ -123,11 +157,11 @@ void llvm::PrintStatistics(raw_ostream &OS) {
+-  Stats.sort();
+-
+   // Print out the statistics header...
+   OS << "===" << std::string(73, '-') << "===\n"
+      << "                          ... Statistics Collected ...\n"
       << "===" << std::string(73, '-') << "===\n\n";
 
    // Print all of the statistics.
@@ -74,10 +74,10 @@
 +  for (const Statistic *S : FilteredStats)
      OS << format("%*u %-*s - %s\n",
 -                 MaxValLen, Stats.Stats[i]->getValue(),
--                 MaxNameLen, Stats.Stats[i]->getName(),
+-                 MaxDebugTypeLen, Stats.Stats[i]->getDebugType(),
 -                 Stats.Stats[i]->getDesc());
 +                 MaxValLen, S->getValue(),
-+                 MaxNameLen, S->getName(),
++                 MaxDebugTypeLen, S->getDebugType(),
 +                 S->getDesc());
 
    OS << '\n';  // Flush the output stream.

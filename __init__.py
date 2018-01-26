@@ -1,4 +1,4 @@
-from .setup import Namespace, Setup
+from .setup import Setup
 from .package import Package
 from .target import Target
 from .instance import Instance

@@ -7,19 +7,11 @@ import copy
 from collections import OrderedDict
 from multiprocessing import cpu_count
 from .package import Package
-from .util import FatalError
+from .util import FatalError, Namespace
 
 
 # disable .pyc file generation
 sys.dont_write_bytecode = True
-
-
-class Namespace(dict):
-    def __getattr__(self, key):
-        return self[key]
-
-    def __setattr__(self, key, value):
-        self[key] = value
 
 
 class Setup:
@@ -62,6 +54,8 @@ class Setup:
                 help='build dependencies for these instances')
         pdeps.add_argument('-j', '--nproc', type=int, default=nproc,
                 help='maximum number of build processes (default %d)' % nproc)
+        pdeps.add_argument('--force-rebuild', action='store_true',
+                help='always run the build commands')
         pdeps.add_argument('-n', '--dry-run', action='store_true',
                 help='don\'t actually build anything, just show what will be done')
 
@@ -79,12 +73,16 @@ class Setup:
         #pbuild.add_argument('-b', '--benchmarks', nargs='+', metavar='BENCHMARK',
         #        help='which benchmarks to build for the given target (only works '
         #            'for a single target)')
+        pdeps.add_argument('--force-rebuild-deps', action='store_true',
+                help='always run the build commands')
+        pdeps.add_argument('--relink', action='store_true',
+                help='only link targets, don\'t rebuild object files')
         pbuild.add_argument('-n', '--dry-run', action='store_true',
                 help='don\'t actually build anything, just show what will be done')
 
         # command: build-pkg
         ppackage = subparsers.add_parser('build-pkg',
-                help='build a single package')
+                help='build a single package (implies --force-rebuild)')
         ppackage.add_argument('package',
                 help='which package to build (see %s config --packages '
                      'for choices)' % sys.argv[0])
@@ -124,27 +122,31 @@ class Setup:
     def init_context(self):
         if 'nproc' in self.args:
             self.ctx.nproc = self.args.nproc
+
         self.ctx.hooks = Namespace(post_build=[])
 
-    def create_dirs(self):
         self.ctx.paths = paths = Namespace()
         paths.root = self.root_path
+        paths.infra = os.path.dirname(__file__)
         paths.buildroot = os.path.join(paths.root, 'build')
-        paths.installroot = os.path.join(paths.buildroot, 'install')
         paths.log = os.path.join(paths.buildroot, 'log')
         paths.packages = os.path.join(paths.buildroot, 'packages')
-        paths.packsrc = os.path.join(paths.packages, 'src')
-        paths.packobj = os.path.join(paths.packages, 'obj')
         paths.targets = os.path.join(paths.buildroot, 'targets')
-        paths.targetsrc = os.path.join(paths.targets, 'src')
-        paths.targetobj = os.path.join(paths.targets, 'obj')
-        os.makedirs(paths.log, exist_ok=True)
-        os.makedirs(paths.packsrc, exist_ok=True)
-        os.makedirs(paths.packobj, exist_ok=True)
-        os.makedirs(paths.targetsrc, exist_ok=True)
-        os.makedirs(paths.targetobj, exist_ok=True)
+
+        # FIXME move to package?
         self.ctx.prefixes = []
-        paths.prefix = None
+        self.ctx.cc = 'cc'
+        self.ctx.cxx = 'c++'
+        self.ctx.ar = 'ar'
+        self.ctx.nm = 'nm'
+        self.ctx.ranlib = 'ranlib'
+        self.ctx.cflags = []
+        self.ctx.ldflags = []
+
+    def create_dirs(self):
+        os.makedirs(self.ctx.paths.log, exist_ok=True)
+        os.makedirs(self.ctx.paths.packages, exist_ok=True)
+        os.makedirs(self.ctx.paths.targets, exist_ok=True)
 
     def initialize_logger(self):
         level = getattr(logging, self.args.verbosity.upper())
@@ -184,16 +186,18 @@ class Setup:
 
     def run_command(self):
         try:
+            os.chdir(self.ctx.paths.root)
+
             if self.args.command == 'build-deps':
-                self.run_build_deps(self.args)
+                self.run_build_deps()
             elif self.args.command == 'build':
-                self.run_build(self.args)
+                self.run_build()
             elif self.args.command == 'build-pkg':
-                self.run_build_package(self.args)
+                self.run_build_package()
             elif self.args.command == 'run':
-                self.run_run(self.args)
+                self.run_run()
             elif self.args.command == 'config':
-                self.run_config(self.args)
+                self.run_config()
             else:
                 raise FatalError('unknown command %s' % self.args.command)
         except FatalError as e:
@@ -243,36 +247,51 @@ class Setup:
             self.ctx.log.debug('no dependencies to build')
 
         for package in deps:
-            self.do_fetch(package)
+            self.fetch_package(package, self.args.force_rebuild)
 
         for package in deps:
-            self.do_build(package)
-            self.do_install(package)
+            self.build_package(package, self.args.force_rebuild)
+            self.install_package(package, self.args.force_rebuild)
 
-    def do_fetch(self, package, *args):
-        if package.is_built(self.ctx):
+    def fetch_package(self, package, force_rebuild, *args):
+        package.goto_rootdir(self.ctx)
+
+        if package.is_fetched(self.ctx):
             self.ctx.log.debug('%s already fetched, skip' % package.ident())
+        elif not force_rebuild and package.is_installed(self.ctx):
+            self.ctx.log.debug('%s already installed, skip fetching' % package.ident())
         else:
             self.ctx.log.info('fetching %s' % package.ident())
-            if not args.dry_run:
+            if not self.args.dry_run:
+                package.goto_rootdir(self.ctx)
                 package.fetch(self.ctx, *args)
 
-    def do_build(self, package, *args):
-        if package.is_built(self.ctx):
+    def build_package(self, package, force_rebuild, *args):
+        package.goto_rootdir(self.ctx)
+
+        if not force_rebuild and package.is_built(self.ctx):
             self.ctx.log.debug('%s already built, skip' % package.ident())
+            return
+        elif not force_rebuild and package.is_installed(self.ctx):
+            self.ctx.log.debug('%s already installed, skip building' % package.ident())
         else:
             self.ctx.log.info('building %s' % package.ident())
-            if not args.dry_run:
+            if not self.args.dry_run:
+                package.goto_rootdir(self.ctx)
                 package.build(self.ctx, *args)
 
-    def do_install(self, package, *args):
-        if package.is_installed(self.ctx):
+    def install_package(self, package, force_rebuild, *args):
+        package.goto_rootdir(self.ctx)
+
+        if not force_rebuild and package.is_installed(self.ctx):
             self.ctx.log.debug('%s already installed, skip' % package.ident())
         else:
             self.ctx.log.info('installing %s' % package.ident())
-            if not args.dry_run:
+            if not self.args.dry_run:
+                package.goto_rootdir(self.ctx)
                 package.install(self.ctx, *args)
 
+        package.goto_rootdir(self.ctx)
         package.install_env(self.ctx)
 
     def run_build(self):
@@ -286,21 +305,26 @@ class Setup:
         # first fetch all necessary code so that the internet connection can be
         # broken during building
         for package in deps:
-            self.do_fetch(package)
+            self.fetch_package(package, self.args.force_rebuild_deps)
 
         for target in targets:
-            self.do_fetch(package, instances)
+            if target.is_fetched(self.ctx):
+                self.ctx.log.debug('%s already fetched, skip' % target.name)
+            else:
+                self.ctx.log.info('fetching %s' % target.name)
+                target.fetch(self.ctx)
 
         for package in deps:
-            self.do_build(package)
-            self.do_install(package)
+            self.build_package(package, self.args.force_rebuild_deps)
+            self.install_package(package, self.args.force_rebuild_deps)
 
         for instance in instances:
             for target in targets:
                 self.ctx.log.info('building %s-%s' %
                         (target.name, instance.name))
                 if not self.args.dry_run:
-                    target.build(self.ctx, instance)
+                    if not self.args.relink:
+                        target.build(self.ctx, instance)
                     target.link(self.ctx, instance)
                     target.run_hooks_post_build(self.ctx, instance)
 
@@ -313,8 +337,10 @@ class Setup:
         else:
             raise FatalError('no package called %s' % self.args.package)
 
-        self.do_fetch(self.ctx, package)
-        self.do_build(self.ctx, package)
+        self.args.dry_run = False
+        self.fetch_package(package, True)
+        self.build_package(package, True)
+        self.install_package(package, True)
 
     def run_run(self):
         raise NotImplementedError

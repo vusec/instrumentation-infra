@@ -1,9 +1,9 @@
 import os
 import shutil
-import subprocess
+from subprocess import PIPE
 from abc import ABCMeta, abstractmethod
 from ..package import Package
-from ..util import run, download
+from ..util import run, run_raw, download
 
 
 class GNUTarPackage(Package, metaclass=ABCMeta):
@@ -22,6 +22,11 @@ class GNUTarPackage(Package, metaclass=ABCMeta):
     def installed_path(self):
         pass
 
+    @property
+    @abstractmethod
+    def tar_compression(self):
+        pass
+
     def __init__(self, version):
         self.version = version
 
@@ -29,87 +34,94 @@ class GNUTarPackage(Package, metaclass=ABCMeta):
         return '%s-%s' % (self.name, self.version)
 
     def fetch(self, ctx):
-        if not os.path.exists(self.src_path(ctx)) and not self.installed(ctx):
-            os.chdir(ctx.paths.packsrc)
-            tarname = '%s-%s.tar.gz' % (self.name, self.version)
-            download('http://ftp.gnu.org/gnu/%s/%s' % (self.name, tarname))
-            run(['tar', '-xzf', tarname])
-            os.remove(tarname)
+        ident = '%s-%s' % (self.name, self.version)
+        tarname = ident + '.tar.' + self.tar_compression
+        download('http://ftp.gnu.org/gnu/%s/%s' % (self.name, tarname))
+        run(ctx, ['tar', '-xf', tarname])
+        shutil.move(ident, 'src')
+        os.remove(tarname)
 
     def build(self, ctx):
-        if not self.built(ctx) and not self.installed(ctx):
-            objdir = self.build_path(ctx)
-            os.makedirs(objdir, exist_ok=True)
-            os.chdir(objdir)
-            run([self.src_path(ctx, 'configure'),
-                 '--prefix=' + self.install_path(ctx)])
-            run(['make', '-j%d' % ctx.nproc])
+        os.makedirs('obj', exist_ok=True)
+        os.chdir('obj')
+        run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
+        run(ctx, ['make', '-j%d' % ctx.nproc])
 
     def install(self, ctx):
-        if not self.installed(ctx):
-            os.chdir(self.build_path(ctx))
-            run(['make', 'install'])
+        os.chdir('obj')
+        run(ctx, ['make', 'install'])
 
-    def built(self, ctx):
-        return os.path.exists(self.build_path(ctx, self.built_path))
+    def is_fetched(self, ctx):
+        return os.path.exists('src')
 
-    def installed(self, ctx):
-        return os.path.exists(self.install_path(ctx, self.installed_path))
+    def is_built(self, ctx):
+        return os.path.exists('obj/' + self.built_path)
+
+    def is_installed(self, ctx):
+        return os.path.exists('install/' + self.installed_path)
 
 
 class Bash(GNUTarPackage):
     name = 'bash'
     built_path = 'bash'
     installed_path = 'bin/bash'
+    tar_compression = 'gz'
 
-    def installed(self, ctx):
-        proc = subprocess.run(['bash', '--version'],
-                stdout=subprocess.PIPE, universal_newlines=True)
+    def is_installed(self, ctx):
+        proc = run_raw(ctx, ['bash', '--version'], stdout=PIPE,
+                       universal_newlines=True)
         if proc.returncode == 0 and 'version ' + self.version in proc.stdout:
             return True
-        return GNUTarPackage.installed(self, ctx)
+        return GNUTarPackage.is_installed(self, ctx)
 
 
 class Make(GNUTarPackage):
     name = 'make'
     built_path = 'make'
     installed_path = 'bin/make'
+    tar_compression = 'gz'
 
-    def installed(self, ctx):
-        proc = subprocess.run(['make', '--version'], stdout=PIPE)
+    def is_installed(self, ctx):
+        proc = run_raw(ctx, ['make', '--version'], stdout=PIPE,
+                       universal_newlines=True)
         if proc.returncode == 0 and proc.stdout.startswith('GNU Make ' + self.version):
             return True
-        return GNUTarPackage.installed(self, ctx)
+        return GNUTarPackage.is_installed(self, ctx)
 
 
 class CoreUtils(GNUTarPackage):
     name = 'coreutils'
     built_path = 'src/yes'
     installed_path = 'bin/yes'
+    tar_compression = 'xz'
 
 
 class M4(GNUTarPackage):
     name = 'm4'
     built_path = 'src/m4'
     installed_path = 'bin/m4'
+    tar_compression = 'gz'
 
 
 class AutoConf(GNUTarPackage):
     name = 'autoconf'
     built_path = 'bin/autoconf'
     installed_path = 'bin/autoconf'
+    tar_compression = 'gz'
 
 
 class AutoMake(GNUTarPackage):
     name = 'automake'
     built_path = 'bin/automake'
     installed_path = 'bin/automake'
+    tar_compression = 'gz'
 
 
 class LibTool(GNUTarPackage):
     name = 'libtool'
     built_path = 'libtool'
     installed_path = 'bin/libtool'
+    tar_compression = 'gz'
 
 
 class BinUtils(Package):
@@ -124,50 +136,46 @@ class BinUtils(Package):
         return s
 
     def fetch(self, ctx):
-        os.chdir(ctx.paths.packsrc)
-
-        if not os.path.exists(self.ident()):
-            tarname = 'binutils-%s.tar.bz2' % self.version
-            download('http://ftp.gnu.org/gnu/binutils/' + tarname)
-            run(['tar', '-xf', tarname])
-            shutil.move('binutils-' + self.version, self.ident())
-            os.remove(tarname)
+        tarname = 'binutils-%s.tar.bz2' % self.version
+        download('http://ftp.gnu.org/gnu/binutils/' + tarname)
+        run(ctx, ['tar', '-xf', tarname])
+        shutil.move('binutils-' + self.version, 'src')
+        os.remove(tarname)
 
     def build(self, ctx):
-        if not self.built(ctx) and not self.installed(ctx):
-            objdir = self.build_path(ctx)
-            os.makedirs(objdir, exist_ok=True)
-            os.chdir(objdir)
+        os.makedirs('obj', exist_ok=True)
+        os.chdir('obj')
 
-            configure = [self.src_path(ctx, 'configure'),
-                         '--enable-gold', '--enable-plugins',
-                         '--disable-werror',
-                         '--prefix=' + self.install_path(ctx)]
+        configure = ['../src/configure',
+                     '--enable-gold', '--enable-plugins',
+                     '--disable-werror',
+                     '--prefix=' + self.path(ctx, 'install')]
 
-            # match system setting to avoid 'this linker was not configured to
-            # use sysroots' error or failure to find libpthread.so
-            if run(['gcc', '--print-sysroot']).stdout:
-                configure.append('--with-sysroot')
+        # match system setting to avoid 'this linker was not configured to
+        # use sysroots' error or failure to find libpthread.so
+        if run(ctx, ['gcc', '--print-sysroot']).stdout:
+            configure.append('--with-sysroot')
 
-            run(configure)
-            run(['make', '-j%d' % ctx.nproc])
-            if self.gold:
-                run(['make', '-j%d' % ctx.nproc, 'all-gold'])
+        run(ctx, configure)
+        run(ctx, ['make', '-j%d' % ctx.nproc])
+        if self.gold:
+            run(ctx, ['make', '-j%d' % ctx.nproc, 'all-gold'])
 
     def install(self, ctx):
-        if not self.installed(ctx):
-            os.chdir(self.build_path(ctx))
-            run(['make', 'install'])
+        os.chdir('obj')
+        run(ctx, ['make', 'install'])
 
-            # replace ld with gold
-            if self.gold:
-                os.chdir(self.install_path(ctx, 'bin'))
-                os.remove('ld')
-                shutil.copy('ld.gold', 'ld')
+        # replace ld with gold
+        if self.gold:
+            os.chdir('../install/bin')
+            os.remove('ld')
+            shutil.copy('ld.gold', 'ld')
 
-    def built(self, ctx):
-        subdir = 'gold' if self.gold else 'ld'
-        return os.path.exists(self.build_path(ctx, subdir, 'ld-new'))
+    def is_fetched(self, ctx):
+        return os.path.exists('src')
 
-    def installed(self, ctx):
-        return os.path.exists(self.install_path(ctx, 'bin', 'ld'))
+    def is_built(self, ctx):
+        return os.path.exists('obj/%s/ld-new' % ('gold' if self.gold else 'ld'))
+
+    def is_installed(self, ctx):
+        return os.path.exists('install/bin/ld')

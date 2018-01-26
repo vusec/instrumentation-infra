@@ -1,24 +1,37 @@
 import os
+from abc import ABCMeta, abstractmethod
 
 
-class Target:
+class Target(metaclass=ABCMeta):
+    @property
+    @abstractmethod
+    def name(self):
+        pass
+
     def add_build_args(self, parser):
         pass
 
     def dependencies(self):
         yield from []
 
-    def fetch(self, ctx, instances):
-        return NotImplemented
+    @abstractmethod
+    def is_fetched(self, ctx):
+        pass
 
+    @abstractmethod
+    def fetch(self, ctx):
+        pass
+
+    @abstractmethod
     def build(self, ctx, instance):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def link(self, ctx, instance):
-        return NotImplemented
+        pass
 
     def binary_paths(self, ctx, instance):
-        raise NotImplementedError
+        raise NotImplementedError(self.__class__.__name__)
 
     def run_hooks_post_build(self, ctx, instance):
         for binary in self.binary_paths(ctx, instance):

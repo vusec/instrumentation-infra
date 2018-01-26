@@ -16,26 +16,26 @@ class PyElfTools(Package):
         yield self.python
 
     def fetch(self, ctx):
-        if not os.path.exists(self.src_path(ctx)) and not self.installed(ctx):
-            os.chdir(ctx.paths.packsrc)
-            run(['git', 'clone', '--branch', 'v' + self.version,
-                 'https://github.com/eliben/pyelftools.git', self.ident()])
+        os.chdir(ctx.paths.packsrc)
+        run(ctx, ['git', 'clone', '--branch', 'v' + self.version,
+                'https://github.com/eliben/pyelftools.git', self.ident()])
 
     def build(self, ctx):
-        if not os.path.exists(self.build_path(ctx)) and not self.installed(ctx):
-            os.chdir(self.src_path(ctx))
-            run([self.python.binary(), 'setup.py', 'build'])
+        os.chdir(self.path(ctx, 'src'))
+        run(ctx, [self.python.binary(), 'setup.py', 'build'])
 
     def install(self, ctx):
-        if not self.installed(ctx):
-            os.chdir(self.build_path(ctx))
-            run([self.python.binary(),
-                 'setup.py', 'install', '--skip-build',
-                 '--prefix=' + self.install_path(ctx)])
+        os.chdir(self.path(ctx, 'src', 'build'))
+        run(ctx, [self.python.binary(),
+                'setup.py', 'install', '--skip-build',
+                '--prefix=' + self.path(ctx, 'install')])
 
-    def build_path(self, ctx):
-        return self.src_path(ctx, 'build')
+    def is_fetched(self, ctx):
+        return os.path.exists(self.path(ctx, 'src'))
 
-    def installed(self, ctx):
-        return os.path.exists(self.install_path(ctx,
+    def is_built(self, ctx):
+        return os.path.exists(self.path(ctx, 'src', 'build'))
+
+    def is_installed(self, ctx):
+        return os.path.exists(self.path(ctx, 'install',
             'lib', self.python.binary(), 'site-packages', 'elftools'))

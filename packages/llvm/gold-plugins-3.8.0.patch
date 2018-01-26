@@ -1,53 +1,24 @@
-Index: tools/gold/CMakeLists.txt
-===================================================================
---- tools/gold/CMakeLists.txt	(revision 251286)
-+++ tools/gold/CMakeLists.txt	(working copy)
+--- a/tools/gold/CMakeLists.txt
++++ b/tools/gold/CMakeLists.txt
 @@ -1,4 +1,4 @@
 -set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/gold.exports)
 +#set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/gold.exports)
- 
+
  if( LLVM_ENABLE_PIC AND LLVM_BINUTILS_INCDIR )
    include_directories( ${LLVM_BINUTILS_INCDIR} )
-@@ -12,6 +12,11 @@
-      Linker
-      BitWriter
-      IPO
-+     Core
-+     ScalarOpts
-+     Analysis
-+     TransformUtils
-+     InstCombine
-      )
- 
-   add_llvm_loadable_module(LLVMgold
-Index: tools/gold/Makefile
-===================================================================
---- tools/gold/Makefile	(revision 251286)
-+++ tools/gold/Makefile	(working copy)
-@@ -13,7 +13,8 @@
+--- a/tools/gold/Makefile
++++ b/tools/gold/Makefile
+@@ -13,7 +13,7 @@ LINK_LIBS_IN_SHARED := 1
  SHARED_LIBRARY := 1
  LOADABLE_MODULE := 1
- 
+
 -EXPORTED_SYMBOL_FILE = $(PROJ_SRC_DIR)/gold.exports
-+# Support plugins.
 +#EXPORTED_SYMBOL_FILE = $(PROJ_SRC_DIR)/gold.exports
- 
+
  # Include this here so we can get the configuration of the targets
- # that have been configured for construction. We have to do this 
-@@ -20,7 +21,8 @@
- # early so we can set up LINK_COMPONENTS before including Makefile.rules
- include $(LEVEL)/Makefile.config
- 
--LINK_COMPONENTS := $(TARGETS_TO_BUILD) Linker BitWriter IPO
-+LINK_COMPONENTS := $(TARGETS_TO_BUILD) Linker BitWriter IPO \
-+     Core ScalarOpts Analysis TransformUtils InstCombine
- 
- # Because off_t is used in the public API, the largefile parts are required for
- # ABI compatibility.
-Index: tools/gold/gold-plugin.cpp
-===================================================================
---- tools/gold/gold-plugin.cpp	(revision 251286)
-+++ tools/gold/gold-plugin.cpp	(working copy)
+ # that have been configured for construction. We have to do this
+--- a/tools/gold/gold-plugin.cpp
++++ b/tools/gold/gold-plugin.cpp
 @@ -18,6 +18,7 @@
  #include "llvm/Analysis/TargetLibraryInfo.h"
  #include "llvm/Analysis/TargetTransformInfo.h"
@@ -56,7 +27,7 @@ Index: tools/gold/gold-plugin.cpp
  #include "llvm/CodeGen/Analysis.h"
  #include "llvm/CodeGen/CommandFlags.h"
  #include "llvm/CodeGen/ParallelCG.h"
-@@ -27,11 +28,15 @@
+@@ -27,10 +28,14 @@
  #include "llvm/IR/DiagnosticPrinter.h"
  #include "llvm/IR/LLVMContext.h"
  #include "llvm/IR/LegacyPassManager.h"
@@ -64,26 +35,25 @@ Index: tools/gold/gold-plugin.cpp
 +#include "llvm/IR/AssemblyAnnotationWriter.h"
  #include "llvm/IR/Module.h"
  #include "llvm/IR/Verifier.h"
- #include "llvm/Linker/Linker.h"
+ #include "llvm/Linker/IRMover.h"
  #include "llvm/MC/SubtargetFeature.h"
- #include "llvm/Object/IRObjectFile.h"
 +#include "llvm/Support/PluginLoader.h"
 +#include "llvm/Support/FormattedStream.h"
  #include "llvm/Object/FunctionIndexObjectFile.h"
- #include "llvm/Support/raw_ostream.h"
+ #include "llvm/Object/IRObjectFile.h"
  #include "llvm/Support/Host.h"
 @@ -39,6 +44,7 @@
- #include "llvm/Support/MemoryBuffer.h"
  #include "llvm/Support/TargetRegistry.h"
  #include "llvm/Support/TargetSelect.h"
+ #include "llvm/Support/raw_ostream.h"
 +#include "llvm/Support/ToolOutputFile.h"
  #include "llvm/Transforms/IPO.h"
  #include "llvm/Transforms/IPO/PassManagerBuilder.h"
  #include "llvm/Transforms/Utils/GlobalStatus.h"
-@@ -57,6 +63,24 @@
- 
- using namespace llvm;
- 
+@@ -67,6 +73,26 @@ static ld_plugin_release_input_file release_input_file = nullptr;
+ static ld_plugin_get_input_file get_input_file = nullptr;
+ static ld_plugin_message message = discard_message;
+
 +// The OptimizationList is automatically populated with registered Passes by the
 +// PassNameParser.
 +//
@@ -102,13 +72,15 @@ Index: tools/gold/gold-plugin.cpp
 +LLOutputFilename("llo", cl::init(""), cl::desc("Output IR filename"),
 +               cl::value_desc("filename"));
 +
++
++
  namespace {
  struct claimed_file {
    void *handle;
-@@ -173,6 +197,14 @@
+@@ -202,6 +228,15 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
    InitializeAllAsmParsers();
    InitializeAllAsmPrinters();
- 
+
 +  PassRegistry &Registry = *PassRegistry::getPassRegistry();
 +  initializeCore(Registry);
 +  initializeIPO(Registry);
@@ -117,11 +89,12 @@ Index: tools/gold/gold-plugin.cpp
 +  initializeTransformUtils(Registry);
 +  initializeInstCombine(Registry);
 +
++
    // We're given a pointer to the first transfer vector. We read through them
    // until we find one where tv_tag == LDPT_NULL. The REGISTER_* tagged values
    // contain pointers to functions that we need to call to register our own
-@@ -771,7 +803,11 @@
- 
+@@ -739,7 +774,12 @@ static void runLTOPasses(Module &M, TargetMachine &TM) {
+
    PassManagerBuilder PMB;
    PMB.LibraryInfo = new TargetLibraryInfoImpl(Triple(TM.getTargetTriple()));
 -  PMB.Inliner = createFunctionInliningPass();
@@ -130,10 +103,11 @@ Index: tools/gold/gold-plugin.cpp
 +  }
 +  else
 +    PMB.Inliner = createFunctionInliningPass();
++
    // Unconditionally verify input since it is not verified before this
    // point and has unknown origin.
    PMB.VerifyInput = true;
-@@ -779,8 +815,47 @@
+@@ -747,8 +787,48 @@ static void runLTOPasses(Module &M, TargetMachine &TM) {
    PMB.LoopVectorize = true;
    PMB.SLPVectorize = true;
    PMB.OptLevel = options::OptLevel;
@@ -157,7 +131,7 @@ Index: tools/gold/gold-plugin.cpp
 +      passes.add(createVerifierPass());
 +    }
 +  }
-+   
++
 +  if (PassList.size() != 0)
 +    PMB.populateLTOPassManager(passes);
 +
@@ -173,11 +147,12 @@ Index: tools/gold/gold-plugin.cpp
 +    passes.add(createBitcodeWriterPass(Out->os()));
 +  }
 +
++
    passes.run(M);
 +
 +  if (LLOutputFilename != "") {
 +    Out->keep();
 +  }
  }
- 
+
  static void saveBCFile(StringRef Path, Module &M) {

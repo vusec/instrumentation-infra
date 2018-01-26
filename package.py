@@ -1,4 +1,5 @@
-import os.path
+import os
+import shutil
 from abc import ABCMeta, abstractmethod
 
 
@@ -36,12 +37,12 @@ class Package(metaclass=ABCMeta):
     def build(self, ctx):
         pass
 
-    def install(self, ctx):
-        return NotImplemented
-
     @abstractmethod
-    def clean(self, ctx):
+    def install(self, ctx):
         pass
+
+    def clean(self, ctx):
+        shutil.rmtree(self.path(ctx))
 
     def configure(self, ctx):
         return NotImplemented
@@ -49,21 +50,12 @@ class Package(metaclass=ABCMeta):
     def path(self, ctx, *args):
         return os.path.join(ctx.paths.packages, self.ident(), *args)
 
-    #def src_path(self, ctx, *args):
-    #    return os.path.join(ctx.paths.packsrc, self.ident(), *args)
-
-    #def build_path(self, ctx, *args):
-    #    return os.path.join(ctx.paths.packobj, self.ident(), *args)
-
-    #def install_path(self, ctx, *args):
-    #    return os.path.join(ctx.paths.prefix, *args)
-
-    def prefix(self, ctx):
-        return self.path(ctx, 'install')
-
     def install_env(self, ctx):
-        ctx.env.PATH += ':' + self.prefix(ctx)
-        pass
-        #ctx.prefixes
-        #paths.packobj = os.path.join(ctx.paths.installroot, 'common')
-        #ctx.paths.prefix = 
+        prefix = self.path(ctx, 'install')
+        if os.path.exists(prefix):
+            ctx.prefixes.insert(0, prefix)
+
+    def goto_rootdir(self, ctx):
+        path = self.path(ctx)
+        os.makedirs(path, exist_ok=True)
+        os.chdir(path)

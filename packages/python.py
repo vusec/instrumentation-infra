@@ -11,8 +11,11 @@ class Python(Package):
     def ident(self):
         return 'python-' + self.version
 
+    def binary(self):
+        return 'python' + self.version
+
     def fetch(self, ctx):
-        if not self.installed(ctx):
+        if not self.is_installed(ctx):
             raise FatalError(self.binary() + ' not found, please install it')
 
     def build(self, ctx):
@@ -21,7 +24,13 @@ class Python(Package):
     def install(self, ctx):
         pass
 
-    def installed(self, ctx):
+    def is_fetched(self, ctx):
+        return False
+
+    def is_built(self, ctx):
+        return False
+
+    def is_installed(self, ctx):
         try:
             subprocess.call([self.binary(), '--version'])
         except OSError as e:
@@ -29,6 +38,3 @@ class Python(Package):
                 return False
             raise
         return True
-
-    def binary(self):
-        return 'python' + self.version

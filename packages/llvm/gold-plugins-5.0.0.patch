@@ -1,0 +1,85 @@
+--- a/lib/LTO/LTOBackend.cpp
++++ b/lib/LTO/LTOBackend.cpp
+@@ -22,6 +22,7 @@
+ #include "llvm/Bitcode/BitcodeReader.h"
+ #include "llvm/Bitcode/BitcodeWriter.h"
+ #include "llvm/IR/LegacyPassManager.h"
++#include "llvm/IR/LegacyPassNameParser.h"
+ #include "llvm/IR/PassManager.h"
+ #include "llvm/IR/Verifier.h"
+ #include "llvm/LTO/LTO.h"
+@@ -30,6 +31,7 @@
+ #include "llvm/Passes/PassBuilder.h"
+ #include "llvm/Support/Error.h"
+ #include "llvm/Support/FileSystem.h"
++#include "llvm/Support/PluginLoader.h"
+ #include "llvm/Support/TargetRegistry.h"
+ #include "llvm/Support/ThreadPool.h"
+ #include "llvm/Target/TargetMachine.h"
+@@ -42,6 +44,9 @@
+ using namespace llvm;
+ using namespace lto;
+
++static cl::list<const PassInfo*, bool, PassNameParser>
++PassList(cl::desc("Optimizations available:"));
++
+ LLVM_ATTRIBUTE_NORETURN static void reportOpenError(StringRef Path, Twine Msg) {
+   errs() << "failed to open " << Path << ": " << Msg << '\n';
+   errs().flush();
+@@ -247,10 +252,29 @@ static void runOldPMPasses(Config &Conf, Module &Mod, TargetMachine *TM,
+   PMB.SLPVectorize = true;
+   PMB.OptLevel = Conf.OptLevel;
+   PMB.PGOSampleUse = Conf.SampleProfile;
++
++  // Run all LTO optimization passes first...
+   if (IsThinLTO)
+     PMB.populateThinLTOPassManager(passes);
+   else
+     PMB.populateLTOPassManager(passes);
++
++  for (const PassInfo *PassInf : PassList) {
++    if (!PassInf->getNormalCtor())
++      report_fatal_error("cannot create pass: " + PassInf->getPassName());
++    Pass *P = PassInf->getNormalCtor()();
++    passes.add(P);
++    passes.add(createVerifierPass());
++  }
++
++  // Rerun LTO optimization passes after any custom passes
++  if (PassList.size() > 0) {
++    if (IsThinLTO)
++      PMB.populateThinLTOPassManager(passes);
++    else
++      PMB.populateLTOPassManager(passes);
++  }
++
+   passes.run(Mod);
+ }
+
+--- a/tools/gold/CMakeLists.txt
++++ b/tools/gold/CMakeLists.txt
+@@ -1,4 +1,6 @@
+-set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/gold.exports)
++# Enabling this will cause a lot of symbols to miss from LLVMgold.so which we
++# need for creating pass-plugins for LLVMgold.
++#set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/gold.exports)
+
+ if( LLVM_ENABLE_PIC AND LLVM_BINUTILS_INCDIR )
+   include_directories( ${LLVM_BINUTILS_INCDIR} )
+--- a/tools/gold/gold-plugin.cpp
++++ b/tools/gold/gold-plugin.cpp
+@@ -262,6 +262,14 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
+   InitializeAllAsmParsers();
+   InitializeAllAsmPrinters();
+
++  PassRegistry &Registry = *PassRegistry::getPassRegistry();
++  initializeCore(Registry);
++  initializeIPO(Registry);
++  initializeScalarOpts(Registry);
++  initializeAnalysis(Registry);
++  initializeTransformUtils(Registry);
++  initializeInstCombine(Registry);
++
+   // We're given a pointer to the first transfer vector. We read through them
+   // until we find one where tv_tag == LDPT_NULL. The REGISTER_* tagged values
+   // contain pointers to functions that we need to call to register our own
