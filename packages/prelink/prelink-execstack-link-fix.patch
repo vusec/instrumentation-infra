@@ -1,0 +1,71 @@
+Index: config.h.in
+===================================================================
+--- config.h.in	(revision 209)
++++ config.h.in	(working copy)
+@@ -57,6 +57,9 @@
+ /* Define to the one symbol short name of this package. */
+ #undef PACKAGE_TARNAME
+ 
++/* Define to the home page for this package. */
++#undef PACKAGE_URL
++
+ /* Define to the version of this package. */
+ #undef PACKAGE_VERSION
+ 
+@@ -66,6 +69,11 @@
+ /* Version number of package */
+ #undef VERSION
+ 
++/* Enable large inode numbers on Mac OS X 10.5.  */
++#ifndef _DARWIN_USE_64_BIT_INODE
++# define _DARWIN_USE_64_BIT_INODE 1
++#endif
++
+ /* Number of bits in a file offset, on hosts where this is settable. */
+ #undef _FILE_OFFSET_BITS
+ 
+Index: src/Makefile.am
+===================================================================
+--- src/Makefile.am	(revision 209)
++++ src/Makefile.am	(working copy)
+@@ -24,5 +24,6 @@
+ prelink_LDFLAGS = -all-static
+ 
+ execstack_SOURCES = execstack.c $(common_SOURCES) $(arch_SOURCES)
++execstack_LDADD = @LIBGELF@
+ 
+ extra_DIST = makecrc.c
+Index: src/Makefile.in
+===================================================================
+--- src/Makefile.in	(revision 209)
++++ src/Makefile.in	(working copy)
+@@ -123,6 +123,8 @@
+ 
+ execstack_SOURCES = execstack.c $(common_SOURCES) $(arch_SOURCES)
+ 
++execstack_LDADD = @LIBGELF@
++
+ extra_DIST = makecrc.c
+ subdir = src
+ mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
+@@ -143,7 +145,6 @@
+ am_execstack_OBJECTS = execstack.$(OBJEXT) $(am__objects_1) \
+ 	$(am__objects_2)
+ execstack_OBJECTS = $(am_execstack_OBJECTS)
+-execstack_LDADD = $(LDADD)
+ execstack_DEPENDENCIES =
+ execstack_LDFLAGS =
+ am_prelink_OBJECTS = cache.$(OBJEXT) conflict.$(OBJEXT) cxx.$(OBJEXT) \
+@@ -262,10 +263,10 @@
+ 	  echo " rm -f $$p $$f"; \
+ 	  rm -f $$p $$f ; \
+ 	done
+-execstack$(EXEEXT): $(execstack_OBJECTS) $(execstack_DEPENDENCIES) 
++execstack$(EXEEXT): $(execstack_OBJECTS) $(execstack_DEPENDENCIES)
+ 	@rm -f execstack$(EXEEXT)
+ 	$(LINK) $(execstack_LDFLAGS) $(execstack_OBJECTS) $(execstack_LDADD) $(LIBS)
+-prelink$(EXEEXT): $(prelink_OBJECTS) $(prelink_DEPENDENCIES) 
++prelink$(EXEEXT): $(prelink_OBJECTS) $(prelink_DEPENDENCIES)
+ 	@rm -f prelink$(EXEEXT)
+ 	$(LINK) $(prelink_LDFLAGS) $(prelink_OBJECTS) $(prelink_LDADD) $(LIBS)
+ 

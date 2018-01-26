@@ -1,0 +1,87 @@
+Index: lib/Support/Statistic.cpp
+===================================================================
+--- lib/Support/Statistic.cpp	(revision 251286)
++++ lib/Support/Statistic.cpp	(working copy)
+@@ -46,7 +46,26 @@
+     cl::desc("Enable statistics output from program (available with Asserts)"));
+ 
+ 
++static ManagedStatic<std::vector<std::string>> FilteredStatsTypes;
++
+ namespace {
++struct StatsOnlyOpt {
++  void operator=(const std::string &Val) const {
++    if (Val.empty())
++      return;
++    FilteredStatsTypes->push_back(Val);
++  }
++};
++}
++
++static StatsOnlyOpt StatsOnlyOptLoc;
++
++static cl::opt<StatsOnlyOpt, true, cl::parser<std::string> >
++StatsOnly("stats-only", cl::desc("Enable a specific type of stats output"),
++          cl::Hidden, cl::ZeroOrMore, cl::value_desc("stats string"),
++          cl::location(StatsOnlyOptLoc), cl::ValueRequired);
++
++namespace {
+ /// StatisticInfo - This class is used in a ManagedStatic so that it is created
+ /// on demand (when the first statistic is bumped) and destroyed only when
+ /// llvm_shutdown is called.  We print statistics from the destructor.
+@@ -98,20 +117,35 @@
+   return Enabled;
+ }
+ 
++bool shouldPrintStatistic(const Statistic *S) {
++  if (FilteredStatsTypes->empty())
++    return true;
++  for (auto &d : *FilteredStatsTypes)
++    if (d == S->getName())
++      return true;
++  return false;
++}
++
+ void llvm::PrintStatistics(raw_ostream &OS) {
+   StatisticInfo &Stats = *StatInfo;
+ 
++  std::vector<const Statistic*> FilteredStats;
++  for (size_t i = 0, e = Stats.Stats.size(); i != e; ++i)
++    if (shouldPrintStatistic(Stats.Stats[i]))
++      FilteredStats.push_back(Stats.Stats[i]);
++
++
+   // Figure out how long the biggest Value and Name fields are.
+   unsigned MaxNameLen = 0, MaxValLen = 0;
+-  for (size_t i = 0, e = Stats.Stats.size(); i != e; ++i) {
++  for (const Statistic *S : FilteredStats) {
+     MaxValLen = std::max(MaxValLen,
+-                         (unsigned)utostr(Stats.Stats[i]->getValue()).size());
++                         (unsigned)utostr(S->getValue()).size());
+     MaxNameLen = std::max(MaxNameLen,
+-                          (unsigned)std::strlen(Stats.Stats[i]->getName()));
++                          (unsigned)std::strlen(S->getName()));
+   }
+ 
+   // Sort the fields by name.
+-  std::stable_sort(Stats.Stats.begin(), Stats.Stats.end(),
++  std::stable_sort(FilteredStats.begin(), FilteredStats.end(),
+                    [](const Statistic *LHS, const Statistic *RHS) {
+     if (int Cmp = std::strcmp(LHS->getName(), RHS->getName()))
+       return Cmp < 0;
+@@ -126,11 +160,11 @@
+      << "===" << std::string(73, '-') << "===\n\n";
+ 
+   // Print all of the statistics.
+-  for (size_t i = 0, e = Stats.Stats.size(); i != e; ++i)
++  for (const Statistic *S : FilteredStats)
+     OS << format("%*u %-*s - %s\n",
+-                 MaxValLen, Stats.Stats[i]->getValue(),
+-                 MaxNameLen, Stats.Stats[i]->getName(),
+-                 Stats.Stats[i]->getDesc());
++                 MaxValLen, S->getValue(),
++                 MaxNameLen, S->getName(),
++                 S->getDesc());
+ 
+   OS << '\n';  // Flush the output stream.
+   OS.flush();

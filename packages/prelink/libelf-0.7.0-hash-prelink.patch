@@ -1,0 +1,20 @@
+2002-06-14  Jakub Jelinek  <jakub@redhat.com>
+
+	* update.c (_elf64_layout): Don't overwrite sh_entsize
+	unconditionally for ELF64 - some platforms use
+	64 bit DT_HASH entries.
+
+--- libelf-0.7.0/lib/update.c.jj	Fri Jun 12 15:42:39 1998
++++ libelf-0.7.0/lib/update.c	Fri Jun 14 10:22:19 2002
+@@ -317,7 +317,10 @@ _elf64_layout(Elf *elf, unsigned *flag) 
+ 
+ 	entsize = scn_entsize(elf, version, shdr->sh_type);
+ 	if (entsize > 1) {
+-	    rewrite(shdr->sh_entsize, entsize, scn->s_shdr_flags);
++	    /* Some architectures use 64-bit hash entries.  */
++	    if (shdr->sh_type != SHT_HASH
++		|| shdr->sh_entsize != _fsize(elf->e_class, version, ELF_T_ADDR))
++		rewrite(shdr->sh_entsize, entsize, scn->s_shdr_flags);
+ 	}
+ 
+ 	if (layout) {

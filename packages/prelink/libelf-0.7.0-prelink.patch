@@ -1,0 +1,16 @@
+2001-09-26  Jakub Jelinek  <jakub@redhat.com>
+
+	* lib/64.xlatetof.c (__load_i64M): Don't blow away upper 32 bits
+	if 31th bit is set.
+
+--- libelf-0.7.0/lib/64.xlatetof.c.jj	Tue Aug 25 17:22:24 1998
++++ libelf-0.7.0/lib/64.xlatetof.c	Wed Sep 26 15:00:18 2001
+@@ -42,7 +42,7 @@ __load_i64L(const unsigned char *from) {
+ 
+ static __libelf_i64_t
+ __load_i64M(const unsigned char *from) {
+-    return ((__libelf_u64_t)__load_u32M(from) << 32) | (__libelf_i64_t)__load_i32M(from + 4);
++    return ((__libelf_i64_t)__load_i32M(from) << 32) | (__libelf_u64_t)__load_u32M(from + 4);
+ }
+ 
+ static void

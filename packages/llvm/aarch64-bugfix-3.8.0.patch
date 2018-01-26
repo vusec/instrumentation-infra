@@ -1,0 +1,26 @@
+Index: lib/Target/AArch64/AArch64AddressTypePromotion.cpp
+===================================================================
+--- lib/Target/AArch64/AArch64AddressTypePromotion.cpp	(revision 251286)
++++ lib/Target/AArch64/AArch64AddressTypePromotion.cpp	(working copy)
+@@ -48,7 +48,7 @@
+ #define DEBUG_TYPE "aarch64-type-promotion"
+ 
+ static cl::opt<bool>
+-EnableAddressTypePromotion("aarch64-type-promotion", cl::Hidden,
++EnableAddressTypePromotion("aarch64-type-promotion-enable", cl::Hidden,
+                            cl::desc("Enable the type promotion pass"),
+                            cl::init(true));
+ static cl::opt<bool>
+Index: lib/Target/AArch64/AArch64BranchRelaxation.cpp
+===================================================================
+--- lib/Target/AArch64/AArch64BranchRelaxation.cpp	(revision 251286)
++++ lib/Target/AArch64/AArch64BranchRelaxation.cpp	(working copy)
+@@ -27,7 +27,7 @@
+ #define DEBUG_TYPE "aarch64-branch-relax"
+ 
+ static cl::opt<bool>
+-BranchRelaxation("aarch64-branch-relax", cl::Hidden, cl::init(true),
++BranchRelaxation("aarch64-branch-relax-enable", cl::Hidden, cl::init(true),
+                  cl::desc("Relax out of range conditional branches"));
+ 
+ static cl::opt<unsigned>
