@@ -1,6 +1,6 @@
 import os
 from ..package import Package
-from ..util import run
+from ..util import run, prefix_paths
 from . import Prelink, PatchElf, PyElfTools
 
 
@@ -63,10 +63,8 @@ class ShrinkAddrSpace(Package):
             raise NotImplementedError
 
     def prelink_binary(self, ctx, binary):
-        libpath = ':'.join(pre + '/lib' for pre in ctx.prefixes)
-        if 'LD_LIBRARY_PATH' in os.environ:
-            libpath += ':' + os.environ['LD_LIBRARY_PATH']
-
+        libpath = prefix_paths(ctx.prefixes, '/lib',
+                               os.environ.get('LD_LIBRARY_PATH', ''))
         run(ctx, [
             self.path(ctx, 'src/prelink_binary.py'),
             '--set-rpath', '--in-place', '--static-lib',

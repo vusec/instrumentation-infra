@@ -33,23 +33,28 @@ def run_raw(ctx, cmd, *args, **kwargs):
     logger.debug('workdir: %s' % os.getcwd())
 
     env = os.environ.copy()
-
-    path = ':'.join(pre + '/bin' for pre in ctx.prefixes)
-    if 'PATH' in env:
-        path += ':' + env['PATH']
-    env['PATH'] = path
-
-    libpath = ':'.join(pre + '/lib' for pre in ctx.prefixes)
-    if 'LD_LIBRARY_PATH' in env:
-        libpath += ':' + env['LD_LIBRARY_PATH']
-    env['LD_LIBRARY_PATH'] = libpath
-
+    env['PATH'] = prefix_paths(ctx.prefixes, '/bin', env.get('PATH', ''))
+    env['LD_LIBRARY_PATH'] = prefix_paths(ctx.prefixes, '/lib',
+                                          env.get('LD_LIBRARY_PATH', ''))
     env.update(kwargs.get('env', {}))
 
     logger.debug('PATH:            ' + env['PATH'])
     logger.debug('LD_LIBRARY_PATH: ' + env['LD_LIBRARY_PATH'])
 
     return subprocess.run(cmd, env=env, *args, **kwargs)
+
+
+def prefix_paths(prefixes, suffix, existing):
+    paths = []
+
+    for pre in prefixes:
+        if os.path.exists(pre + suffix):
+            paths.append(pre + suffix)
+
+    if existing:
+        paths.append(existing)
+
+    return ':'.join(paths)
 
 
 def run(ctx, cmd, *args, **kwargs):
