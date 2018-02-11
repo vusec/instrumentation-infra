@@ -2,7 +2,7 @@ import os
 import shutil
 from subprocess import PIPE
 from ..package import Package
-from ..util import run, run_raw, download
+from ..util import run, run, download
 
 
 class CMake(Package):
@@ -42,9 +42,8 @@ class CMake(Package):
         return os.path.exists('obj/bin/cmake')
 
     def is_installed(self, ctx):
-        proc = run_raw(ctx, ['cmake', '--version'], stdout=PIPE,
-                       universal_newlines=True)
-        if proc.returncode == 0 and 'version ' + self.version in proc.stdout:
+        if os.path.exists('install/bin/cmake'):
             return True
-
-        return os.path.exists('install/bin/cmake')
+        proc = run(ctx, ['cmake', '--version'], allow_error=True)
+        return proc and proc.returncode == 0 and \
+                'version ' + self.version in proc.stdout

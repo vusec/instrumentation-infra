@@ -1,7 +1,7 @@
 import os
 import shutil
 from ...package import Package
-from ...util import run, run_raw, apply_patch, download, FatalError
+from ...util import run, apply_patch, download, FatalError
 from ..gnu import Bash, CoreUtils, BinUtils, Make, \
         M4, AutoConf, AutoMake, LibTool
 from ..cmake import CMake
@@ -91,7 +91,8 @@ class LLVM(Package):
         run(ctx, ['cmake', '--build', '.'])
 
     def ninja_supported(self, ctx):
-        return run_raw(ctx, ['ninja', '--version']).returncode == 0
+        proc = run(ctx, ['ninja', '--version'], allow_error=True)
+        return proc and proc.returncode == 0
 
     def install(self, ctx):
         os.chdir('obj')
@@ -107,9 +108,8 @@ class LLVM(Package):
         if not self.patches:
             # allow preinstalled LLVM if version matches
             # TODO: do fuzzy matching on version?
-            proc = run_raw(ctx, ['llvm-config', '--version'], stdout=PIPE,
-                        universal_newlines=True)
-            if proc.returncode == 0:
+            proc = run(ctx, ['llvm-config', '--version'], allow_error=True)
+            if proc and proc.returncode == 0:
                 installed_version = proc.stdout.strip()
                 if installed_version == version:
                     return True

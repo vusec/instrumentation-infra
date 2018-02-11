@@ -27,23 +27,6 @@ def apply_patch(base_path, patch_name, strip_count):
     return True
 
 
-def run_raw(ctx, cmd, *args, **kwargs):
-    cmd_print = ' '.join(map(shlex.quote, cmd))
-    logger.debug('running: %s' % cmd_print)
-    logger.debug('workdir: %s' % os.getcwd())
-
-    env = os.environ.copy()
-    env['PATH'] = prefix_paths(ctx.prefixes, '/bin', env.get('PATH', ''))
-    env['LD_LIBRARY_PATH'] = prefix_paths(ctx.prefixes, '/lib',
-                                          env.get('LD_LIBRARY_PATH', ''))
-    env.update(kwargs.get('env', {}))
-
-    logger.debug('PATH:            ' + env['PATH'])
-    logger.debug('LD_LIBRARY_PATH: ' + env['LD_LIBRARY_PATH'])
-
-    return subprocess.run(cmd, env=env, *args, **kwargs)
-
-
 def prefix_paths(prefixes, suffix, existing):
     paths = []
 
@@ -57,18 +40,44 @@ def prefix_paths(prefixes, suffix, existing):
     return ':'.join(paths)
 
 
-def run(ctx, cmd, *args, **kwargs):
+def run(ctx, cmd, allow_error=False, *args, **kwargs):
+    cmd_print = ' '.join(map(shlex.quote, cmd))
+
     # TODO: stream output to logs
-    proc = run_raw(ctx, cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            universal_newlines=True, *args, **kwargs)
-    if proc.returncode:
-        cmd_print = ' '.join(map(shlex.quote, cmd))
-        logger.error('command returned status %d' % proc.returncode)
-        logger.error('command: %s' % cmd_print)
-        logger.error('workdir: %s' % os.getcwd())
-        sys.stdout.write(proc.stdout)
-        sys.exit(-1)
-    return proc
+    try:
+        logger.debug('running: %s' % cmd_print)
+        logger.debug('workdir: %s' % os.getcwd())
+
+        env = os.environ.copy()
+        env['PATH'] = prefix_paths(ctx.prefixes, '/bin', env.get('PATH', ''))
+        env['LD_LIBRARY_PATH'] = prefix_paths(ctx.prefixes, '/lib',
+                                            env.get('LD_LIBRARY_PATH', ''))
+        env.update(kwargs.get('env', {}))
+
+        logger.debug('PATH:            ' + env['PATH'])
+        logger.debug('LD_LIBRARY_PATH: ' + env['LD_LIBRARY_PATH'])
+
+        kwargs.setdefault('stdout', subprocess.PIPE)
+        kwargs.setdefault('stderr', subprocess.STDOUT)
+        kwargs.setdefault('universal_newlines', True)
+
+        proc = subprocess.run(cmd, *args, **kwargs, env=env)
+
+        if proc.returncode and not allow_error:
+            logger.error('command returned status %d' % proc.returncode)
+            logger.error('command: %s' % cmd_print)
+            logger.error('workdir: %s' % os.getcwd())
+            sys.stdout.write(proc.stdout)
+            sys.exit(-1)
+
+        return proc
+
+    except FileNotFoundError:
+        logfn = logger.debug if allow_error else logger.error
+        logfn('command not found: %s' % cmd_print)
+        logfn('workdir:           %s' % os.getcwd())
+        if not allow_error:
+            raise
 
 
 def download(url, outfile=None):

@@ -3,7 +3,7 @@ import shutil
 from subprocess import PIPE
 from abc import ABCMeta, abstractmethod
 from ..package import Package
-from ..util import run, run_raw, download
+from ..util import run, download
 
 
 class GNUTarPackage(Package, metaclass=ABCMeta):
@@ -68,11 +68,11 @@ class Bash(GNUTarPackage):
     tar_compression = 'gz'
 
     def is_installed(self, ctx):
-        proc = run_raw(ctx, ['bash', '--version'], stdout=PIPE,
-                       universal_newlines=True)
-        if proc.returncode == 0 and 'version ' + self.version in proc.stdout:
+        if GNUTarPackage.is_installed(self, ctx):
             return True
-        return GNUTarPackage.is_installed(self, ctx)
+        proc = run(ctx, ['bash', '--version'], allow_error=True)
+        return proc and proc.returncode == 0 and \
+                'version ' + self.version in proc.stdout
 
 
 class Make(GNUTarPackage):
@@ -82,11 +82,11 @@ class Make(GNUTarPackage):
     tar_compression = 'gz'
 
     def is_installed(self, ctx):
-        proc = run_raw(ctx, ['make', '--version'], stdout=PIPE,
-                       universal_newlines=True)
-        if proc.returncode == 0 and proc.stdout.startswith('GNU Make ' + self.version):
+        if GNUTarPackage.is_installed(self, ctx):
             return True
-        return GNUTarPackage.is_installed(self, ctx)
+        proc = run(ctx, ['make', '--version'], allow_error=True)
+        return proc and proc.returncode == 0 and \
+                proc.stdout.startswith('GNU Make ' + self.version)
 
 
 class CoreUtils(GNUTarPackage):
