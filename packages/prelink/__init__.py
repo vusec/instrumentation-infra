@@ -21,8 +21,8 @@ class LibElf(Package):
         if self.version == '0.7.0':
             os.chdir('src')
             base_path = os.path.dirname(os.path.abspath(__file__))
-            apply_patch(base_path, 'libelf-0.7.0-prelink', 1)
-            apply_patch(base_path, 'libelf-0.7.0-hash-prelink', 1)
+            apply_patch(ctx, base_path, 'libelf-0.7.0-prelink', 1)
+            apply_patch(ctx, base_path, 'libelf-0.7.0-hash-prelink', 1)
         else:
             ctx.log.debug('could not patch libelf version %s for prelink' %
                           self.version)
@@ -64,7 +64,7 @@ class Prelink(Package):
                   'svn://sourceware.org/svn/prelink/trunk', 'src'])
         os.chdir('src')
         base_path = os.path.dirname(os.path.abspath(__file__))
-        apply_patch(base_path, 'prelink-execstack-link-fix', 0)
+        apply_patch(ctx, base_path, 'prelink-execstack-link-fix', 0)
 
     def build(self, ctx):
         os.makedirs('obj', exist_ok=True)
