@@ -6,6 +6,7 @@ import shlex
 import io
 import threading
 import select
+import copy
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
 from contextlib import redirect_stdout
@@ -14,7 +15,7 @@ from contextlib import redirect_stdout
 logger = logging.getLogger('autosetup')
 
 
-def apply_patch(base_path, patch_name, strip_count):
+def apply_patch(ctx, base_path, patch_name, strip_count):
     stamp = '.patched-' + patch_name
 
     if os.path.exists(stamp):
@@ -22,7 +23,6 @@ def apply_patch(base_path, patch_name, strip_count):
         return False
 
     patch_path = '%s/%s.patch' % (base_path, patch_name)
-    ctx = Namespace(prefixes=[])
 
     with open(patch_path) as patch_file:
         run(ctx, ['patch', '-p%d' % strip_count], stdin=patch_file)
@@ -188,10 +188,19 @@ class Tee(io.IOBase):
 
 class Namespace(dict):
     def __getattr__(self, key):
-        return self[key] if key in self else dict.__getattr__(self, key)
+        return self[key]
 
     def __setattr__(self, key, value):
         self[key] = value
+
+    def __copy__(self):
+        return self.__class__(**self.items())
+
+    def __deepcopy__(self, memo):
+        ns = self.__class__()
+        for key, value in self.items():
+            ns[key] = copy.deepcopy(value)
+        return ns
 
 
 class FatalError(Exception):
