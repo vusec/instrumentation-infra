@@ -3,6 +3,9 @@ import sys
 import subprocess
 import logging
 import shlex
+import io
+import threading
+import select
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
 
@@ -40,7 +43,10 @@ def prefix_paths(prefixes, suffix, existing):
     return ':'.join(paths)
 
 
-def run(ctx, cmd, allow_error=False, *args, **kwargs):
+def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
+    if isinstance(cmd, str):
+        cmd = shlex.split(cmd)
+
     cmd_print = ' '.join(map(shlex.quote, cmd))
 
     # TODO: stream output to logs
@@ -48,20 +54,54 @@ def run(ctx, cmd, allow_error=False, *args, **kwargs):
         logger.debug('running: %s' % cmd_print)
         logger.debug('workdir: %s' % os.getcwd())
 
-        env = os.environ.copy()
-        env['PATH'] = prefix_paths(ctx.prefixes, '/bin', env.get('PATH', ''))
-        env['LD_LIBRARY_PATH'] = prefix_paths(ctx.prefixes, '/lib',
-                                            env.get('LD_LIBRARY_PATH', ''))
-        env.update(kwargs.get('env', {}))
+        renv = os.environ.copy()
+        renv['PATH'] = prefix_paths(ctx.prefixes, '/bin', renv.get('PATH', ''))
+        renv['LD_LIBRARY_PATH'] = prefix_paths(ctx.prefixes, '/lib',
+                renv.get('LD_LIBRARY_PATH', ''))
+        renv.update(env)
 
-        logger.debug('PATH:            ' + env['PATH'])
-        logger.debug('LD_LIBRARY_PATH: ' + env['LD_LIBRARY_PATH'])
+        logenv = {'PATH': renv['PATH'],
+                  'LD_LIBRARY_PATH': renv['LD_LIBRARY_PATH']}
+        logenv.update(env)
+        for k, v in logenv.items():
+            logger.debug('%s: %s' % (k, v))
 
-        kwargs.setdefault('stdout', subprocess.PIPE)
+        log_output = not silent and 'stdout' not in kwargs
+        if log_output:
+            # 'tee' output to logfile and string; does line buffering in a
+            # separate thread to be able to flush the logfile during
+            # long-running commands (use tail -f to view command output)
+            if 'runtee' not in ctx:
+                ctx.runtee = Tee(open(ctx.paths.runlog, 'w'), io.StringIO())
+
+            f = ctx.runtee.f1
+            print('-' * 80, file=f)
+            print('command: %s' % cmd_print, file=f)
+            print('workdir: %s' % os.getcwd(), file=f)
+            for k, v in logenv.items():
+                print('%s: %s' % (k, v), file=f)
+            hdr = '-- output: '
+            print(hdr + '-' * (80 - len(hdr)), file=f)
+
+            kwargs['stdout'] = ctx.runtee
+        elif silent:
+            kwargs.setdefault('stdout', subprocess.PIPE)
+
         kwargs.setdefault('stderr', subprocess.STDOUT)
         kwargs.setdefault('universal_newlines', True)
 
-        proc = subprocess.run(cmd, *args, **kwargs, env=env)
+        proc = subprocess.run(cmd, *args, **kwargs, env=renv)
+
+        if log_output:
+            proc.stdout = ctx.runtee.f2.getvalue()
+
+            # delete dangling buffer to free up memory
+            del ctx.runtee.f2
+            ctx.runtee.f2 = io.StringIO()
+
+            # add trailing newline for readability
+            ctx.runtee.write('\n')
+            ctx.runtee.flush()
 
         if proc.returncode and not allow_error:
             logger.error('command returned status %d' % proc.returncode)
@@ -89,9 +129,63 @@ def download(url, outfile=None):
     urlretrieve(url, outfile)
 
 
+class Tee(io.IOBase):
+    def __init__(self, *writers):
+        super(Tee, self).__init__()
+        assert len(writers) > 0
+        self.writers = writers
+        self.readfd, self.writefd = os.pipe()
+        self.running = False
+        self.thread = threading.Thread(target=self.flusher)
+        self.thread.daemon = True
+        self.thread.start()
+
+    def flusher(self):
+        self.running = True
+        poller = select.poll()
+        poller.register(self.readfd, select.POLLIN | select.POLLPRI)
+        buf = b''
+        while self.running:
+            for fd, flag in poller.poll():
+                assert fd == self.readfd
+                if flag & (select.POLLIN | select.POLLPRI):
+                    buf += os.read(fd, io.DEFAULT_BUFFER_SIZE)
+                    nl = buf.find(b'\n') + 1
+                    while nl > 0:
+                        self.write(buf[:nl].decode())
+                        self.flush()
+                        buf = buf[nl:]
+                        nl = buf.find(b'\n') + 1
+
+    def flush(self):
+        for w in self.writers:
+            w.flush()
+
+    def write(self, data):
+        len1 = self.writers[0].write(data)
+        for w in self.writers[1:]:
+            len2 = w.write(data)
+            assert len2 == len1
+        return len1
+    emit = write
+
+    def fileno(self):
+        return self.writefd
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        if self.running:
+            self.running = False
+            self.thread.join(0)
+            os.close(self.readfd)
+            os.close(self.writefd)
+
+
 class Namespace(dict):
     def __getattr__(self, key):
-        return self[key]
+        return self[key] if key in self else dict.__getattr__(self, key)
 
     def __setattr__(self, key, value):
         self[key] = value

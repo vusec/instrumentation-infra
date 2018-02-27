@@ -1,7 +1,7 @@
 import os
 import subprocess
 from ..package import Package
-from ..util import FatalError
+from ..util import run, FatalError
 
 
 class Python(Package):
@@ -31,10 +31,5 @@ class Python(Package):
         return False
 
     def is_installed(self, ctx):
-        try:
-            subprocess.call([self.binary(), '--version'])
-        except OSError as e:
-            if e.errno == os.errno.ENOENT:
-                return False
-            raise
-        return True
+        proc = run(ctx, [self.binary(), '--version'], allow_error=True, silent=True)
+        return proc and proc.returncode == 0

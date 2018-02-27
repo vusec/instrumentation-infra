@@ -1,4 +1,5 @@
 import os
+import shutil
 from ...package import Package
 from ...util import run, download, apply_patch
 
@@ -30,7 +31,7 @@ class LibElf(Package):
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
         run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
-        run(ctx, ['make', '-j%d' % ctx.nproc])
+        run(ctx, ['make', '-j%d' % ctx.jobs])
 
     def install(self, ctx):
         os.chdir('obj')
@@ -69,7 +70,7 @@ class Prelink(Package):
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
         env = {
-            'C_INCLUDE_PATH': self.path(ctx, 'install/include'),
+            'C_INCLUDE_PATH': self.libelf.path(ctx, 'install/include'),
             'ac_cv_lib_selinux_is_selinux_enabled': 'no',
             'ac_cv_header_gelf_h': 'no',
         }
@@ -83,12 +84,11 @@ class Prelink(Package):
             '--prefix=' + self.path(ctx, 'install'),
             '--sbindir=' + self.path(ctx, 'install/bin')
         ], env=config_env)
-        run(ctx, ['make', '-j%d' % ctx.nproc, '-C', 'gelf'], env=env)
-        run(ctx, ['make', '-j%d' % ctx.nproc, '-C', 'src'], env=env)
+        run(ctx, ['make', '-j%d' % ctx.jobs, '-C', 'gelf'], env=env)
+        run(ctx, ['make', '-j%d' % ctx.jobs, '-C', 'src'], env=env)
 
     def install(self, ctx):
-        os.chdir('obj')
-        run(ctx, ['make', 'install-exec', 'install-data'])
+        run(ctx, 'make install -C obj/src')
 
     def is_fetched(self, ctx):
         return os.path.exists('src')

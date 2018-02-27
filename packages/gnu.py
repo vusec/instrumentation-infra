@@ -45,7 +45,7 @@ class GNUTarPackage(Package, metaclass=ABCMeta):
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
         run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
-        run(ctx, ['make', '-j%d' % ctx.nproc])
+        run(ctx, ['make', '-j%d' % ctx.jobs])
 
     def install(self, ctx):
         os.chdir('obj')
@@ -70,7 +70,7 @@ class Bash(GNUTarPackage):
     def is_installed(self, ctx):
         if GNUTarPackage.is_installed(self, ctx):
             return True
-        proc = run(ctx, ['bash', '--version'], allow_error=True)
+        proc = run(ctx, ['bash', '--version'], allow_error=True, silent=True)
         return proc and proc.returncode == 0 and \
                 'version ' + self.version in proc.stdout
 
@@ -84,7 +84,7 @@ class Make(GNUTarPackage):
     def is_installed(self, ctx):
         if GNUTarPackage.is_installed(self, ctx):
             return True
-        proc = run(ctx, ['make', '--version'], allow_error=True)
+        proc = run(ctx, ['make', '--version'], allow_error=True, silent=True)
         return proc and proc.returncode == 0 and \
                 proc.stdout.startswith('GNU Make ' + self.version)
 
@@ -160,9 +160,9 @@ class BinUtils(Package):
             configure.append('--with-sysroot')
 
         run(ctx, configure)
-        run(ctx, ['make', '-j%d' % ctx.nproc])
+        run(ctx, ['make', '-j%d' % ctx.jobs])
         if self.gold:
-            run(ctx, ['make', '-j%d' % ctx.nproc, 'all-gold'])
+            run(ctx, ['make', '-j%d' % ctx.jobs, 'all-gold'])
 
     def install(self, ctx):
         os.chdir('obj')
@@ -184,5 +184,5 @@ class BinUtils(Package):
         return os.path.exists('install/bin/ld')
 
     def bison_installed(self, ctx):
-        proc = run(ctx, ['bison', '--version'], allow_error=True)
+        proc = run(ctx, ['bison', '--version'], allow_error=True, silent=True)
         return proc and proc.returncode == 0

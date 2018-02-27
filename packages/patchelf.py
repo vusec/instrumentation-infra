@@ -27,7 +27,7 @@ class PatchElf(Package):
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
         run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
-        run(ctx, ['make', '-j%d' % ctx.nproc])
+        run(ctx, ['make', '-j%d' % ctx.jobs])
 
     def install(self, ctx):
         os.chdir('obj')

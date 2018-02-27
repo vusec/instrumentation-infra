@@ -6,3 +6,4 @@ from .patchelf import PatchElf
 from .prelink import LibElf, Prelink
 from .pyelftools import PyElfTools
 from .shrinkaddrspace import ShrinkAddrSpace
+from .llvm_passes import BuiltinLLVMPasses, LLVMPasses

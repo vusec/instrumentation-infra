@@ -59,3 +59,11 @@ class Package(metaclass=ABCMeta):
         path = self.path(ctx)
         os.makedirs(path, exist_ok=True)
         os.chdir(path)
+
+    def run_pkg_config(self, ctx, parser, args):
+        parser.add_argument('--prefix', action='store_true',
+                help='print absolute source path')
+        args = parser.parse_args(args)
+
+        assert args.prefix
+        print(self.path(ctx, 'install'))

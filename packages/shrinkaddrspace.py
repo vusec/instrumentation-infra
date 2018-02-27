@@ -28,7 +28,7 @@ class ShrinkAddrSpace(Package):
 
     def build(self, ctx):
         os.chdir(self.srcdir if self.srcdir else 'src')
-        run(ctx, ['make', '-j%d' % ctx.nproc, 'OBJDIR=' + self.path(ctx, 'obj')])
+        run(ctx, ['make', '-j%d' % ctx.jobs, 'OBJDIR=' + self.path(ctx, 'obj')])
 
     def install(self, ctx):
         pass

@@ -25,6 +25,9 @@ class SPEC2006(Target):
         raise NotImplementedError
 
     def link(self, ctx, instance):
+        pass
+
+    def clean(self, ctx, instance):
         raise NotImplementedError
 
     def binary_paths(self, ctx, instance):
