@@ -8,6 +8,7 @@ import threading
 import select
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
+from contextlib import redirect_stdout
 
 
 logger = logging.getLogger('autosetup')
@@ -74,14 +75,16 @@ def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
             if 'runtee' not in ctx:
                 ctx.runtee = Tee(open(ctx.paths.runlog, 'w'), io.StringIO())
 
-            f = ctx.runtee.f1
-            print('-' * 80, file=f)
-            print('command: %s' % cmd_print, file=f)
-            print('workdir: %s' % os.getcwd(), file=f)
-            for k, v in logenv.items():
-                print('%s: %s' % (k, v), file=f)
-            hdr = '-- output: '
-            print(hdr + '-' * (80 - len(hdr)), file=f)
+            runlog, strbuf = ctx.runtee.writers
+
+            with redirect_stdout(runlog):
+                print('-' * 80)
+                print('command: %s' % cmd_print)
+                print('workdir: %s' % os.getcwd())
+                for k, v in logenv.items():
+                    print('%s: %s' % (k, v))
+                hdr = '-- output: '
+                print(hdr + '-' * (80 - len(hdr)))
 
             kwargs['stdout'] = ctx.runtee
         elif silent:
@@ -93,11 +96,11 @@ def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
         proc = subprocess.run(cmd, *args, **kwargs, env=renv)
 
         if log_output:
-            proc.stdout = ctx.runtee.f2.getvalue()
+            proc.stdout = strbuf.getvalue()
 
             # delete dangling buffer to free up memory
-            del ctx.runtee.f2
-            ctx.runtee.f2 = io.StringIO()
+            del strbuf
+            ctx.runtee.writers[1] = io.StringIO()
 
             # add trailing newline for readability
             ctx.runtee.write('\n')
@@ -133,7 +136,7 @@ class Tee(io.IOBase):
     def __init__(self, *writers):
         super(Tee, self).__init__()
         assert len(writers) > 0
-        self.writers = writers
+        self.writers = list(writers)
         self.readfd, self.writefd = os.pipe()
         self.running = False
         self.thread = threading.Thread(target=self.flusher)
