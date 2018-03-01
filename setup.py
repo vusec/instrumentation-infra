@@ -48,10 +48,10 @@ class Setup:
         pbuild = self.subparsers.add_parser('build',
                 help='build target programs (also builds dependencies)')
         pbuild.add_argument('-t', '--targets', nargs='+', metavar='TARGET',
-                choices=self.targets, default=[],
+                default=[], choices=self.targets,
                 help='which target programs to build')
         pbuild.add_argument('-i', '--instances', nargs='+', metavar='INSTANCE',
-                choices=self.instances, default=[],
+                default=[], choices=self.instances,
                 help='which instances to build')
         pbuild.add_argument('-j', '--jobs', type=int, default=nproc,
                 help='maximum number of build processes (default %d)' % nproc)
@@ -74,12 +74,24 @@ class Setup:
             instance.add_build_args(pbuild)
 
         # command: build-pkg
+        # TODO: merge into a `build -p/--packages` option
         ppackage = self.subparsers.add_parser('build-pkg',
-                help='forcibly build a single package')
+                help='forcibly build a single packbage')
         ppackage.add_argument('package',
                 help='which package to build').completer = self.complete_pkg
         ppackage.add_argument('-j', '--jobs', type=int, default=nproc,
                 help='maximum number of build processes (default %d)' % nproc)
+
+        # command: clean
+        pclean = self.subparsers.add_parser('clean',
+                help='remove all source/build/install files of the given '
+                     'packages and targets')
+        pclean.add_argument('-t', '--targets', nargs='+', metavar='TARGET',
+                default=[], choices=self.targets,
+                help='which target programs to clean')
+        pclean.add_argument('-p', '--packages', nargs='+', metavar='PACKAGE',
+                default=[],
+                help='which packages to clean').completer = self.complete_pkg
 
         # command: run
         prun = self.subparsers.add_parser('run',
@@ -221,6 +233,8 @@ class Setup:
                 self.run_build()
             elif self.args.command == 'build-pkg':
                 self.run_build_package()
+            elif self.args.command == 'clean':
+                self.run_clean()
             elif self.args.command == 'run':
                 self.run_run()
             elif self.args.command == 'config':
@@ -387,6 +401,26 @@ class Setup:
         self.fetch_package(package, True)
         self.build_package(package, True)
         self.install_package(package, True)
+
+    def run_clean(self):
+        packages = [self.find_package(name) for name in self.args.packages]
+        targets = [self.get_target(name) for name in self.args.targets]
+        if not packages and not targets:
+            raise FatalError('no packages or targets specified')
+
+        for package in packages:
+            if package.is_clean(self.ctx):
+                self.ctx.log.info('package %s is already cleaned' % package.ident())
+            else:
+                self.ctx.log.info('cleaning package ' + package.ident())
+                package.clean(self.ctx)
+
+        for target in targets:
+            if target.is_clean(self.ctx):
+                self.ctx.log.info('target %s is already cleaned' % target.name)
+            else:
+                self.ctx.log.info('cleaning target ' + target.name)
+                target.clean(self.ctx)
 
     def find_package(self, name):
         objs = list(self.targets.values())

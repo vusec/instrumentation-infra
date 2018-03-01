@@ -42,6 +42,9 @@ class Package(metaclass=ABCMeta):
     def install(self, ctx):
         pass
 
+    def is_clean(self, ctx):
+        return not os.path.exists(self.path(ctx))
+
     def clean(self, ctx):
         shutil.rmtree(self.path(ctx))
 

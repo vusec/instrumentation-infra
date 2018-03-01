@@ -1,4 +1,5 @@
 import os
+import shutil
 from abc import ABCMeta, abstractmethod
 
 
@@ -38,9 +39,11 @@ class Target(metaclass=ABCMeta):
     def link(self, ctx, instance):
         pass
 
-    @abstractmethod
-    def clean(self, ctx, instance):
-        pass
+    def is_clean(self, ctx):
+        return not os.path.exists(self.path(ctx))
+
+    def clean(self, ctx):
+        shutil.rmtree(self.path(ctx))
 
     def binary_paths(self, ctx, instance):
         raise NotImplementedError(self.__class__.__name__)
