@@ -59,18 +59,11 @@ class LLVMPasses(Package):
     def is_installed(self, ctx):
         return False
 
-    def run_pkg_config(self, ctx, parser, args):
-        pgroup = parser.add_mutually_exclusive_group(required=True)
-        pgroup.add_argument('--objdir', action='store_true',
-                help='print absolute build path')
-        pgroup.add_argument('--prefix', action='store_true',
-                help='print absolute install path')
-        args = parser.parse_args(args)
-
-        if args.objdir:
-            print(self.path(ctx, 'obj'))
-        elif args.prefix:
-            print(self.path(ctx, 'install'))
+    def pkg_config_options(self, ctx):
+        yield ('--objdir',
+               'absolute build path',
+               self.path(ctx, 'obj'))
+        yield from Package.pkg_config_options(self, ctx)
 
     def configure(self, ctx):
         libpath = self.path(ctx, 'install/libpasses.so')
