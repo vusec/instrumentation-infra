@@ -6,7 +6,6 @@ import traceback
 import shlex
 from collections import OrderedDict
 from multiprocessing import cpu_count
-from .package import Package
 from .util import FatalError, Namespace
 
 
@@ -33,7 +32,6 @@ class Setup:
                 description='Frontend for building/running instrumented benchmarks.')
 
         nproc = cpu_count()
-        progname = os.path.basename(sys.argv[0])
 
         # global options
         parser.add_argument('-v', '--verbosity', default='info',
