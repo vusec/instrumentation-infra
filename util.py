@@ -189,8 +189,10 @@ class Namespace(dict):
 
     def copy(self):
         ns = self.__class__()
-        for k, v in self.items():
-            ns[k] = v.copy() if isinstance(v, self.__class__) else v
+        for key, value in self.items():
+            if isinstance(value, (self.__class__, list, dict)):
+                value = value.copy()
+            ns[key] = value
         return ns
 
 

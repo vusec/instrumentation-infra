@@ -4,10 +4,13 @@ from abc import ABCMeta, abstractmethod
 
 
 class Target(metaclass=ABCMeta):
-    @property
-    @abstractmethod
-    def name(self):
-        pass
+    name = None
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and other.name == self.name
+
+    def __hash__(self):
+        return hash('target-' + self.name)
 
     def add_build_args(self, parser):
         pass

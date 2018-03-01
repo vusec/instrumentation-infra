@@ -53,17 +53,20 @@ class Setup:
         pbuild.add_argument('-i', '--instances', nargs='+', metavar='INSTANCE',
                 default=[], choices=self.instances,
                 help='which instances to build')
+        pbuild.add_argument('-p', '--packages', nargs='+', metavar='PACKAGE',
+                default=[],
+                help='which packages to build (either on top of dependencies, '
+                     'or to force a rebuild)').completer = self.complete_pkg
         pbuild.add_argument('-j', '--jobs', type=int, default=nproc,
                 help='maximum number of build processes (default %d)' % nproc)
-        #pbuild.add_argument('-b', '--benchmarks', nargs='+', metavar='BENCHMARK',
-        #        help='which benchmarks to build for the given target (only works '
-        #            'for a single target)')
         pbuild.add_argument('--deps-only', action='store_true',
                 help='only build dependencies, not targets themselves')
         pbuild.add_argument('--force-rebuild-deps', action='store_true',
                 help='always run the build commands')
         pbuild.add_argument('--relink', action='store_true',
                 help='only link targets, don\'t rebuild object files')
+        pbuild.add_argument('--clean', action='store_true',
+                help='clean targets and packages (not all deps, only from -p) first')
         pbuild.add_argument('-n', '--dry-run', action='store_true',
                 help='don\'t actually build anything, just show what will be done')
 
@@ -72,15 +75,6 @@ class Setup:
 
         for instance in self.instances.values():
             instance.add_build_args(pbuild)
-
-        # command: build-pkg
-        # TODO: merge into a `build -p/--packages` option
-        ppackage = self.subparsers.add_parser('build-pkg',
-                help='forcibly build a single packbage')
-        ppackage.add_argument('package',
-                help='which package to build').completer = self.complete_pkg
-        ppackage.add_argument('-j', '--jobs', type=int, default=nproc,
-                help='maximum number of build processes (default %d)' % nproc)
 
         # command: clean
         pclean = self.subparsers.add_parser('clean',
@@ -225,30 +219,13 @@ class Setup:
             raise FatalError('no target called "%s"' % name)
         return self.targets[name]
 
-    def run_command(self):
-        try:
-            os.chdir(self.ctx.paths.root)
-
-            if self.args.command == 'build':
-                self.run_build()
-            elif self.args.command == 'build-pkg':
-                self.run_build_package()
-            elif self.args.command == 'clean':
-                self.run_clean()
-            elif self.args.command == 'run':
-                self.run_run()
-            elif self.args.command == 'config':
-                self.run_config()
-            elif self.args.command == 'pkg-config':
-                self.run_pkg_config()
-            else:
-                raise FatalError('unknown command %s' % self.args.command)
-        except FatalError as e:
-            self.ctx.log.error(str(e))
-        except KeyboardInterrupt:
-            self.ctx.log.info('exiting because of keyboard interrupt')
-        except Exception as e:
-            self.ctx.log.critical('unkown error\n' + traceback.format_exc().rstrip())
+    def get_package(self, name):
+        objs = list(self.targets.values())
+        objs += list(self.instances.values())
+        for package in self.get_deps(objs):
+            if package.ident() == name:
+                return package
+        raise FatalError('no package called %s' % name)
 
     def get_deps(self, objs):
         deps = []
@@ -272,88 +249,6 @@ class Setup:
                 add_dep(dep, set())
 
         return deps
-
-    def run_build_deps(self):
-        objs = []
-
-        if self.args.targets:
-            objs += [self.get_target(name) for name in self.args.targets]
-        if self.args.instances:
-            objs += [self.get_instance(name) for name in self.args.instances]
-
-        if not objs:
-            raise FatalError('no targets or instances specified')
-
-        deps = self.get_deps(objs)
-
-        if not deps:
-            self.ctx.log.debug('no dependencies to build')
-
-        for package in deps:
-            self.fetch_package(package, self.args.force_rebuild)
-
-        for package in deps:
-            self.build_package(package, self.args.force_rebuild)
-            self.install_package(package, self.args.force_rebuild)
-
-    def run_build(self):
-        targets = [self.get_target(name) for name in self.args.targets]
-        instances = [self.get_instance(name) for name in self.args.instances]
-
-        if self.args.deps_only:
-            if not targets and not instances:
-                raise FatalError('no targets or instances specified')
-        elif not targets or not instances:
-            raise FatalError('need at least one target and instance to build')
-
-        # first fetch all necessary code so that the internet connection can be
-        # broken during building
-        for package in self.get_deps(targets + instances):
-            self.fetch_package(package, self.args.force_rebuild_deps)
-
-        if not self.args.deps_only:
-            for target in targets:
-                if target.is_fetched(self.ctx):
-                    self.ctx.log.debug('%s already fetched, skip' % target.name)
-                else:
-                    self.ctx.log.info('fetching %s' % target.name)
-                    target.goto_rootdir(self.ctx)
-                    target.fetch(self.ctx)
-
-        built_packages = set()
-        target_deps = {t.name: self.get_deps([t]) for t in targets}
-
-        for instance in instances:
-            # use a copy of the context for instance configuration to avoid
-            # stacking configurations between instances
-            # FIXME use copy.copy here? in case ppl put big objects in ctx
-            ctx = self.ctx.copy()
-            instance.configure(ctx)
-
-            for package in self.get_deps([instance]):
-                if package not in built_packages:
-                    self.build_package(package, self.args.force_rebuild_deps)
-                    self.install_package(package, self.args.force_rebuild_deps)
-                    built_packages.add(package)
-                package.install_env(ctx)
-
-            for target in targets:
-                for package in target_deps[target.name]:
-                    if package not in built_packages:
-                        self.build_package(package, self.args.force_rebuild_deps)
-                        self.install_package(package, self.args.force_rebuild_deps)
-                        built_packages.add(package)
-                    package.install_env(ctx)
-
-                if not self.args.deps_only:
-                    ctx.log.info('building %s-%s' % (target.name, instance.name))
-                    if not self.args.dry_run:
-                        if not self.args.relink:
-                            target.goto_rootdir(ctx)
-                            target.build(ctx, instance)
-                        target.goto_rootdir(ctx)
-                        target.link(ctx, instance)
-                        target.run_hooks_post_build(ctx, instance)
 
     def fetch_package(self, package, force_rebuild, *args):
         package.goto_rootdir(self.ctx)
@@ -395,12 +290,137 @@ class Setup:
 
         package.goto_rootdir(self.ctx)
 
-    def run_build_package(self):
-        package = self.get_package(self.args.package)
-        self.args.dry_run = False
-        self.fetch_package(package, True)
-        self.build_package(package, True)
-        self.install_package(package, True)
+    def clean_package(self, package):
+        if package.is_clean(self.ctx):
+            self.ctx.log.debug('package %s is already cleaned' % package.ident())
+        else:
+            self.ctx.log.info('cleaning package ' + package.ident())
+            if not self.args.dry_run:
+                package.clean(self.ctx)
+
+    def clean_target(self, target):
+        if target.is_clean(self.ctx):
+            self.ctx.log.debug('target %s is already cleaned' % target.name)
+        else:
+            self.ctx.log.info('cleaning target ' + target.name)
+            if not self.args.dry_run:
+                target.clean(self.ctx)
+
+    def run_build_deps(self):
+        objs = []
+
+        if self.args.targets:
+            objs += [self.get_target(name) for name in self.args.targets]
+        if self.args.instances:
+            objs += [self.get_instance(name) for name in self.args.instances]
+
+        if not objs:
+            raise FatalError('no targets or instances specified')
+
+        deps = self.get_deps(objs)
+
+        if not deps:
+            self.ctx.log.debug('no dependencies to build')
+
+        for package in deps:
+            self.fetch_package(package, self.args.force_rebuild)
+
+        for package in deps:
+            self.build_package(package, self.args.force_rebuild)
+            self.install_package(package, self.args.force_rebuild)
+
+    def run_build(self):
+        targets = [self.get_target(name) for name in self.args.targets]
+        instances = [self.get_instance(name) for name in self.args.instances]
+        packages = [self.get_package(name) for name in self.args.packages]
+
+        if self.args.deps_only:
+            if not targets and not instances and not packages:
+                raise FatalError('no targets or instances specified')
+        elif (not targets or not instances) and not packages:
+            raise FatalError('need at least one target and instance to build')
+
+        deps = self.get_deps(targets + instances + packages)
+        force_deps = set()
+        separate_packages = []
+        for package in packages:
+            if package in deps:
+                force_deps.add(package)
+            else:
+                separate_packages.append(package)
+
+        # clean packages and targets if requested
+        if self.args.clean:
+            for package in packages:
+                self.clean_package(package)
+            for target in targets:
+                self.clean_target(target)
+
+        # first fetch all necessary code so that the internet connection can be
+        # broken during building
+        for package in deps + separate_packages:
+            self.fetch_package(package, self.args.force_rebuild_deps)
+
+        if not self.args.deps_only:
+            for target in targets:
+                if target.is_fetched(self.ctx):
+                    self.ctx.log.debug('%s already fetched, skip' % target.name)
+                else:
+                    self.ctx.log.info('fetching %s' % target.name)
+                    target.goto_rootdir(self.ctx)
+                    target.fetch(self.ctx)
+
+        cached_deps = {t: self.get_deps([t]) for t in targets}
+        for i in instances:
+            cached_deps[i] = self.get_deps([i])
+        for p in separate_packages:
+            cached_deps[p] = self.get_deps([p])
+
+        built_packages = set()
+
+        def build_package_once(package, force):
+            if package not in built_packages:
+                self.build_package(package, force)
+                self.install_package(package, force)
+                built_packages.add(package)
+
+        def build_deps_once(obj):
+            for package in cached_deps[obj]:
+                force = self.args.force_rebuild_deps or package in force_deps
+                build_package_once(package, force)
+                package.install_env(self.ctx)
+
+        for package in separate_packages:
+            oldctx = self.ctx.copy()
+            build_deps_once(package)
+            build_package_once(package, True)
+            self.ctx = oldctx
+
+        for instance in instances:
+            # use a copy of the context for instance configuration to avoid
+            # stacking configurations between instances
+            # FIXME: only copy the build env (the part that changes)
+            oldctx = self.ctx.copy()
+            instance.configure(self.ctx)
+            build_deps_once(instance)
+
+            for target in targets:
+                oldctx = self.ctx.copy()
+                build_deps_once(target)
+
+                if not self.args.deps_only:
+                    self.ctx.log.info('building %s-%s' % (target.name, instance.name))
+                    if not self.args.dry_run:
+                        if not self.args.relink:
+                            target.goto_rootdir(self.ctx)
+                            target.build(self.ctx, instance)
+                        target.goto_rootdir(self.ctx)
+                        target.link(self.ctx, instance)
+                        target.run_hooks_post_build(self.ctx, instance)
+
+                self.ctx = oldctx
+
+            self.ctx = oldctx
 
     def run_clean(self):
         packages = [self.get_package(name) for name in self.args.packages]
@@ -408,27 +428,11 @@ class Setup:
         if not packages and not targets:
             raise FatalError('no packages or targets specified')
 
+        self.args.dry_run = False
         for package in packages:
-            if package.is_clean(self.ctx):
-                self.ctx.log.info('package %s is already cleaned' % package.ident())
-            else:
-                self.ctx.log.info('cleaning package ' + package.ident())
-                package.clean(self.ctx)
-
+            self.clean_package(package)
         for target in targets:
-            if target.is_clean(self.ctx):
-                self.ctx.log.info('target %s is already cleaned' % target.name)
-            else:
-                self.ctx.log.info('cleaning target ' + target.name)
-                target.clean(self.ctx)
-
-    def get_package(self, name):
-        objs = list(self.targets.values())
-        objs += list(self.instances.values())
-        for package in self.get_deps(objs):
-            if package.ident() == name:
-                return package
-        raise FatalError('no package called %s' % name)
+            self.clean_target(target)
 
     def run_run(self):
         raise NotImplementedError
@@ -464,3 +468,26 @@ class Setup:
             value = ' '.join(shlex.quote(arg) for arg in value)
 
         print(value)
+
+    def run_command(self):
+        try:
+            os.chdir(self.ctx.paths.root)
+
+            if self.args.command == 'build':
+                self.run_build()
+            elif self.args.command == 'clean':
+                self.run_clean()
+            elif self.args.command == 'run':
+                self.run_run()
+            elif self.args.command == 'config':
+                self.run_config()
+            elif self.args.command == 'pkg-config':
+                self.run_pkg_config()
+            else:
+                raise FatalError('unknown command %s' % self.args.command)
+        except FatalError as e:
+            self.ctx.log.error(str(e))
+        except KeyboardInterrupt:
+            self.ctx.log.info('exiting because of keyboard interrupt')
+        except Exception as e:
+            self.ctx.log.critical('unkown error\n' + traceback.format_exc().rstrip())

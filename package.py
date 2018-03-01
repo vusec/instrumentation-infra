@@ -6,10 +6,11 @@ from abc import ABCMeta, abstractmethod
 
 class Package(metaclass=ABCMeta):
     def __eq__(self, other):
-        return other.ident() == self.ident()
+        return isinstance(other, self.__class__) and \
+               other.ident() == self.ident()
 
     def __hash__(self):
-        return hash(self.ident())
+        return hash('package-' + self.ident())
 
     @abstractmethod
     def ident(self):
