@@ -104,6 +104,8 @@ def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
             ctx.log.error('command returned status %d' % proc.returncode)
             ctx.log.error('command: %s' % cmd_print)
             ctx.log.error('workdir: %s' % os.getcwd())
+            for k, v in logenv.items():
+                ctx.log.error('%s: %s' % (k, v))
             sys.stdout.write(proc.stdout)
             sys.exit(-1)
 
