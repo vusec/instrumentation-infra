@@ -70,6 +70,11 @@ class LLVMPasses(Package):
         ctx.cflags += ['-flto']
         ctx.ldflags += ['-flto', '-Wl,-plugin-opt=-load=' + libpath]
 
+    def runtime_cflags(self, ctx):
+        if self.builtin_passes:
+            return self.builtin_passes.runtime_cflags(ctx)
+        return []
+
 
 class BuiltinLLVMPasses(LLVMPasses):
     def __init__(self, llvm):
@@ -89,8 +94,11 @@ class BuiltinLLVMPasses(LLVMPasses):
 
     def pkg_config_options(self, ctx):
         yield ('--cxxflags',
-               'compile flags',
+               'pass compile flags',
                ['-I', self.srcdir(ctx)])
+        yield ('--runtime-cflags',
+               'runtime compile flags',
+               self.runtime_cflags(ctx))
         yield ('--ldflags',
                'link flags',
                ['-L', self.path(ctx, 'install'), '-lpasses-builtin'])
@@ -98,3 +106,6 @@ class BuiltinLLVMPasses(LLVMPasses):
                'target compile flags for instrumentation helpers',
                ['-I', self.srcdir(ctx, 'include')])
         yield from Package.pkg_config_options(self, ctx)
+
+    def runtime_cflags(self, ctx):
+        return ['-I', self.srcdir(ctx, 'include')]
