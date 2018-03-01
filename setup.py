@@ -4,6 +4,7 @@ import logging
 import sys
 import traceback
 import copy
+import shlex
 from collections import OrderedDict
 from multiprocessing import cpu_count
 from .package import Package
@@ -22,9 +23,9 @@ class Setup:
 
     def main(self):
         self.ctx = Namespace()
+        self.init_context()
         self.parse_argv()
         self.initialize_logger()
-        self.init_context()
         self.create_dirs()
         self.run_command()
 
@@ -402,4 +403,15 @@ class Setup:
         package = self.find_package(self.args.package)
         parser = self.subparsers.add_parser(
                 '%s %s' % (self.args.command, package.ident()))
-        package.run_pkg_config(self.ctx, parser, self.args.args)
+        pgroup = parser.add_mutually_exclusive_group(required=True)
+        for opt, desc, value in package.pkg_config_options(self.ctx):
+            pgroup.add_argument(opt, action='store_const', dest='value',
+                                const=value, help=desc)
+        value = parser.parse_args(self.args.args).value
+
+        # for lists (handy for flags), join by spaces while adding quotes where
+        # necessary
+        if isinstance(value, (list, tuple)):
+            value = ' '.join(shlex.quote(arg) for arg in value)
+
+        print(value)

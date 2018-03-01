@@ -1,3 +1,4 @@
+import sys
 import os
 import shutil
 from abc import ABCMeta, abstractmethod
@@ -60,10 +61,10 @@ class Package(metaclass=ABCMeta):
         os.makedirs(path, exist_ok=True)
         os.chdir(path)
 
-    def run_pkg_config(self, ctx, parser, args):
-        parser.add_argument('--prefix', action='store_true',
-                help='print absolute source path')
-        args = parser.parse_args(args)
-
-        assert args.prefix
-        print(self.path(ctx, 'install'))
+    def pkg_config_options(self, ctx):
+        yield ('--root',
+               'absolute root path',
+               self.path(ctx))
+        yield ('--prefix',
+               'absolute install path',
+               self.path(ctx, 'install'))

@@ -1,5 +1,4 @@
 import os
-import shlex
 from ..package import Package
 from ..util import run, FatalError
 
@@ -94,26 +93,14 @@ class BuiltinLLVMPasses(LLVMPasses):
         files = ('libpasses-builtin.a', 'libpasses.so', 'libpasses-opt.so')
         return all(os.path.exists('install/' + f) for f in files)
 
-    def run_pkg_config(self, ctx, parser, args):
-        pgroup = parser.add_mutually_exclusive_group(required=True)
-        pgroup.add_argument('--cxxflags', action='store_true',
-                help='print compile flags')
-        pgroup.add_argument('--ldflags', action='store_true',
-                help='print link flags')
-        pgroup.add_argument('--target-cflags', action='store_true',
-                help='print target compile flags for instrumentation helpers')
-        pgroup.add_argument('--prefix', action='store_true',
-                help='print absolute install path')
-        args = parser.parse_args(args)
-
-        def print_flags(*flags):
-            print(' '.join(map(shlex.quote, flags)))
-
-        if args.cxxflags:
-            print_flags('-I', self.srcdir(ctx))
-        elif args.ldflags:
-            print_flags('-L', self.path(ctx, 'install'), '-lpasses-builtin')
-        elif args.target_cflags:
-            print_flags('-I', self.srcdir(ctx, 'include'))
-        elif args.prefix:
-            print(self.path(ctx, 'install'))
+    def pkg_config_options(self, ctx):
+        yield ('--cxxflags',
+               'compile flags',
+               ['-I', self.srcdir(ctx)])
+        yield ('--ldflags',
+               'link flags',
+               ['-L', self.path(ctx, 'install'), '-lpasses-builtin'])
+        yield ('--target-cflags',
+               'target compile flags for instrumentation helpers',
+               ['-I', self.srcdir(ctx, 'include')])
+        yield from Package.pkg_config_options(self, ctx)
