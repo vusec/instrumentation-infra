@@ -82,8 +82,9 @@ class BuiltinLLVMPasses(LLVMPasses):
     def __init__(self, llvm):
         LLVMPasses.__init__(self, llvm, None, 'builtin-' + llvm.version, False)
 
-    def srcdir(self, ctx):
-        return '%s/llvm-passes/%s' % (ctx.paths.infra, self.llvm.version)
+    def srcdir(self, ctx, *subdirs):
+        return os.path.join(ctx.paths.infra, 'llvm-passes',
+                            self.llvm.version, *subdirs)
 
     def is_built(self, ctx):
         files = ('libpasses-builtin.a', 'libpasses.so', 'libpasses-opt.so')
