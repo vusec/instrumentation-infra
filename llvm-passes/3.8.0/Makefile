@@ -6,7 +6,7 @@ ifndef PREFIX
 endif
 
 CC          = g++
-CFLAGS      = -I. -c -Werror -Wall -std=c++0x -g -O2 `llvm-config --cxxflags`
+CFLAGS      = -I. -Werror -Wall -std=c++0x -g -O2 `llvm-config --cxxflags`
 LDFLAGS     = -g -shared
 LLVMLIB     = `llvm-config --prefix`/lib
 GOLDLDFLAGS = -Wl,--no-undefined -L$(LLVMLIB) \
@@ -36,7 +36,7 @@ $(OBJDIR)/$(LIBSTATIC): $(OBJS) | $(OBJDIR)
 
 $(OBJDIR)/%.o: %.cpp | $(OBJDIR)
 	@mkdir -p $(@D)  # needed for subdirs
-	$(CC) $(CFLAGS) -MMD -o $@ $<
+	$(CC) -c $(CFLAGS) -MMD -o $@ $<
 
 $(OBJDIR):
 	mkdir -p $@
