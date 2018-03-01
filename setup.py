@@ -306,29 +306,6 @@ class Setup:
             if not self.args.dry_run:
                 target.clean(self.ctx)
 
-    def run_build_deps(self):
-        objs = []
-
-        if self.args.targets:
-            objs += [self.get_target(name) for name in self.args.targets]
-        if self.args.instances:
-            objs += [self.get_instance(name) for name in self.args.instances]
-
-        if not objs:
-            raise FatalError('no targets or instances specified')
-
-        deps = self.get_deps(objs)
-
-        if not deps:
-            self.ctx.log.debug('no dependencies to build')
-
-        for package in deps:
-            self.fetch_package(package, self.args.force_rebuild)
-
-        for package in deps:
-            self.build_package(package, self.args.force_rebuild)
-            self.install_package(package, self.args.force_rebuild)
-
     def run_build(self):
         targets = [self.get_target(name) for name in self.args.targets]
         instances = [self.get_instance(name) for name in self.args.instances]
