@@ -27,6 +27,7 @@ class LLVMPasses(Package):
         return self.custom_srcdir
 
     def dependencies(self):
+        yield self.llvm
         if self.builtin_passes:
             yield self.builtin_passes
 
