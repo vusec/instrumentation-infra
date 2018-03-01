@@ -145,7 +145,7 @@ class Setup:
                 yield name
 
     #def complete_pkg_config(self, prefix, parsed_args, **kwargs):
-    #    package = self.find_package(parsed_args.package)
+    #    package = self.get_package(parsed_args.package)
     #    return (arg for arg, desc, value in package.pkg_config(self.ctx)
     #            if arg.startswith(prefix))
 
@@ -396,14 +396,14 @@ class Setup:
         package.goto_rootdir(self.ctx)
 
     def run_build_package(self):
-        package = self.find_package(self.args.package)
+        package = self.get_package(self.args.package)
         self.args.dry_run = False
         self.fetch_package(package, True)
         self.build_package(package, True)
         self.install_package(package, True)
 
     def run_clean(self):
-        packages = [self.find_package(name) for name in self.args.packages]
+        packages = [self.get_package(name) for name in self.args.packages]
         targets = [self.get_target(name) for name in self.args.targets]
         if not packages and not targets:
             raise FatalError('no packages or targets specified')
@@ -422,7 +422,7 @@ class Setup:
                 self.ctx.log.info('cleaning target ' + target.name)
                 target.clean(self.ctx)
 
-    def find_package(self, name):
+    def get_package(self, name):
         objs = list(self.targets.values())
         objs += list(self.instances.values())
         for package in self.get_deps(objs):
@@ -449,7 +449,7 @@ class Setup:
             raise NotImplementedError
 
     def run_pkg_config(self):
-        package = self.find_package(self.args.package)
+        package = self.get_package(self.args.package)
         parser = self.subparsers.add_parser(
                 '%s %s' % (self.args.command, package.ident()))
         pgroup = parser.add_mutually_exclusive_group(required=True)
