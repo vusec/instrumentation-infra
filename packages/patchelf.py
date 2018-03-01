@@ -13,7 +13,7 @@ class PatchElf(Package):
 
     def fetch(self, ctx):
         tarname = 'patchelf-%s.tar.bz2' % self.version
-        download('https://nixos.org/releases/patchelf/patchelf-0.9/' + tarname)
+        download(ctx, 'https://nixos.org/releases/patchelf/patchelf-0.9/' + tarname)
         run(ctx, ['tar', '-xf', tarname])
         shutil.move('patchelf-' + self.version, 'src')
         os.remove(tarname)

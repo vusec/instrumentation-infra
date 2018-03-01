@@ -12,9 +12,6 @@ from urllib.parse import urlparse
 from contextlib import redirect_stdout
 
 
-logger = logging.getLogger('autosetup')
-
-
 def apply_patch(ctx, base_path, patch_name, strip_count):
     stamp = '.patched-' + patch_name
 
@@ -52,8 +49,8 @@ def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
 
     # TODO: stream output to logs
     try:
-        logger.debug('running: %s' % cmd_print)
-        logger.debug('workdir: %s' % os.getcwd())
+        ctx.log.debug('running: %s' % cmd_print)
+        ctx.log.debug('workdir: %s' % os.getcwd())
 
         renv = os.environ.copy()
         renv['PATH'] = prefix_paths(ctx.prefixes, '/bin', renv.get('PATH', ''))
@@ -64,8 +61,6 @@ def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
         logenv = {'PATH': renv['PATH'],
                   'LD_LIBRARY_PATH': renv['LD_LIBRARY_PATH']}
         logenv.update(env)
-        for k, v in logenv.items():
-            logger.debug('%s: %s' % (k, v))
 
         log_output = not silent and 'stdout' not in kwargs
         if log_output:
@@ -107,28 +102,28 @@ def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
             ctx.runtee.flush()
 
         if proc.returncode and not allow_error:
-            logger.error('command returned status %d' % proc.returncode)
-            logger.error('command: %s' % cmd_print)
-            logger.error('workdir: %s' % os.getcwd())
+            ctx.log.error('command returned status %d' % proc.returncode)
+            ctx.log.error('command: %s' % cmd_print)
+            ctx.log.error('workdir: %s' % os.getcwd())
             sys.stdout.write(proc.stdout)
             sys.exit(-1)
 
         return proc
 
     except FileNotFoundError:
-        logfn = logger.debug if allow_error else logger.error
+        logfn = ctx.log.debug if allow_error else ctx.log.error
         logfn('command not found: %s' % cmd_print)
         logfn('workdir:           %s' % os.getcwd())
         if not allow_error:
             raise
 
 
-def download(url, outfile=None):
+def download(ctx, url, outfile=None):
     if outfile:
-        logger.debug('downloading %s to %s' % (url, outfile))
+        ctx.log.debug('downloading %s to %s' % (url, outfile))
     else:
         outfile = os.path.basename(urlparse(url).path)
-        logger.debug('downloading %s' % url)
+        ctx.log.debug('downloading %s' % url)
     urlretrieve(url, outfile)
 
 

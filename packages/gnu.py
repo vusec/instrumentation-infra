@@ -36,7 +36,7 @@ class GNUTarPackage(Package, metaclass=ABCMeta):
     def fetch(self, ctx):
         ident = '%s-%s' % (self.name, self.version)
         tarname = ident + '.tar.' + self.tar_compression
-        download('http://ftp.gnu.org/gnu/%s/%s' % (self.name, tarname))
+        download(ctx, 'http://ftp.gnu.org/gnu/%s/%s' % (self.name, tarname))
         run(ctx, ['tar', '-xf', tarname])
         shutil.move(ident, 'src')
         os.remove(tarname)
@@ -137,7 +137,7 @@ class BinUtils(Package):
 
     def fetch(self, ctx):
         tarname = 'binutils-%s.tar.bz2' % self.version
-        download('http://ftp.gnu.org/gnu/binutils/' + tarname)
+        download(ctx, 'http://ftp.gnu.org/gnu/binutils/' + tarname)
         run(ctx, ['tar', '-xf', tarname])
         shutil.move('binutils-' + self.version, 'src')
         os.remove(tarname)

@@ -20,7 +20,7 @@ class CMake(Package):
         return 'cmake-' + self.version
 
     def fetch(self, ctx):
-        download(self.url.format(s=self), 'src.tar.gz')
+        download(ctx, self.url.format(s=self), 'src.tar.gz')
         run(ctx, ['tar', '-xzf', 'src.tar.gz'])
         shutil.move('cmake-' + self.version, 'src')
         os.remove('src.tar.gz')

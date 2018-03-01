@@ -49,7 +49,7 @@ class LLVM(Package):
 
             dirname = '%s-%s.src' % (repo, self.version)
             tarname = dirname + '.tar.xz'
-            download('https://releases.llvm.org/%s/%s' % (self.version, tarname))
+            download(ctx, 'https://releases.llvm.org/%s/%s' % (self.version, tarname))
             run(ctx, ['tar', '-xf', tarname])
             shutil.move(dirname, clonedir)
             os.remove(tarname)
