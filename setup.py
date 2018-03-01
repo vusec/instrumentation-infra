@@ -164,18 +164,30 @@ class Setup:
         os.makedirs(self.ctx.paths.targets, exist_ok=True)
 
     def initialize_logger(self):
-        level = getattr(logging, self.args.verbosity.upper())
-
-        # create logger
         fmt = '%(asctime)s [%(levelname)s] %(message)s'
         datefmt = '%H:%M:%S'
-        logging.basicConfig(format=fmt, datefmt=datefmt, level=level)
-        self.ctx.log = logging.getLogger('autosetup')
+
+        self.ctx.log = log = logging.getLogger('autosetup')
+        log.setLevel(logging.DEBUG)
+        log.propagate = False
+
+        termlog = logging.StreamHandler(sys.stdout)
+        termlog.setLevel(getattr(logging, self.args.verbosity.upper()))
+        termlog.setFormatter(logging.Formatter(fmt, datefmt))
+        log.addHandler(termlog)
+
+        # always write debug log to file
+        debuglog_path = os.path.join(self.ctx.paths.log, 'debug.txt')
+        debuglog = logging.FileHandler(debuglog_path, mode='w')
+        debuglog.setLevel(logging.DEBUG)
+        debuglog.setFormatter(logging.Formatter(fmt, '%Y-%m-%d ' + datefmt))
+        log.addHandler(debuglog)
 
         # colorize log if supported
         try:
             import coloredlogs
-            coloredlogs.install(fmt=fmt, datefmt=datefmt, level=level)
+            coloredlogs.install(logger=log, fmt=fmt, datefmt=datefmt,
+                                level=termlog.level)
         except ImportError:
             pass
 
