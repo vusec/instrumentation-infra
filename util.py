@@ -6,7 +6,6 @@ import shlex
 import io
 import threading
 import select
-import copy
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
 from contextlib import redirect_stdout
@@ -188,13 +187,10 @@ class Namespace(dict):
     def __setattr__(self, key, value):
         self[key] = value
 
-    def __copy__(self):
-        return self.__class__(**self.items())
-
-    def __deepcopy__(self, memo):
+    def copy(self):
         ns = self.__class__()
-        for key, value in self.items():
-            ns[key] = copy.deepcopy(value)
+        for k, v in self.items():
+            ns[k] = v.copy() if isinstance(v, self.__class__) else v
         return ns
 
 

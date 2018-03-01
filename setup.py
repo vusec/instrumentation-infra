@@ -3,7 +3,6 @@ import argparse
 import logging
 import sys
 import traceback
-import copy
 import shlex
 from collections import OrderedDict
 from multiprocessing import cpu_count
@@ -47,34 +46,22 @@ class Setup:
                             'individual commands')
         self.subparsers.required = True
 
-        # command: build-deps
-        pdeps = self.subparsers.add_parser('build-deps',
-                help='build dependencies for target programs and/or instances')
-        pdeps.add_argument('-t', '--targets', nargs='+', metavar='TARGET',
-                help='build dependencies for these target programs')
-        pdeps.add_argument('-i', '--instances', nargs='+', metavar='INSTANCE',
-                help='build dependencies for these instances')
-        pdeps.add_argument('-j', '--jobs', type=int, default=nproc,
-                help='maximum number of build processes (default %d)' % nproc)
-        pdeps.add_argument('--force-rebuild', action='store_true',
-                help='always run the build commands')
-        pdeps.add_argument('-n', '--dry-run', action='store_true',
-                help='don\'t actually build anything, just show what will be done')
-
         # command: build
         pbuild = self.subparsers.add_parser('build',
                 help='build target programs (also builds dependencies)')
         pbuild.add_argument('-t', '--targets', nargs='+', metavar='TARGET',
-                required=True,
+                choices=self.targets, default=[],
                 help='which target programs to build')
         pbuild.add_argument('-i', '--instances', nargs='+', metavar='INSTANCE',
-                required=True,
+                choices=self.instances, default=[],
                 help='which instances to build')
         pbuild.add_argument('-j', '--jobs', type=int, default=nproc,
                 help='maximum number of build processes (default %d)' % nproc)
         #pbuild.add_argument('-b', '--benchmarks', nargs='+', metavar='BENCHMARK',
         #        help='which benchmarks to build for the given target (only works '
         #            'for a single target)')
+        pbuild.add_argument('--deps-only', action='store_true',
+                help='only build dependencies, not targets themselves')
         pbuild.add_argument('--force-rebuild-deps', action='store_true',
                 help='always run the build commands')
         pbuild.add_argument('--relink', action='store_true',
@@ -82,27 +69,26 @@ class Setup:
         pbuild.add_argument('-n', '--dry-run', action='store_true',
                 help='don\'t actually build anything, just show what will be done')
 
-        # command: build-pkg
-        ppackage = self.subparsers.add_parser('build-pkg',
-                help='build a single package (implies --force-rebuild)')
-        ppackage.add_argument('package',
-                help='which package to build (see %s config --packages '
-                     'for choices)' % progname)
-        ppackage.add_argument('-j', '--jobs', type=int, default=nproc,
-                help='maximum number of build processes (default %d)' % nproc)
-
         for target in self.targets.values():
             target.add_build_args(pbuild)
 
         for instance in self.instances.values():
             instance.add_build_args(pbuild)
 
+        # command: build-pkg
+        ppackage = self.subparsers.add_parser('build-pkg',
+                help='forcibly build a single package')
+        ppackage.add_argument('package',
+                help='which package to build').completer = self.complete_pkg
+        ppackage.add_argument('-j', '--jobs', type=int, default=nproc,
+                help='maximum number of build processes (default %d)' % nproc)
+
         # command: run
         prun = self.subparsers.add_parser('run',
                 help='run target program (does not build anything)')
-        prun.add_argument('target',
+        prun.add_argument('target', choices=self.targets,
                 help='which target to run')
-        prun.add_argument('instance',
+        prun.add_argument('instance', choices=self.instances,
                 help='which instance to run')
 
         # command: config
@@ -123,20 +109,37 @@ class Setup:
         ppkgconfig = self.subparsers.add_parser('pkg-config',
                 help='print package-specific information')
         ppkgconfig.add_argument('package',
-                help='package to configure (see %s config --packages '
-                     'for choices)' % progname)
-        #ppkgconfig.add_argument('-h', '--help',
-        #        help='show available config arguments for this package')
-        ppkgconfig.add_argument('args', nargs=argparse.REMAINDER,
+                help='package to configure').completer = self.complete_pkg
+        #ppkgconfig.add_argument('option',
+        #        help='configuration option').completer = self.complete_pkg_config
+        ppkgconfig.add_argument('args', nargs=argparse.REMAINDER, choices=[],
                 help='configuration args')
-        self.pkgconfig_parser = ppkgconfig
+
+        # enable bash autocompletion if supported
+        try:
+            import argcomplete
+            argcomplete.autocomplete(parser, always_complete_options=False)
+        except ImportError:
+            pass
 
         self.args = parser.parse_args()
-
-    def init_context(self):
         if 'jobs' in self.args:
             self.ctx.jobs = self.args.jobs
 
+    def complete_pkg(self, prefix, parsed_args, **kwargs):
+        objs = list(self.targets.values())
+        objs += list(self.instances.values())
+        for package in self.get_deps(objs):
+            name = package.ident()
+            if name.startswith(prefix):
+                yield name
+
+    #def complete_pkg_config(self, prefix, parsed_args, **kwargs):
+    #    package = self.find_package(parsed_args.package)
+    #    return (arg for arg, desc, value in package.pkg_config(self.ctx)
+    #            if arg.startswith(prefix))
+
+    def init_context(self):
         self.ctx.hooks = Namespace(post_build=[])
 
         self.ctx.paths = paths = Namespace()
@@ -216,9 +219,7 @@ class Setup:
         try:
             os.chdir(self.ctx.paths.root)
 
-            if self.args.command == 'build-deps':
-                self.run_build_deps()
-            elif self.args.command == 'build':
+            if self.args.command == 'build':
                 self.run_build()
             elif self.args.command == 'build-pkg':
                 self.run_build_package()
@@ -283,6 +284,65 @@ class Setup:
             self.build_package(package, self.args.force_rebuild)
             self.install_package(package, self.args.force_rebuild)
 
+    def run_build(self):
+        targets = [self.get_target(name) for name in self.args.targets]
+        instances = [self.get_instance(name) for name in self.args.instances]
+
+        if self.args.deps_only:
+            if not targets and not instances:
+                raise FatalError('no targets or instances specified')
+        elif not targets or not instances:
+            raise FatalError('need at least one target and instance to build')
+
+        # first fetch all necessary code so that the internet connection can be
+        # broken during building
+        for package in self.get_deps(targets + instances):
+            self.fetch_package(package, self.args.force_rebuild_deps)
+
+        if not self.args.deps_only:
+            for target in targets:
+                if target.is_fetched(self.ctx):
+                    self.ctx.log.debug('%s already fetched, skip' % target.name)
+                else:
+                    self.ctx.log.info('fetching %s' % target.name)
+                    target.goto_rootdir(self.ctx)
+                    target.fetch(self.ctx)
+
+        built_packages = set()
+        target_deps = {t.name: self.get_deps([t]) for t in targets}
+
+        for instance in instances:
+            # use a copy of the context for instance configuration to avoid
+            # stacking configurations between instances
+            # FIXME use copy.copy here? in case ppl put big objects in ctx
+            ctx = self.ctx.copy()
+            instance.configure(ctx)
+
+            for package in self.get_deps([instance]):
+                if package not in built_packages:
+                    self.build_package(package, self.args.force_rebuild_deps)
+                    self.install_package(package, self.args.force_rebuild_deps)
+                    built_packages.add(package)
+                package.install_env(ctx)
+
+            for target in targets:
+                for package in target_deps[target.name]:
+                    if package not in built_packages:
+                        self.build_package(package, self.args.force_rebuild_deps)
+                        self.install_package(package, self.args.force_rebuild_deps)
+                        built_packages.add(package)
+                    package.install_env(ctx)
+
+                if not self.args.deps_only:
+                    ctx.log.info('building %s-%s' % (target.name, instance.name))
+                    if not self.args.dry_run:
+                        if not self.args.relink:
+                            target.goto_rootdir(ctx)
+                            target.build(ctx, instance)
+                        target.goto_rootdir(ctx)
+                        target.link(ctx, instance)
+                        target.run_hooks_post_build(ctx, instance)
+
     def fetch_package(self, package, force_rebuild, *args):
         package.goto_rootdir(self.ctx)
 
@@ -322,49 +382,6 @@ class Setup:
                 package.install(self.ctx, *args)
 
         package.goto_rootdir(self.ctx)
-        package.install_env(self.ctx)
-
-    def run_build(self):
-        targets = [self.get_target(name) for name in self.args.targets]
-        instances = [self.get_instance(name) for name in self.args.instances]
-        deps = self.get_deps(targets + instances)
-
-        if not deps:
-            self.ctx.log.debug('no dependencies to build')
-
-        # first fetch all necessary code so that the internet connection can be
-        # broken during building
-        for package in deps:
-            self.fetch_package(package, self.args.force_rebuild_deps)
-
-        for target in targets:
-            if target.is_fetched(self.ctx):
-                self.ctx.log.debug('%s already fetched, skip' % target.name)
-            else:
-                self.ctx.log.info('fetching %s' % target.name)
-                target.goto_rootdir(self.ctx)
-                target.fetch(self.ctx)
-
-        for package in deps:
-            self.build_package(package, self.args.force_rebuild_deps)
-            self.install_package(package, self.args.force_rebuild_deps)
-
-        for instance in instances:
-            # use a copy of the context for instance configuration to avoid
-            # stacking configurations between instances
-            # FIXME use copy.copy here? in case ppl put big objects in ctx
-            ctx = copy.deepcopy(self.ctx)
-            instance.configure(ctx)
-
-            for target in targets:
-                ctx.log.info('building %s-%s' % (target.name, instance.name))
-                if not self.args.dry_run:
-                    if not self.args.relink:
-                        target.goto_rootdir(ctx)
-                        target.build(ctx, instance)
-                    target.goto_rootdir(ctx)
-                    target.link(ctx, instance)
-                    target.run_hooks_post_build(ctx, instance)
 
     def run_build_package(self):
         package = self.find_package(self.args.package)
