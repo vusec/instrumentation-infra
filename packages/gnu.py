@@ -44,7 +44,8 @@ class GNUTarPackage(Package, metaclass=ABCMeta):
     def build(self, ctx):
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
-        run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
+        if not os.path.exists('Makefile'):
+            run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
         run(ctx, ['make', '-j%d' % ctx.jobs])
 
     def install(self, ctx):
