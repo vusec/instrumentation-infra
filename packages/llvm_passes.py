@@ -99,13 +99,10 @@ class BuiltinLLVMPasses(LLVMPasses):
         yield ('--runtime-cflags',
                'runtime compile flags',
                self.runtime_cflags(ctx))
-        yield ('--ldflags',
-               'link flags',
-               ['-L', self.path(ctx, 'install'), '-lpasses-builtin'])
         yield ('--target-cflags',
                'target compile flags for instrumentation helpers',
                ['-I', self.srcdir(ctx, 'include')])
-        yield from Package.pkg_config_options(self, ctx)
+        yield from LLVMPasses.pkg_config_options(self, ctx)
 
     def runtime_cflags(self, ctx):
         return ['-I', self.srcdir(ctx, 'include')]

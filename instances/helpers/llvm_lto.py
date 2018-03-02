@@ -15,7 +15,7 @@ def configure(ctx):
 
 def add_lto_args(ctx, *args):
     for arg in args:
-        ctx.ldflags.append('-Wl,-plugin-opt=' + arg)
+        ctx.ldflags.append('-Wl,-plugin-opt=' + str(arg))
 
 
 def add_stats_pass(ctx, pass_name, *args):

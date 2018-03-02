@@ -30,7 +30,7 @@ $(OBJDIR)/$(LIBOPT): $(OBJDIR)/$(LIBSTATIC)
 	$(CC) $^ $(LDFLAGS) -o $@
 
 $(OBJDIR)/$(LIBSTATIC): $(OBJS) | $(OBJDIR)
-	cd $(OBJDIR) && $(AR) rsv $(@F) $(OBJNAMES)
+	cd $(OBJDIR) && $(AR) crsv $(@F) $(OBJNAMES)
 
 -include $(DEPS)
 

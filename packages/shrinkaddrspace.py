@@ -10,7 +10,7 @@ class ShrinkAddrSpace(Package):
     def __init__(self, addrspace_bits, commit='master', srcdir=None):
         self.addrspace_bits = addrspace_bits
         self.commit = commit
-        self.srcdir = os.path.abspath(srcdir) if srcdir else None
+        self.custom_srcdir = os.path.abspath(srcdir) if srcdir else None
 
     def ident(self):
         return 'shrinkaddrspace-%d' % self.addrspace_bits
@@ -21,20 +21,22 @@ class ShrinkAddrSpace(Package):
         yield PyElfTools('0.24', '2.7')
 
     def fetch(self, ctx):
-        assert not self.srcdir
-        run(ctx, ['git', 'clone', self.git_url, 'src'])
-        os.chdir('src')
-        run(ctx, ['git', 'checkout', self.commit])
+        if self.custom_srcdir:
+            os.symlink(self.custom_srcdir, 'src')
+        else:
+            run(ctx, ['git', 'clone', self.git_url, 'src'])
+            os.chdir('src')
+            run(ctx, ['git', 'checkout', self.commit])
 
     def build(self, ctx):
-        os.chdir(self.srcdir if self.srcdir else 'src')
+        os.chdir('src')
         run(ctx, ['make', '-j%d' % ctx.jobs, 'OBJDIR=' + self.path(ctx, 'obj')])
 
     def install(self, ctx):
         pass
 
     def is_fetched(self, ctx):
-        return self.srcdir is not None or os.path.exists('src')
+        return os.path.exists('src')
 
     def is_built(self, ctx):
         return os.path.exists('obj/libshrink-static.a') and \
@@ -68,7 +70,7 @@ class ShrinkAddrSpace(Package):
         run(ctx, [
             self.path(ctx, 'src/prelink_binary.py'),
             '--set-rpath', '--in-place', '--static-lib',
-            '--out-dir', 'prelink',
+            '--out-dir', 'prelink-' + os.path.basename(binary),
             '--library-path', libpath,
             '--addrspace-bits', self.addrspace_bits,
             binary
@@ -80,5 +82,3 @@ class ShrinkAddrSpace(Package):
             '--preinit-name', '__shrinkaddrspace_preinit',
             binary
         ])
-
-

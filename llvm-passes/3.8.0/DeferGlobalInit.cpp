@@ -76,6 +76,8 @@ Constant *DeferGlobalInit::extractGlobals(Constant *C, GlobalVariable *GV,
 }
 
 bool DeferGlobalInit::runOnModule(Module &M) {
+    Replaced.clear();
+
     for (GlobalVariable &GV : M.globals()) {
         if (GV.getName().startswith("llvm."))
             continue;
@@ -90,6 +92,9 @@ bool DeferGlobalInit::runOnModule(Module &M) {
             }
         }
     }
+
+    if (Replaced.empty())
+        return false;
 
     FunctionType *FnTy = FunctionType::get(Type::getVoidTy(M.getContext()), false);
     Function *F = Function::Create(FnTy, GlobalValue::InternalLinkage, ".initialize_globals", &M);
@@ -110,7 +115,5 @@ bool DeferGlobalInit::runOnModule(Module &M) {
     B.CreateRetVoid();
     appendToGlobalCtors(M, F, -2);
 
-    bool Changed = !Replaced.empty();
-    Replaced.clear();
-    return Changed;
+    return true;
 }
