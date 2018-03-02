@@ -43,8 +43,10 @@ def prefix_paths(prefixes, suffix, existing):
 def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
     if isinstance(cmd, str):
         cmd = shlex.split(cmd)
+    else:
+        cmd = [str(arg) for arg in cmd]
 
-    cmd_print = ' '.join(map(shlex.quote, cmd))
+    cmd_print = qjoin(cmd)
 
     # TODO: stream output to logs
     try:
@@ -117,6 +119,10 @@ def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
         logfn('workdir:           %s' % os.getcwd())
         if not allow_error:
             raise
+
+
+def qjoin(args):
+    return ' '.join(shlex.quote(arg) for arg in args)
 
 
 def download(ctx, url, outfile=None):

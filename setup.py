@@ -6,7 +6,7 @@ import traceback
 import shlex
 from collections import OrderedDict
 from multiprocessing import cpu_count
-from .util import FatalError, Namespace
+from .util import FatalError, Namespace, qjoin
 
 
 # disable .pyc file generation
@@ -340,11 +340,11 @@ class Setup:
 
         if not self.args.deps_only:
             for target in targets:
+                target.goto_rootdir(self.ctx)
                 if target.is_fetched(self.ctx):
                     self.ctx.log.debug('%s already fetched, skip' % target.name)
                 else:
                     self.ctx.log.info('fetching %s' % target.name)
-                    target.goto_rootdir(self.ctx)
                     target.fetch(self.ctx)
 
         cached_deps = {t: self.get_deps([t]) for t in targets}
@@ -442,7 +442,7 @@ class Setup:
         # for lists (handy for flags), join by spaces while adding quotes where
         # necessary
         if isinstance(value, (list, tuple)):
-            value = ' '.join(shlex.quote(arg) for arg in value)
+            value = qjoin(value)
 
         print(value)
 
