@@ -3,7 +3,6 @@ import argparse
 import logging
 import sys
 import traceback
-import shlex
 from collections import OrderedDict
 from multiprocessing import cpu_count
 from .util import FatalError, Namespace, qjoin
@@ -94,6 +93,10 @@ class Setup:
                 help='which target to run')
         prun.add_argument('instance', choices=self.instances,
                 help='which instance to run')
+        prun.add_argument('-b', '--build', action='store_true',
+                help='build target first (default false)')
+        prun.add_argument('args', nargs=argparse.REMAINDER, choices=[],
+                help='run args (target dependent)')
 
         # command: config
         pconfig = self.subparsers.add_parser('config',
@@ -117,7 +120,7 @@ class Setup:
         #ppkgconfig.add_argument('option',
         #        help='configuration option').completer = self.complete_pkg_config
         ppkgconfig.add_argument('args', nargs=argparse.REMAINDER, choices=[],
-                help='configuration args')
+                help='configuration args (package dependent)')
 
         # enable bash autocompletion if supported
         try:
@@ -170,6 +173,7 @@ class Setup:
         os.makedirs(self.ctx.paths.log, exist_ok=True)
         os.makedirs(self.ctx.paths.packages, exist_ok=True)
         os.makedirs(self.ctx.paths.targets, exist_ok=True)
+        open(self.ctx.paths.runlog, 'w').close()
 
     def initialize_logger(self):
         fmt = '%(asctime)s [%(levelname)s] %(message)s'
@@ -412,7 +416,25 @@ class Setup:
             self.clean_target(target)
 
     def run_run(self):
-        raise NotImplementedError
+        target = self.get_target(self.args.target)
+        instance = self.get_instance(self.args.instance)
+
+        if self.args.build:
+            self.args.targets = [self.args.target]
+            self.args.instances = [self.args.instance]
+            self.args.packages = []
+            self.args.deps_only = False
+            self.args.clean = False
+            self.args.force_rebuild_deps = False
+            self.args.dry_run = False
+            self.args.relink = False
+            self.ctx.jobs = cpu_count()
+            self.run_build()
+
+        self.ctx.log.info('running %s-%s' % (target.name, instance.name))
+        target.goto_rootdir(self.ctx)
+        instance.prepare_run(self.ctx)
+        target.run(self.ctx, instance, self.args.args)
 
     def run_config(self):
         if self.args.list_instances:

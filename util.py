@@ -108,7 +108,8 @@ def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
             ctx.log.error('workdir: %s' % os.getcwd())
             for k, v in logenv.items():
                 ctx.log.error('%s=%s' % (k, v))
-            sys.stdout.write(proc.stdout)
+            if proc.stdout is not None:
+                sys.stdout.write(proc.stdout)
             sys.exit(-1)
 
         return proc

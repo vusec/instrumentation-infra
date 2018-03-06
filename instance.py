@@ -19,3 +19,6 @@ class Instance(metaclass=ABCMeta):
     @abstractmethod
     def configure(self, ctx):
         pass
+
+    def prepare_run(self, ctx):
+        pass

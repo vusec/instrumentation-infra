@@ -42,6 +42,9 @@ class Target(metaclass=ABCMeta):
     def link(self, ctx, instance):
         pass
 
+    def run(self, ctx, instance, args):
+        raise NotImplementedError(self.__class__.__name__)
+
     def is_clean(self, ctx):
         return not os.path.exists(self.path(ctx))
 
