@@ -187,7 +187,6 @@ class Setup:
         os.makedirs(self.ctx.paths.log, exist_ok=True)
         os.makedirs(self.ctx.paths.packages, exist_ok=True)
         os.makedirs(self.ctx.paths.targets, exist_ok=True)
-        open(self.ctx.paths.runlog, 'w').close()
 
     def initialize_logger(self):
         fmt = '%(asctime)s [%(levelname)s] %(message)s'
@@ -495,6 +494,9 @@ class Setup:
     def run_command(self):
         try:
             os.chdir(self.ctx.paths.root)
+
+            if self.args.command != 'pkg-config':
+                self.ctx.runlog = open(self.ctx.paths.runlog, 'w')
 
             if self.args.command == 'build':
                 self.run_build()

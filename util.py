@@ -63,17 +63,17 @@ def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
                   'LD_LIBRARY_PATH': renv['LD_LIBRARY_PATH']}
         logenv.update(env)
 
-        log_output = not silent and 'stdout' not in kwargs
+        log_output = not silent and 'stdout' not in kwargs and 'runlog' in ctx
         if log_output:
             # 'tee' output to logfile and string; does line buffering in a
             # separate thread to be able to flush the logfile during
             # long-running commands (use tail -f to view command output)
             if 'runtee' not in ctx:
-                ctx.runtee = Tee(open(ctx.paths.runlog, 'w'), io.StringIO())
+                ctx.runtee = Tee(ctx.runlog, io.StringIO())
 
-            runlog, strbuf = ctx.runtee.writers
+            strbuf = ctx.runtee.writers[1]
 
-            with redirect_stdout(runlog):
+            with redirect_stdout(ctx.runlog):
                 print('-' * 80)
                 print('command: %s' % cmd_print)
                 print('workdir: %s' % os.getcwd())
@@ -95,12 +95,11 @@ def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
             proc.stdout = strbuf.getvalue()
 
             # delete dangling buffer to free up memory
-            del strbuf
             ctx.runtee.writers[1] = io.StringIO()
 
-            # add trailing newline for readability
-            ctx.runtee.write('\n')
-            ctx.runtee.flush()
+            # add trailing newline to logfile for readability
+            ctx.runlog.write('\n')
+            ctx.runlog.flush()
 
         if proc.returncode and not allow_error:
             ctx.log.error('command returned status %d' % proc.returncode)
