@@ -27,34 +27,16 @@ def apply_patch(ctx, base_path, patch_name, strip_count):
     return True
 
 
-def prefix_paths(prefixes, suffix, existing):
-    paths = []
-
-    for pre in prefixes:
-        if os.path.exists(pre + suffix):
-            paths.append(pre + suffix)
-
-    if existing:
-        paths.append(existing)
-
-    return ':'.join(paths)
-
-
 def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
     cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd]
     cmd_print = qjoin(cmd)
     ctx.log.debug('running: %s' % cmd_print)
     ctx.log.debug('workdir: %s' % os.getcwd())
 
-    renv = os.environ.copy()
-    renv['PATH'] = prefix_paths(ctx.prefixes, '/bin', renv.get('PATH', ''))
-    renv['LD_LIBRARY_PATH'] = prefix_paths(ctx.prefixes, '/lib',
-            renv.get('LD_LIBRARY_PATH', ''))
-    renv.update(env)
-
-    logenv = {'PATH': renv['PATH'],
-                'LD_LIBRARY_PATH': renv['LD_LIBRARY_PATH']}
+    logenv = ctx.runenv.join_paths()
     logenv.update(env)
+    renv = os.environ.copy()
+    renv.update(logenv)
 
     log_output = not silent and 'stdout' not in kwargs and 'runlog' in ctx
     if log_output:
@@ -196,6 +178,16 @@ class Namespace(dict):
                 value = value.copy()
             ns[key] = value
         return ns
+
+    def join_paths(self):
+        new = self.__class__()
+        for key, value in self.items():
+            if isinstance(value, (tuple, list)):
+                value = ':'.join(value)
+            elif isinstance(value, self.__class__):
+                value = value.join_paths()
+            new[key] = value
+        return new
 
 
 class FatalError(Exception):

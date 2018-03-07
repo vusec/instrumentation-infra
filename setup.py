@@ -174,7 +174,10 @@ class Setup:
         paths.targets = os.path.join(paths.buildroot, 'targets')
 
         # FIXME move to package?
-        self.ctx.prefixes = []
+        self.ctx.runenv = Namespace(
+            PATH=os.getenv('PATH', '').split(':'),
+            LD_LIBRARY_PATH=os.getenv('LD_LIBRARY_PATH', '').split(':')
+        )
         self.ctx.cc = 'cc'
         self.ctx.cxx = 'c++'
         self.ctx.ar = 'ar'
