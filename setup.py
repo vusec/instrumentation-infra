@@ -88,7 +88,7 @@ class Setup:
 
         # command: run
         prun = self.subparsers.add_parser('run',
-                help='run target program (does not build anything)')
+                help='run a single target program')
         prun.add_argument('target', choices=self.targets,
                 help='which target to run')
         prun.add_argument('instance', choices=self.instances,
@@ -97,6 +97,20 @@ class Setup:
                 help='build target first (default false)')
         prun.add_argument('args', nargs=argparse.REMAINDER, choices=[],
                 help='run args (target dependent)')
+
+        # command: runall
+        prunall = self.subparsers.add_parser('runall',
+                help='run multiple target programs')
+        prunall.add_argument('-t', '--targets', nargs='+', metavar='TARGET',
+                default=[], choices=self.targets,
+                help='which targets to run')
+        prunall.add_argument('-i', '--instances', nargs='+', metavar='INSTANCE',
+                default=[], choices=self.instances,
+                help='which instances to run')
+        prunall.add_argument('-b', '--build', action='store_true',
+                help='build targets first (default false)')
+        prunall.add_argument('args', nargs=argparse.REMAINDER, choices=[],
+                help='run args (passed as-is to ALL targets)')
 
         # command: config
         pconfig = self.subparsers.add_parser('config',
@@ -415,13 +429,19 @@ class Setup:
         for target in targets:
             self.clean_target(target)
 
+    def run_runall(self):
+        self.do_run(self.args.targets, self.args.instances)
+
     def run_run(self):
-        target = self.get_target(self.args.target)
-        instance = self.get_instance(self.args.instance)
+        self.do_run([self.args.target], [self.args.instance])
+
+    def do_run(self, target_names, instance_names):
+        targets = [self.get_target(name) for name in target_names]
+        instances = [self.get_instance(name) for name in instance_names]
 
         if self.args.build:
-            self.args.targets = [self.args.target]
-            self.args.instances = [self.args.instance]
+            self.args.targets = target_names
+            self.args.instances = instance_names
             self.args.packages = []
             self.args.deps_only = False
             self.args.clean = False
@@ -431,10 +451,14 @@ class Setup:
             self.ctx.jobs = cpu_count()
             self.run_build()
 
-        self.ctx.log.info('running %s-%s' % (target.name, instance.name))
-        target.goto_rootdir(self.ctx)
-        instance.prepare_run(self.ctx)
-        target.run(self.ctx, instance, self.args.args)
+        for instance in instances:
+            for target in targets:
+                oldctx = self.ctx.copy()
+                self.ctx.log.info('running %s-%s' % (target.name, instance.name))
+                target.goto_rootdir(self.ctx)
+                instance.prepare_run(self.ctx)
+                target.run(self.ctx, instance, self.args.args)
+                self.ctx = oldctx
 
     def run_config(self):
         if self.args.list_instances:
@@ -478,6 +502,8 @@ class Setup:
                 self.run_clean()
             elif self.args.command == 'run':
                 self.run_run()
+            elif self.args.command == 'runall':
+                self.run_runall()
             elif self.args.command == 'config':
                 self.run_config()
             elif self.args.command == 'pkg-config':
