@@ -41,84 +41,78 @@ def prefix_paths(prefixes, suffix, existing):
 
 
 def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
-    if isinstance(cmd, str):
-        cmd = shlex.split(cmd)
-    else:
-        cmd = [str(arg) for arg in cmd]
-
+    cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd]
     cmd_print = qjoin(cmd)
+    ctx.log.debug('running: %s' % cmd_print)
+    ctx.log.debug('workdir: %s' % os.getcwd())
 
-    # TODO: stream output to logs
-    try:
-        ctx.log.debug('running: %s' % cmd_print)
-        ctx.log.debug('workdir: %s' % os.getcwd())
+    renv = os.environ.copy()
+    renv['PATH'] = prefix_paths(ctx.prefixes, '/bin', renv.get('PATH', ''))
+    renv['LD_LIBRARY_PATH'] = prefix_paths(ctx.prefixes, '/lib',
+            renv.get('LD_LIBRARY_PATH', ''))
+    renv.update(env)
 
-        renv = os.environ.copy()
-        renv['PATH'] = prefix_paths(ctx.prefixes, '/bin', renv.get('PATH', ''))
-        renv['LD_LIBRARY_PATH'] = prefix_paths(ctx.prefixes, '/lib',
-                renv.get('LD_LIBRARY_PATH', ''))
-        renv.update(env)
+    logenv = {'PATH': renv['PATH'],
+                'LD_LIBRARY_PATH': renv['LD_LIBRARY_PATH']}
+    logenv.update(env)
 
-        logenv = {'PATH': renv['PATH'],
-                  'LD_LIBRARY_PATH': renv['LD_LIBRARY_PATH']}
-        logenv.update(env)
+    log_output = not silent and 'stdout' not in kwargs and 'runlog' in ctx
+    if log_output:
+        # 'tee' output to logfile and string; does line buffering in a separate
+        # thread to be able to flush the logfile during long-running commands
+        # (use tail -f to view command output)
+        if 'runtee' not in ctx:
+            ctx.runtee = Tee(ctx.runlog, io.StringIO())
 
-        log_output = not silent and 'stdout' not in kwargs and 'runlog' in ctx
-        if log_output:
-            # 'tee' output to logfile and string; does line buffering in a
-            # separate thread to be able to flush the logfile during
-            # long-running commands (use tail -f to view command output)
-            if 'runtee' not in ctx:
-                ctx.runtee = Tee(ctx.runlog, io.StringIO())
+        strbuf = ctx.runtee.writers[1]
 
-            strbuf = ctx.runtee.writers[1]
-
-            with redirect_stdout(ctx.runlog):
-                print('-' * 80)
-                print('command: %s' % cmd_print)
-                print('workdir: %s' % os.getcwd())
-                for k, v in logenv.items():
-                    print('%s=%s' % (k, v))
-                hdr = '-- output: '
-                print(hdr + '-' * (80 - len(hdr)))
-
-            kwargs['stdout'] = ctx.runtee
-        elif silent:
-            kwargs.setdefault('stdout', subprocess.PIPE)
-
-        kwargs.setdefault('stderr', subprocess.STDOUT)
-        kwargs.setdefault('universal_newlines', True)
-
-        proc = subprocess.run(cmd, *args, **kwargs, env=renv)
-
-        if log_output:
-            proc.stdout = strbuf.getvalue()
-
-            # delete dangling buffer to free up memory
-            ctx.runtee.writers[1] = io.StringIO()
-
-            # add trailing newline to logfile for readability
-            ctx.runlog.write('\n')
-            ctx.runlog.flush()
-
-        if proc.returncode and not allow_error:
-            ctx.log.error('command returned status %d' % proc.returncode)
-            ctx.log.error('command: %s' % cmd_print)
-            ctx.log.error('workdir: %s' % os.getcwd())
+        with redirect_stdout(ctx.runlog):
+            print('-' * 80)
+            print('command: %s' % cmd_print)
+            print('workdir: %s' % os.getcwd())
             for k, v in logenv.items():
-                ctx.log.error('%s=%s' % (k, v))
-            if proc.stdout is not None:
-                sys.stdout.write(proc.stdout)
-            sys.exit(-1)
+                print('%s=%s' % (k, v))
+            hdr = '-- output: '
+            print(hdr + '-' * (80 - len(hdr)))
 
-        return proc
+        kwargs['stdout'] = ctx.runtee
+    elif silent:
+        kwargs.setdefault('stdout', subprocess.PIPE)
 
+    kwargs.setdefault('stderr', subprocess.STDOUT)
+    kwargs.setdefault('universal_newlines', True)
+
+    try:
+        proc = subprocess.run(cmd, *args, **kwargs, env=renv)
     except FileNotFoundError:
         logfn = ctx.log.debug if allow_error else ctx.log.error
         logfn('command not found: %s' % cmd_print)
         logfn('workdir:           %s' % os.getcwd())
-        if not allow_error:
-            raise
+        if allow_error:
+            return
+        raise
+
+    if log_output:
+        proc.stdout = strbuf.getvalue()
+
+        # delete dangling buffer to free up memory
+        ctx.runtee.writers[1] = io.StringIO()
+
+        # add trailing newline to logfile for readability
+        ctx.runlog.write('\n')
+        ctx.runlog.flush()
+
+    if proc.returncode and not allow_error:
+        ctx.log.error('command returned status %d' % proc.returncode)
+        ctx.log.error('command: %s' % cmd_print)
+        ctx.log.error('workdir: %s' % os.getcwd())
+        for k, v in logenv.items():
+            ctx.log.error('%s=%s' % (k, v))
+        if proc.stdout is not None:
+            sys.stdout.write(proc.stdout)
+        sys.exit(-1)
+
+    return proc
 
 
 def qjoin(args):
