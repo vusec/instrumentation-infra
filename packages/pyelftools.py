@@ -32,7 +32,8 @@ class PyElfTools(Package):
     def install_env(self, ctx):
         relpath = 'install/lib/python%s/site-packages' % self.python.version
         abspath = self.path(ctx, relpath)
-        ctx.runenv.setdefault('PYTHONPATH', []).insert(0, abspath)
+        pypath = os.getenv('PYTHONPATH', '').split(':')
+        ctx.runenv.setdefault('PYTHONPATH', pypath).insert(0, abspath)
 
     def is_fetched(self, ctx):
         return os.path.exists('src')

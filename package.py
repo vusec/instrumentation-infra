@@ -56,13 +56,12 @@ class Package(metaclass=ABCMeta):
         return os.path.join(ctx.paths.packages, self.ident(), *args)
 
     def install_env(self, ctx):
-        bins = self.path(ctx, 'install/bin')
-        if os.path.exists(bins):
-            ctx.runenv.PATH.insert(0, bins)
-
-        libs = self.path(ctx, 'install/lib')
-        if os.path.exists(libs):
-            ctx.runenv.LD_LIBRARY_PATH.insert(0, libs)
+        prevpath = os.getenv('PATH', '').split(':')
+        prevlibs = os.getenv('LD_LIBRARY_PATH', '').split(':')
+        binpath = self.path(ctx, 'install/bin')
+        libpath = self.path(ctx, 'install/lib')
+        ctx.runenv.setdefault('PATH', prevpath).insert(0, binpath)
+        ctx.runenv.setdefault('LD_LIBRARY_PATH', prevlibs).insert(0, libpath)
 
     def goto_rootdir(self, ctx):
         path = self.path(ctx)
