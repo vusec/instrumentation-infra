@@ -205,8 +205,7 @@ class Setup:
         log.addHandler(termlog)
 
         # always write debug log to file
-        debuglog_path = os.path.join(self.ctx.paths.log, 'debug.txt')
-        debuglog = logging.FileHandler(debuglog_path, mode='w')
+        debuglog = logging.FileHandler(self.ctx.paths.debuglog, mode='w')
         debuglog.setLevel(logging.DEBUG)
         debuglog.setFormatter(logging.Formatter(fmt, '%Y-%m-%d ' + datefmt))
         log.addHandler(debuglog)
