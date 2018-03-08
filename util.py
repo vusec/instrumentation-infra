@@ -1,7 +1,6 @@
 import os
 import sys
 import subprocess
-import logging
 import shlex
 import io
 import threading

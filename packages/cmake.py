@@ -1,8 +1,7 @@
 import os
 import shutil
-from subprocess import PIPE
 from ..package import Package
-from ..util import run, run, download
+from ..util import run, download
 
 
 class CMake(Package):

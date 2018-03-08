@@ -1,4 +1,3 @@
-import sys
 import os
 import shutil
 from abc import ABCMeta, abstractmethod

@@ -1,6 +1,5 @@
 import os
 import shutil
-from subprocess import PIPE
 from abc import ABCMeta, abstractmethod
 from ..package import Package
 from ..util import run, download, FatalError

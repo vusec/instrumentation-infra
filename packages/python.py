@@ -1,5 +1,3 @@
-import os
-import subprocess
 from ..package import Package
 from ..util import run, FatalError
 

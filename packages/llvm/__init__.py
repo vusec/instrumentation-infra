@@ -111,7 +111,7 @@ class LLVM(Package):
             proc = run(ctx, ['llvm-config', '--version'], allow_error=True)
             if proc and proc.returncode == 0:
                 installed_version = proc.stdout.strip()
-                if installed_version == version:
+                if installed_version == self.version:
                     return True
                 else:
                     ctx.log.debug('installed llvm-config version %s is '
