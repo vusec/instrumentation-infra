@@ -22,8 +22,8 @@ class Setup:
         self.ctx = Namespace()
         self.init_context()
         self.parse_argv()
-        self.initialize_logger()
         self.create_dirs()
+        self.initialize_logger()
         self.run_command()
 
     def parse_argv(self):
