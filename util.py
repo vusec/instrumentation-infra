@@ -17,6 +17,7 @@ def apply_patch(ctx, base_path, patch_name, strip_count):
         # TODO: check modification time
         return False
 
+    ctx.log.debug('applying patch %s' % patch_name)
     patch_path = '%s/%s.patch' % (base_path, patch_name)
 
     with open(patch_path) as patch_file:

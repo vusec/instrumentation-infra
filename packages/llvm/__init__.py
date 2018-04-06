@@ -70,7 +70,6 @@ class LLVM(Package):
         os.chdir('src')
         base_path = os.path.dirname(os.path.abspath(__file__))
         for patch_name in self.patches:
-            ctx.log.debug('applying patch %s' % patch_name)
             apply_patch(ctx, base_path, patch_name + '-' + self.version, 1)
         os.chdir('..')
 

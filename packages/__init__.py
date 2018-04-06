@@ -7,3 +7,4 @@ from .prelink import LibElf, Prelink
 from .pyelftools import PyElfTools
 from .shrinkaddrspace import ShrinkAddrSpace
 from .llvm_passes import BuiltinLLVMPasses, LLVMPasses
+from .perl import Perl, SPECPerl, Perlbrew

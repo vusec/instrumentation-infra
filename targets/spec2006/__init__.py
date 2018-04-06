@@ -1,19 +1,21 @@
 from ...target import Target
-#from ...packages import Perl
+from ...packages import SPECPerl, Perlbrew#, PerlPackages
 
 
 class SPEC2006(Target):
     name = 'spec2006'
-    perl_version = '5.8.8'
 
     def add_build_args(self, parser):
         parser.add_argument('--spec2006-benchmarks',
                 nargs='+', metavar='BENCHMARK',
                 help='which SPEC2006 benchmarks to build')
 
+        self.perl = SPECPerl()
+        self.perlbrew = Perlbrew(self.perl)
+
     def dependencies(self):
-        yield from []
-        #yield Perl(self.perl_version)
+        yield self.perlbrew
+        #yield self.perlpackages
 
     def is_fetched(self, ctx):
         raise NotImplementedError
