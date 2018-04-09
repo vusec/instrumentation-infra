@@ -122,22 +122,10 @@ class LLVM(Package):
         return os.path.exists('install/bin/llvm-config')
 
     def configure(self, ctx, lto=False):
-        ctx.cc = 'clang'
+        ctx.cc = self.path(ctx, 'install/bin/clang')
         ctx.cxx = 'clang++'
         ctx.ar = 'llvm-ar'
         ctx.nm = 'llvm-nm'
         ctx.ranlib = 'llvm-ranlib'
-
-        # TODO: move this to llvm-passes package
-        #ctx.cflags = []
-        #ctx.ldflags = []
-
-        #if lto:
-        #    path = '%s/lib/libplugins.so' % ctx.paths.prefix
-        #    ctx.cflags += ['-flto']
-        #    ctx.ldflags += ['-flto', '-Wl,-plugin-opt=-load=%s' % path]
-
-        #    if ctx.disable_opt:
-        #        ctx.cflags += ['-g3', '-O0']
-        #        ctx.ldflags += ['-g3', '-O0']
-        #        ctx.ldflags.append('-Wl,-plugin-opt=-disable-opt')
+        ctx.cflags = []
+        ctx.ldflags = []

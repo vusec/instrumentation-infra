@@ -13,8 +13,8 @@ sys.dont_write_bytecode = True
 
 
 class Setup:
-    def __init__(self, root_path):
-        self.root_path = os.path.abspath(root_path)
+    def __init__(self, setup_path):
+        self.setup_path = os.path.abspath(setup_path)
         self.instances = OrderedDict()
         self.targets = OrderedDict()
 
@@ -74,6 +74,16 @@ class Setup:
 
         for instance in self.instances.values():
             instance.add_build_args(pbuild)
+
+        # command: exec-hook
+        phook = self.subparsers.add_parser('exec-hook',
+                help='run post-build hooks of an instance on a target file')
+        phook.add_argument('hooktype', choices=['post-build'],
+                help='hook type')
+        phook.add_argument('instance', choices=self.instances,
+                help='which instance to run hooks for')
+        phook.add_argument('targetfile',
+                help='file to run hook on')
 
         # command: clean
         pclean = self.subparsers.add_parser('clean',
@@ -143,7 +153,7 @@ class Setup:
         except ImportError:
             pass
 
-        self.args = parser.parse_args()
+        self.ctx.args = self.args = parser.parse_args()
         if 'jobs' in self.args:
             self.ctx.jobs = self.args.jobs
 
@@ -164,7 +174,8 @@ class Setup:
         self.ctx.hooks = Namespace(post_build=[])
 
         self.ctx.paths = paths = Namespace()
-        paths.root = self.root_path
+        paths.setup = self.setup_path
+        paths.root = os.path.dirname(self.setup_path)
         paths.infra = os.path.dirname(__file__)
         paths.buildroot = os.path.join(paths.root, 'build')
         paths.log = os.path.join(paths.buildroot, 'log')
@@ -381,6 +392,7 @@ class Setup:
             for package in cached_deps[obj]:
                 force = self.args.force_rebuild_deps or package in force_deps
                 build_package_once(package, force)
+                self.ctx.log.debug('install %s in env' % package.ident())
                 package.install_env(self.ctx)
 
         for package in separate_packages:
@@ -414,6 +426,30 @@ class Setup:
                 self.ctx = oldctx
 
             self.ctx = oldctx
+
+    def run_exec_hook(self):
+        instance = self.get_instance(self.args.instance)
+
+        absfile = os.path.abspath(self.args.targetfile)
+        if not os.path.exists(absfile):
+            raise FatalError('file %s does not exist' % absfile)
+
+        hooktype = self.args.hooktype.replace('-', '_')
+        assert hooktype in self.ctx.hooks
+
+        # don't build packages (should have been done already since this
+        # command should only be called recursively)
+        for package in self.get_deps([instance]):
+            package.install_env(self.ctx)
+
+        # populate self.ctx.hooks[hooktype]
+        instance.configure(self.ctx)
+
+        # run hooks
+        basedir = os.path.dirname(absfile)
+        for hook in self.ctx.hooks[hooktype]:
+            os.chdir(basedir)
+            hook(self.ctx, absfile)
 
     def run_clean(self):
         packages = [self.get_package(name) for name in self.args.packages]
@@ -492,13 +528,14 @@ class Setup:
 
     def run_command(self):
         try:
-            os.chdir(self.ctx.paths.root)
-
-            if self.args.command != 'pkg-config':
+            if self.args.command not in ('exec-hook', 'pkg-config'):
+                os.chdir(self.ctx.paths.root)
                 self.ctx.runlog = open(self.ctx.paths.runlog, 'w')
 
             if self.args.command == 'build':
                 self.run_build()
+            elif self.args.command == 'exec-hook':
+                self.run_exec_hook()
             elif self.args.command == 'clean':
                 self.run_clean()
             elif self.args.command == 'run':

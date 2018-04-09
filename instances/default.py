@@ -12,10 +12,13 @@ class Default(Instance):
 
     def configure(self, ctx):
         self.llvm.configure(ctx)
+        ctx.cflags += ['-O2']
 
 
 class DefaultLTO(Default):
     name = 'default-lto'
 
     def configure(self, ctx):
-        self.llvm.configure(ctx, lto=True)
+        super().configure(ctx)
+        ctx.cflags += ['-flto']
+        ctx.ldflags += ['-flto']
