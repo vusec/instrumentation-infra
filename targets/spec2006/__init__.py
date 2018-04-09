@@ -25,7 +25,7 @@ class SPEC2006(Target):
                 help='which SPEC2006 benchmarks to build')
 
     def is_fetched(self, ctx):
-        return os.path.exists('shrc')
+        return os.path.exists('install/shrc')
 
     def fetch(self, ctx):
         if self.giturl:
@@ -98,8 +98,9 @@ class SPEC2006(Target):
 
                 # post-build hooks call back into the setup script
                 print('')
-                print('build_post_bench = %s exec-hook post-build %s ${commandexe}' %
-                      (ctx.paths.setup, instance.name))
+                print('build_post_bench = %s exec-hook post-build %s '
+                      '`echo ${commandexe} | sed "s/_\\[a-z0-9\\]\\\\+\\\\.%s\\\\\\$//"`' %
+                      (ctx.paths.setup, instance.name, config_name))
                 print('')
 
                 if 'target_run_wrapper' in ctx:
