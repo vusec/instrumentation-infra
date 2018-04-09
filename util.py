@@ -19,7 +19,7 @@ def apply_patch(ctx, path, strip_count):
         # TODO: check modification time
         return False
 
-    ctx.log.info('applying patch %s' % name)
+    ctx.log.debug('applying patch %s' % name)
 
     with open(path) as f:
         run(ctx, ['patch', '-p%d' % strip_count], stdin=f)
