@@ -1,0 +1,13 @@
+diff --git a/benchspec/CPU2006/403.gcc/src/combine.c b/benchspec/CPU2006/403.gcc/src/combine.c
+index 9a4067a..b475f84 100644
+--- a/benchspec/CPU2006/403.gcc/src/combine.c
++++ b/benchspec/CPU2006/403.gcc/src/combine.c
+@@ -1529,7 +1529,7 @@ try_combine (i3, i2, i1, new_direct_jump_p)
+   int i2dest_in_i2src = 0, i1dest_in_i1src = 0, i2dest_in_i1src = 0;
+   int i1_feeds_i3 = 0;
+   /* Notes that must be added to REG_NOTES in I3 and I2.  */
+-  rtx new_i3_notes, new_i2_notes;
++  rtx new_i3_notes, new_i2_notes = 0;
+   /* Notes that we substituted I3 into I2 instead of the normal case.  */
+   int i3_subst_into_i2 = 0;
+   /* Notes that I1, I2 or I3 is a MULT operation.  */

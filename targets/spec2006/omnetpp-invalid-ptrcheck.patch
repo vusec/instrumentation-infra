@@ -1,0 +1,13 @@
+diff --git a/benchspec/CPU2006/471.omnetpp/src/libs/sim/cpar.cc b/benchspec/CPU2006/471.omnetpp/src/libs/sim/cpar.cc
+index 71fe4e0..11c164e 100644
+--- a/benchspec/CPU2006/471.omnetpp/src/libs/sim/cpar.cc
++++ b/benchspec/CPU2006/471.omnetpp/src/libs/sim/cpar.cc
+@@ -1065,7 +1065,7 @@ double cPar::evaluate()
+              tos-=3;
+              break;
+            case '@':
+-             if(!e.f2 || tos<1) throw new cException(this,eBADEXP);
++             if(tos<1) throw new cException(this,eBADEXP);
+              switch(e.op) {
+                 case '+':
+                    stk[tos-1] = stk[tos-1] + stk[tos];

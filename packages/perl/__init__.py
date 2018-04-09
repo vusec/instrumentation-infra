@@ -61,9 +61,10 @@ class SPECPerl(Perl):
         # apply patches (includes quote fix from
         # https://rt.perl.org/Public/Bug/Display.html?id=44581)
         os.chdir('src')
-        base_path = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.dirname(os.path.abspath(__file__))
         for patch_name in ('makedepend', 'pagesize'):
-            apply_patch(ctx, base_path, patch_name + '-' + self.version, 1)
+            path = '%s/%s-%s.patch' % (config_path, patch_name, self.version)
+            apply_patch(ctx, path, 1)
 
         if not os.path.exists('.patched-Configure-paths'):
             libmfile = run(ctx, 'gcc -print-file-name=libm.so').stdout.rstrip()

@@ -10,18 +10,19 @@ from urllib.parse import urlparse
 from contextlib import redirect_stdout
 
 
-def apply_patch(ctx, base_path, patch_name, strip_count):
-    stamp = '.patched-' + patch_name
+def apply_patch(ctx, path, strip_count):
+    path = os.path.abspath(path)
+    name = os.path.basename(path).replace('.patch', '')
+    stamp = '.patched-' + name
 
     if os.path.exists(stamp):
         # TODO: check modification time
         return False
 
-    ctx.log.debug('applying patch %s' % patch_name)
-    patch_path = '%s/%s.patch' % (base_path, patch_name)
+    ctx.log.info('applying patch %s' % name)
 
-    with open(patch_path) as patch_file:
-        run(ctx, ['patch', '-p%d' % strip_count], stdin=patch_file)
+    with open(path) as f:
+        run(ctx, ['patch', '-p%d' % strip_count], stdin=f)
 
     open(stamp, 'w').close()
     return True
@@ -30,11 +31,14 @@ def apply_patch(ctx, base_path, patch_name, strip_count):
 def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
     cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd]
     cmd_print = qjoin(cmd)
+    stdin = kwargs.get('stdin', None)
+    if isinstance(stdin, io.IOBase):
+        cmd_print += ' < ' + shlex.quote(stdin.name)
     ctx.log.debug('running: %s' % cmd_print)
     ctx.log.debug('workdir: %s' % os.getcwd())
 
     logenv = ctx.runenv.join_paths()
-    logenv.update(env)
+    logenv.update(Namespace.join_paths(env))
     renv = os.environ.copy()
     renv.update(logenv)
 
@@ -186,7 +190,7 @@ class Namespace(dict):
                 value = ':'.join(value)
             elif isinstance(value, self.__class__):
                 value = value.join_paths()
-            new[key] = value
+            new[key] = str(value)
         return new
 
 

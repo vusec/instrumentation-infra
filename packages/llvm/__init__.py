@@ -68,9 +68,11 @@ class LLVM(Package):
         # do this in build() instead of fetch() to make sure patches are applied
         # with --force-rebuild
         os.chdir('src')
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        for patch_name in self.patches:
-            apply_patch(ctx, base_path, patch_name + '-' + self.version, 1)
+        config_path = os.path.dirname(os.path.abspath(__file__))
+        for path in self.patches:
+            if '/' not in path:
+                path = '%s/%s-%s.patch' % (config_path, path, self.version)
+            apply_patch(ctx, path, 1)
         os.chdir('..')
 
         os.makedirs('obj', exist_ok=True)
