@@ -22,7 +22,8 @@ class SPEC2006(Target):
 
     def add_build_args(self, parser):
         parser.add_argument('--spec2006-benchmarks',
-                nargs='+', metavar='BENCHMARK', default=['bzip2'], # FIXME
+                nargs='+', metavar='BENCHMARK', default=['c', 'c++'],
+                choices=list(self.benchmarks.keys()),
                 help='which SPEC2006 benchmarks to build')
 
     def is_fetched(self, ctx):
@@ -56,10 +57,14 @@ class SPEC2006(Target):
             apply_patch(ctx, path, 1)
         os.chdir('..')
 
+        benchmarks = []
+        for bset in ctx.args.spec2006_benchmarks:
+            benchmarks += self.benchmarks[bset]
+
         config = self.make_spec_config(ctx, instance)
         print_output = ctx.loglevel == logging.DEBUG
         self.runspec(ctx, '--config=' + config, '--action=build',
-                     *ctx.args.spec2006_benchmarks, teeout=print_output)
+                     *benchmarks, teeout=print_output)
 
     def runspec(self, ctx, *args, **kwargs):
         config_path = os.path.dirname(os.path.abspath(__file__))
@@ -90,16 +95,19 @@ class SPEC2006(Target):
                 # see https://www.spec.org/cpu2006/Docs/makevars.html#nofbno1
                 # for flags ordering
                 cflags = qjoin(ctx.cflags)
+                cxxflags = qjoin(ctx.cxxflags)
                 ldflags = qjoin(ctx.ldflags)
                 print('CC          = %s %s' % (ctx.cc, cflags))
-                print('CXX         = %s %s' % (ctx.cxx, cflags))
+                print('CXX         = %s %s' % (ctx.cxx, cxxflags))
                 print('FC          = `which false`')
                 print('CLD         = %s %s' % (ctx.cc, ldflags))
                 print('CXXLD       = %s %s' % (ctx.cxx, ldflags))
+                print('COPTIMIZE   = -std=gnu89')
+                # fix __float128 error in clang:
+                print('CXXPORTABILITY = -D__STRICT_ANSI__')
 
                 # post-build hooks call back into the setup script
                 if ctx.hooks.post_build:
-                    ctx.log.warn(repr(ctx.hooks.post_build))
                     print('')
                     print('build_post_bench = %s exec-hook post-build %s '
                         '`echo ${commandexe} | sed "s/_\\[a-z0-9\\]\\\\+\\\\.%s\\\\\\$//"`' %
@@ -138,3 +146,78 @@ class SPEC2006(Target):
     # exec-hook setup command instead
     def run_hooks_post_build(self, ctx, instance):
         pass
+
+    # define benchmark sets
+    benchmarks = {
+        'int': [
+            '400.perlbench',
+            '401.bzip2',
+            '403.gcc',
+            '429.mcf',
+            '445.gobmk',
+            '456.hmmer',
+            '458.sjeng',
+            '462.libquantum',
+            '464.h264ref',
+            '471.omnetpp',
+            '473.astar',
+            '483.xalancbmk',
+        ],
+        'fp': [
+            '410.bwaves',
+            '416.gamess',
+            '433.milc',
+            '434.zeusmp',
+            '435.gromacs',
+            '436.cactusADM',
+            '437.leslie3d',
+            '444.namd',
+            '447.dealII',
+            '450.soplex',
+            '453.povray',
+            '454.calculix',
+            '459.GemsFDTD',
+            '465.tonto',
+            '470.lbm',
+            '481.wrf',
+            '482.sphinx3',
+        ],
+        'c': [
+            '400.perlbench',
+            '401.bzip2',
+            '403.gcc',
+            '429.mcf',
+            '433.milc',
+            '445.gobmk',
+            '456.hmmer',
+            '458.sjeng',
+            '462.libquantum',
+            '464.h264ref',
+            '470.lbm',
+            '482.sphinx3',
+        ],
+        'c++': [
+            '444.namd',
+            '447.dealII',
+            '450.soplex',
+            '453.povray',
+            '471.omnetpp',
+            '473.astar',
+            '483.xalancbmk',
+        ],
+        'fortran': [
+            '410.bwaves',
+            '416.gamess',
+            '434.zeusmp',
+            '435.gromacs',
+            '436.cactusADM',
+            '437.leslie3d',
+            '454.calculix',
+            '459.GemsFDTD',
+            '465.tonto',
+            '481.wrf',
+        ]
+    }
+    benchmarks['all'] = sorted(benchmarks['int'] + benchmarks['fp'])
+    for bench in benchmarks['all']:
+        benchmarks[bench] = [bench]
