@@ -206,9 +206,10 @@ class Setup:
         self.ctx.log = log = logging.getLogger('autosetup')
         log.setLevel(logging.DEBUG)
         log.propagate = False
+        self.ctx.loglevel = getattr(logging, self.args.verbosity.upper())
 
         termlog = logging.StreamHandler(sys.stdout)
-        termlog.setLevel(getattr(logging, self.args.verbosity.upper()))
+        termlog.setLevel(self.ctx.loglevel)
         termlog.setFormatter(logging.Formatter(fmt, datefmt))
         log.addHandler(termlog)
 

@@ -28,7 +28,7 @@ def apply_patch(ctx, path, strip_count):
     return True
 
 
-def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
+def run(ctx, cmd, allow_error=False, silent=False, teeout=False, env={}, *args, **kwargs):
     cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd]
     cmd_print = qjoin(cmd)
     stdin = kwargs.get('stdin', None)
@@ -61,7 +61,10 @@ def run(ctx, cmd, allow_error=False, silent=False, env={}, *args, **kwargs):
             hdr = '-- output: '
             print(hdr + '-' * (80 - len(hdr)))
 
-        kwargs['stdout'] = ctx.runtee
+        if teeout:
+            kwargs['stdout'] = Tee(ctx.runtee, sys.stdout)
+        else:
+            kwargs['stdout'] = ctx.runtee
     elif silent:
         kwargs.setdefault('stdout', subprocess.PIPE)
 
