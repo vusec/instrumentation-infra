@@ -161,7 +161,7 @@ class SPEC2006(Target):
             '464.h264ref',
             '471.omnetpp',
             '473.astar',
-            '483.xalancbmk',
+            '483.xalancbmk'
         ],
         'fp': [
             '410.bwaves',
@@ -180,7 +180,7 @@ class SPEC2006(Target):
             '465.tonto',
             '470.lbm',
             '481.wrf',
-            '482.sphinx3',
+            '482.sphinx3'
         ],
         'c': [
             '400.perlbench',
@@ -194,7 +194,7 @@ class SPEC2006(Target):
             '462.libquantum',
             '464.h264ref',
             '470.lbm',
-            '482.sphinx3',
+            '482.sphinx3'
         ],
         'c++': [
             '444.namd',
@@ -203,7 +203,7 @@ class SPEC2006(Target):
             '453.povray',
             '471.omnetpp',
             '473.astar',
-            '483.xalancbmk',
+            '483.xalancbmk'
         ],
         'fortran': [
             '410.bwaves',
@@ -215,7 +215,7 @@ class SPEC2006(Target):
             '454.calculix',
             '459.GemsFDTD',
             '465.tonto',
-            '481.wrf',
+            '481.wrf'
         ]
     }
     benchmarks['all'] = sorted(benchmarks['int'] + benchmarks['fp'])
