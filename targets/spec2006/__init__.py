@@ -98,11 +98,13 @@ class SPEC2006(Target):
                 print('CXXLD       = %s %s' % (ctx.cxx, ldflags))
 
                 # post-build hooks call back into the setup script
-                print('')
-                print('build_post_bench = %s exec-hook post-build %s '
-                      '`echo ${commandexe} | sed "s/_\\[a-z0-9\\]\\\\+\\\\.%s\\\\\\$//"`' %
-                      (ctx.paths.setup, instance.name, config_name))
-                print('')
+                if ctx.hooks.post_build:
+                    ctx.log.warn(repr(ctx.hooks.post_build))
+                    print('')
+                    print('build_post_bench = %s exec-hook post-build %s '
+                        '`echo ${commandexe} | sed "s/_\\[a-z0-9\\]\\\\+\\\\.%s\\\\\\$//"`' %
+                        (ctx.paths.setup, instance.name, config_name))
+                    print('')
 
                 if 'target_run_wrapper' in ctx:
                     print('')

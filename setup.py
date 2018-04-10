@@ -406,12 +406,12 @@ class Setup:
             # use a copy of the context for instance configuration to avoid
             # stacking configurations between instances
             # FIXME: only copy the build env (the part that changes)
-            oldctx = self.ctx.copy()
+            oldctx_outer = self.ctx.copy()
             instance.configure(self.ctx)
             build_deps_once(instance)
 
             for target in targets:
-                oldctx = self.ctx.copy()
+                oldctx_inner = self.ctx.copy()
                 build_deps_once(target)
 
                 if not self.args.deps_only:
@@ -424,9 +424,9 @@ class Setup:
                         target.link(self.ctx, instance)
                         target.run_hooks_post_build(self.ctx, instance)
 
-                self.ctx = oldctx
+                self.ctx = oldctx_inner
 
-            self.ctx = oldctx
+            self.ctx = oldctx_outer
 
     def run_exec_hook(self):
         instance = self.get_instance(self.args.instance)
