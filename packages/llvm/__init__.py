@@ -89,15 +89,15 @@ class LLVM(Package):
             *self.build_flags,
             '../src'
         ])
-        run(ctx, ['cmake', '--build', '.'])
+        run(ctx, 'cmake --build . -- -j %d' % ctx.jobs)
 
     def ninja_supported(self, ctx):
-        proc = run(ctx, ['ninja', '--version'], allow_error=True)
+        proc = run(ctx, 'ninja --version', allow_error=True)
         return proc and proc.returncode == 0
 
     def install(self, ctx):
         os.chdir('obj')
-        run(ctx, ['cmake', '--build', '.', '--target', 'install'])
+        run(ctx, 'cmake --build . --target install')
 
     def is_fetched(self, ctx):
         return os.path.exists('src')
@@ -109,7 +109,7 @@ class LLVM(Package):
         if not self.patches:
             # allow preinstalled LLVM if version matches
             # TODO: do fuzzy matching on version?
-            proc = run(ctx, ['llvm-config', '--version'], allow_error=True)
+            proc = run(ctx, 'llvm-config --version', allow_error=True)
             if proc and proc.returncode == 0:
                 installed_version = proc.stdout.strip()
                 if installed_version == self.version:
