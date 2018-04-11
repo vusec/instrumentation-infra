@@ -10,7 +10,8 @@ from ...packages import Nothp
 class SPEC2006(Target):
     name = 'spec2006'
 
-    def __init__(self, specdir=None, giturl=None, patches=[]):
+    def __init__(self, specdir=None, giturl=None, patches=[],
+                 nothp=True, force_cpu=0):
         if not specdir and not giturl:
             raise FatalError('should specify one of specdir or giturl')
 
@@ -20,15 +21,24 @@ class SPEC2006(Target):
         self.specdir = specdir
         self.giturl = giturl
         self.patches = patches
+        self.nothp = nothp
+        self.force_cpu = force_cpu
 
-    def add_build_args(self, parser):
+    def add_benchmarks_arg(self, parser, desc, default):
         parser.add_argument('--spec2006-benchmarks',
-                nargs='+', metavar='BENCHMARK', default=['c', 'c++'],
+                nargs='+', metavar='BENCHMARK', default=default,
                 choices=list(self.benchmarks.keys()),
-                help='which SPEC2006 benchmarks to build')
+                help='which SPEC2006 benchmarks to ' + desc)
+
+    def add_build_args(self, parser, desc='build'):
+        self.add_benchmarks_arg(parser, 'run', ['c', 'c++'])
+
+    def add_run_args(self, parser):
+        self.add_benchmarks_arg(parser, 'run', [])
 
     def dependencies(self):
-        yield Nothp()
+        if self.nothp:
+            yield Nothp()
 
     def is_fetched(self, ctx):
         return os.path.exists('install/shrc')
@@ -54,34 +64,49 @@ class SPEC2006(Target):
         # apply any pending patches (doing this at build time allows adding
         # patches during instance development)
         os.chdir('install')
-        config_path = os.path.dirname(os.path.abspath(__file__))
+        config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
             if '/' not in path:
-                path = '%s/%s.patch' % (config_path, path)
+                path = '%s/%s.patch' % (config_root, path)
             apply_patch(ctx, path, 1)
         os.chdir('..')
 
         config = self.make_spec_config(ctx, instance)
         print_output = ctx.loglevel == logging.DEBUG
 
-        benchmarks = []
-        for bset in ctx.args.spec2006_benchmarks:
-            benchmarks += self.benchmarks[bset]
-        benchmarks.sort()
-
-        for bench in benchmarks:
+        for bench in self.get_benchmarks(ctx, instance):
             ctx.log.info('building %s-%s %s' % (self.name, instance.name, bench))
-            self.runspec(ctx, config, 'build', bench, teeout=print_output)
+            self.run_bash(ctx,
+                'killwrap_tree runspec --config=%s --action=build %s' %
+                (config, bench), teeout=print_output)
 
-    def runspec(self, ctx, config, action, *args, **kwargs):
-        config_path = os.path.dirname(os.path.abspath(__file__))
-        run(ctx, [
+    def run(self, ctx, instance, args):
+        config = 'infra-' + instance.name
+
+        if not os.path.exists(self.path(ctx, 'install/config/%s.cfg' % config)):
+            raise FatalError('%s-%s has not been built yet!' %
+                             (self.name, instance.name))
+
+        wrapper =  'killwrap_tree'
+        if self.nothp:
+            wrapper += ' nothp'
+        if self.force_cpu >= 0:
+            wrapper += ' taskset -c %d' % self.force_cpu
+
+        self.run_bash(ctx,
+            '%s runspec --config=%s --nobuild %s' %
+            (wrapper, config, qjoin(args + self.get_benchmarks(ctx, instance))),
+            teeout=True)
+
+    def run_bash(self, ctx, commands, **kwargs):
+        config_root = os.path.dirname(os.path.abspath(__file__))
+        return run(ctx, [
             'bash', '-c',
             'cd %s/install;'
             'source shrc;'
             'source "%s/scripts/kill-tree-on-interrupt.inc";'
-            'killwrap_tree runspec --config="%s" --action=%s %s' %
-            (self.path(ctx), config_path, config, action, qjoin(args))
+            '%s' %
+            (self.path(ctx), config_root, commands)
         ], **kwargs)
 
     def make_spec_config(self, ctx, instance):
@@ -155,6 +180,16 @@ class SPEC2006(Target):
     # exec-hook setup command instead
     def run_hooks_post_build(self, ctx, instance):
         pass
+
+    def get_benchmarks(self, ctx, instance):
+        benchmarks = []
+        for bset in ctx.args.spec2006_benchmarks:
+            for bench in self.benchmarks[bset]:
+                if not hasattr(instance, 'exclude_spec2006_benchmark') or \
+                        not instance.exclude_spec2006_benchmark(bench):
+                    benchmarks.append(bench)
+        benchmarks.sort()
+        return benchmarks
 
     # define benchmark sets
     benchmarks = {

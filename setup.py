@@ -69,12 +69,6 @@ class Setup:
         pbuild.add_argument('-n', '--dry-run', action='store_true',
                 help='don\'t actually build anything, just show what will be done')
 
-        for target in self.targets.values():
-            target.add_build_args(pbuild)
-
-        for instance in self.instances.values():
-            instance.add_build_args(pbuild)
-
         # command: exec-hook
         phook = self.subparsers.add_parser('exec-hook',
                 help='run post-build hooks of an instance on a target file')
@@ -145,6 +139,16 @@ class Setup:
         #        help='configuration option').completer = self.complete_pkg_config
         ppkgconfig.add_argument('args', nargs=argparse.REMAINDER, choices=[],
                 help='configuration args (package dependent)')
+
+        for target in self.targets.values():
+            target.add_build_args(pbuild)
+            target.add_run_args(prun)
+            target.add_run_args(prunall)
+
+        for instance in self.instances.values():
+            instance.add_build_args(pbuild)
+            instance.add_run_args(prun)
+            instance.add_run_args(prunall)
 
         # enable bash autocompletion if supported
         try:

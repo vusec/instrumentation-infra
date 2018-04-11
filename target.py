@@ -15,6 +15,9 @@ class Target(metaclass=ABCMeta):
     def add_build_args(self, parser):
         pass
 
+    def add_run_args(self, parser):
+        pass
+
     def dependencies(self):
         yield from []
 
