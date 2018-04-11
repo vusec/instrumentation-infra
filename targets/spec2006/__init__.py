@@ -182,14 +182,13 @@ class SPEC2006(Target):
         pass
 
     def get_benchmarks(self, ctx, instance):
-        benchmarks = []
+        benchmarks = set()
         for bset in ctx.args.spec2006_benchmarks:
             for bench in self.benchmarks[bset]:
                 if not hasattr(instance, 'exclude_spec2006_benchmark') or \
                         not instance.exclude_spec2006_benchmark(bench):
-                    benchmarks.append(bench)
-        benchmarks.sort()
-        return benchmarks
+                    benchmarks.add(bench)
+        return sorted(benchmarks)
 
     # define benchmark sets
     benchmarks = {
