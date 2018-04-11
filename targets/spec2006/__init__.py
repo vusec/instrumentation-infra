@@ -35,6 +35,9 @@ class SPEC2006(Target):
 
     def add_run_args(self, parser):
         self.add_benchmarks_arg(parser, 'run', [])
+        parser.add_argument('--spec2006-measuremem', action='store_true',
+                help='measure memory usage (single run, does not support '
+                     'runspec arguments)')
 
     def dependencies(self):
         if self.nothp:
@@ -82,6 +85,7 @@ class SPEC2006(Target):
 
     def run(self, ctx, instance, args):
         config = 'infra-' + instance.name
+        config_root = os.path.dirname(os.path.abspath(__file__))
 
         if not os.path.exists(self.path(ctx, 'install/config/%s.cfg' % config)):
             raise FatalError('%s-%s has not been built yet!' %
@@ -93,10 +97,19 @@ class SPEC2006(Target):
         if self.force_cpu >= 0:
             wrapper += ' taskset -c %d' % self.force_cpu
 
-        self.run_bash(ctx,
-            '%s runspec --config=%s --nobuild %s' %
-            (wrapper, config, qjoin(args + self.get_benchmarks(ctx, instance))),
-            teeout=True)
+        if ctx.args.spec2006_measuremem:
+            specdir = self.path(ctx, 'install')
+            benchmarks = qjoin(self.get_benchmarks(ctx, instance))
+            self.run_bash(ctx,
+                'runspec --config={config} --action=setup {benchmarks};'
+                '{wrapper} {config_root}/measuremem.py {specdir} {config}'
+                ' {benchmarks}'.format(**locals()),
+                teeout=True)
+        else:
+            self.run_bash(ctx,
+                '%s runspec --config=%s --nobuild %s' %
+                (wrapper, config, qjoin(args + self.get_benchmarks(ctx, instance))),
+                teeout=True)
 
     def run_bash(self, ctx, commands, **kwargs):
         config_root = os.path.dirname(os.path.abspath(__file__))
@@ -138,6 +151,7 @@ class SPEC2006(Target):
                 print('CXXLD       = %s %s' % (ctx.cxx, ldflags))
                 print('COPTIMIZE   = -std=gnu89')
                 # fix __float128 error in clang:
+                # FIXME: try -std=c++11
                 print('CXXPORTABILITY = -D__STRICT_ANSI__')
 
                 # post-build hooks call back into the setup script
