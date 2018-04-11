@@ -501,9 +501,15 @@ class Setup:
             for target in targets:
                 oldctx = self.ctx.copy()
                 self.ctx.log.info('running %s-%s' % (target.name, instance.name))
-                target.goto_rootdir(self.ctx)
+
+                for package in self.get_deps([target]):
+                    package.install_env(self.ctx)
+
                 instance.prepare_run(self.ctx)
+
+                target.goto_rootdir(self.ctx)
                 target.run(self.ctx, instance, self.args.args)
+
                 self.ctx = oldctx
 
     def run_config(self):
