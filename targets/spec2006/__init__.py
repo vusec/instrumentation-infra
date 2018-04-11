@@ -57,23 +57,28 @@ class SPEC2006(Target):
             apply_patch(ctx, path, 1)
         os.chdir('..')
 
+        config = self.make_spec_config(ctx, instance)
+        print_output = ctx.loglevel == logging.DEBUG
+
         benchmarks = []
         for bset in ctx.args.spec2006_benchmarks:
             benchmarks += self.benchmarks[bset]
+        benchmarks.sort()
 
-        config = self.make_spec_config(ctx, instance)
-        print_output = ctx.loglevel == logging.DEBUG
-        self.runspec(ctx, '--config=' + config, '--action=build',
-                     *benchmarks, teeout=print_output)
+        for bench in benchmarks:
+            ctx.log.info('building %s-%s %s' % (self.name, instance.name, bench))
+            self.runspec(ctx, config, 'build', bench, teeout=print_output)
 
-    def runspec(self, ctx, *args, **kwargs):
+    def runspec(self, ctx, config, action, *args, **kwargs):
         config_path = os.path.dirname(os.path.abspath(__file__))
-        run(ctx, ['bash', '-c',
+        run(ctx, [
+            'bash', '-c',
             'cd %s/install;'
             'source shrc;'
             'source "%s/scripts/kill-tree-on-interrupt.inc";'
-            'killwrap_tree runspec %s' %
-            (self.path(ctx), config_path, qjoin(args))], **kwargs)
+            'killwrap_tree runspec --config="%s" --action=%s %s' %
+            (self.path(ctx), config_path, config, action, qjoin(args))
+        ], **kwargs)
 
     def make_spec_config(self, ctx, instance):
         config_name = 'infra-' + instance.name
