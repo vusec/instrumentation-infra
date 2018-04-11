@@ -4,6 +4,7 @@ import logging
 from contextlib import redirect_stdout
 from ...util import run, apply_patch, qjoin, FatalError
 from ...target import Target
+from ...packages import Nothp
 
 
 class SPEC2006(Target):
@@ -25,6 +26,9 @@ class SPEC2006(Target):
                 nargs='+', metavar='BENCHMARK', default=['c', 'c++'],
                 choices=list(self.benchmarks.keys()),
                 help='which SPEC2006 benchmarks to build')
+
+    def dependencies(self):
+        yield Nothp()
 
     def is_fetched(self, ctx):
         return os.path.exists('install/shrc')

@@ -177,6 +177,7 @@ class Setup:
         paths.setup = self.setup_path
         paths.root = os.path.dirname(self.setup_path)
         paths.infra = os.path.dirname(__file__)
+        paths.tools = os.path.join(paths.infra, 'tools')
         paths.buildroot = os.path.join(paths.root, 'build')
         paths.log = os.path.join(paths.buildroot, 'log')
         paths.debuglog = os.path.join(paths.log, 'debug.txt')
