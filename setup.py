@@ -402,6 +402,12 @@ class Setup:
             build_package_once(package, True)
             self.ctx = oldctx
 
+        if self.args.deps_only and not instances:
+            for target in targets:
+                oldctx = self.ctx.copy()
+                build_deps_once(target)
+                self.ctx = oldctx
+
         for instance in instances:
             # use a copy of the context for instance configuration to avoid
             # stacking configurations between instances
