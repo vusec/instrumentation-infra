@@ -24,6 +24,12 @@ class SPEC2006(Target):
         self.nothp = nothp
         self.force_cpu = force_cpu
 
+        # TODO: 4 options for fetching:
+        # - git repo
+        # - tarfile
+        # - source dir to install from
+        # - existing install dir
+
     def add_benchmarks_arg(self, parser, desc, default):
         parser.add_argument('--spec2006-benchmarks',
                 nargs='+', metavar='BENCHMARK', default=default,
@@ -34,6 +40,7 @@ class SPEC2006(Target):
         self.add_benchmarks_arg(parser, 'run', ['c', 'c++'])
 
     def add_run_args(self, parser):
+        # TODO: one subparser per target
         self.add_benchmarks_arg(parser, 'run', [])
         parser.add_argument('--spec2006-measuremem', action='store_true',
                 help='measure memory usage (single run, does not support '
@@ -205,6 +212,7 @@ class SPEC2006(Target):
         return sorted(benchmarks)
 
     # define benchmark sets
+    # TODO: generate these from spec sets
     benchmarks = {
         'int': [
             '400.perlbench',
