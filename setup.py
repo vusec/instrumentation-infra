@@ -38,7 +38,7 @@ class Setup:
                 help='set logging verbosity (default info)')
 
         self.subparsers = parser.add_subparsers(
-                title='subcommands', metavar='command', dest='command',
+                title='subcommands', metavar='COMMAND', dest='command',
                 description='run with "<command> --help" to see options for '
                             'individual commands')
         self.subparsers.required = True
@@ -46,14 +46,14 @@ class Setup:
         # command: build
         pbuild = self.subparsers.add_parser('build',
                 help='build target programs (also builds dependencies)')
-        pbuild.add_argument('-t', '--targets', nargs='+', metavar='TARGET',
-                default=[], choices=self.targets,
+        pbuild.add_argument('-t', '--targets', nargs='+',
+                metavar='TARGET', choices=self.targets, default=[],
                 help='which target programs to build')
-        pbuild.add_argument('-i', '--instances', nargs='+', metavar='INSTANCE',
-                default=[], choices=self.instances,
+        pbuild.add_argument('-i', '--instances', nargs='+',
+                metavar='INSTANCE', choices=self.instances, default=[],
                 help='which instances to build')
-        pbuild.add_argument('-p', '--packages', nargs='+', metavar='PACKAGE',
-                default=[],
+        pbuild.add_argument('-p', '--packages', nargs='+',
+                metavar='PACKAGE', default=[],
                 help='which packages to build (either on top of dependencies, '
                      'or to force a rebuild)').completer = self.complete_pkg
         pbuild.add_argument('-j', '--jobs', type=int, default=nproc,
@@ -74,7 +74,8 @@ class Setup:
                 help='run post-build hooks of an instance on a target file')
         phook.add_argument('hooktype', choices=['post-build'],
                 help='hook type')
-        phook.add_argument('instance', choices=self.instances,
+        phook.add_argument('instance',
+                metavar='INSTANCE', choices=self.instances,
                 help='which instance to run hooks for')
         phook.add_argument('targetfile',
                 help='file to run hook on')
@@ -95,12 +96,13 @@ class Setup:
                 help='run a single target program')
         prun.add_argument('--build', action='store_true',
                 help='build target first (default false)')
-        prun.add_argument('instance', choices=self.instances,
-                help='which instance to run')
+        prun.add_argument('instance',
+                metavar='INSTANCE', choices=self.instances,
+                help='%s' % ' | '.join(self.instances))
 
         ptargets = prun.add_subparsers(
                 title='target', metavar='TARGET', dest='target',
-                description='which target to run')
+                help='%s' % ' | '.join(self.targets))
         ptargets.required = True
 
         # command: config
@@ -131,8 +133,7 @@ class Setup:
         for target in self.targets.values():
             target.add_build_args(pbuild)
 
-            ptarget = ptargets.add_parser(target.name,
-                    help='run the %s target' % target.name)
+            ptarget = ptargets.add_parser(target.name)
             target.add_run_args(ptarget)
 
         for instance in self.instances.values():

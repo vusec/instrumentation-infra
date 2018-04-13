@@ -1,6 +1,7 @@
 import os
 import shutil
 import logging
+import argparse
 from contextlib import redirect_stdout
 from ...util import run, apply_patch, qjoin, FatalError
 from ...target import Target
@@ -42,9 +43,15 @@ class SPEC2006(Target):
                 nargs='+', metavar='BENCHMARK', default=[],
                 choices=list(self.benchmarks.keys()),
                 help='which benchmarks to run')
-        parser.add_argument('--measuremem', action='store_true',
+        parser.add_argument('--test', action='store_true',
+                help='run a single iteration of the test workload')
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('--measuremem', action='store_true',
                 help='measure memory usage (single run, does not support '
                      'runspec arguments)')
+        group.add_argument('--runspec-args',
+                nargs=argparse.REMAINDER, default=[],
+                help='additional arguments for runspec')
 
     def dependencies(self):
         if self.nothp:
@@ -99,7 +106,10 @@ class SPEC2006(Target):
                              (self.name, instance.name))
 
         runspec_args = self.get_benchmarks(ctx, instance)
-        # TODO: other args
+        if ctx.args.test:
+            runspec_args += ['--size', 'test', '--iterations', '1']
+        runspec_args += ctx.args.runspec_args
+        runspec_args = qjoin(runspec_args)
 
         wrapper =  'killwrap_tree'
         if self.nothp:
@@ -117,7 +127,7 @@ class SPEC2006(Target):
         else:
             self.run_bash(ctx,
                 '%s runspec --config=%s --nobuild %s' %
-                (wrapper, config, qjoin(runspec_args)),
+                (wrapper, config, runspec_args),
                 teeout=True)
 
     def run_bash(self, ctx, commands, **kwargs):
