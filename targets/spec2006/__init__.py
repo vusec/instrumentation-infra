@@ -77,17 +77,20 @@ class SPEC2006(Target):
             ctx.log.debug('removing cloned SPEC2006 repo to save disk space')
             shutil.rmtree(self.path(ctx, 'src'))
 
-    def build(self, ctx, instance):
-        # apply any pending patches (doing this at build time allows adding
-        # patches during instance development)
-        os.chdir('install')
+    def apply_patches(self, ctx):
+        os.chdir(self.path(ctx, 'install'))
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
             if '/' not in path:
                 path = '%s/%s.patch' % (config_root, path)
             apply_patch(ctx, path, 1)
-        os.chdir('..')
 
+    def build(self, ctx, instance):
+        # apply any pending patches (doing this at build time allows adding
+        # patches during instance development)
+        self.apply_patches(ctx)
+
+        os.chdir(self.path(ctx))
         config = self.make_spec_config(ctx, instance)
         print_output = ctx.loglevel == logging.DEBUG
 
