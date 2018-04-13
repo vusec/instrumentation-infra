@@ -93,28 +93,15 @@ class Setup:
         # command: run
         prun = self.subparsers.add_parser('run',
                 help='run a single target program')
-        prun.add_argument('target', choices=self.targets,
-                help='which target to run')
+        prun.add_argument('--build', action='store_true',
+                help='build target first (default false)')
         prun.add_argument('instance', choices=self.instances,
                 help='which instance to run')
-        prun.add_argument('-b', '--build', action='store_true',
-                help='build target first (default false)')
-        prun.add_argument('args', nargs=argparse.REMAINDER, choices=[],
-                help='run args (target dependent)')
 
-        # command: runall
-        prunall = self.subparsers.add_parser('runall',
-                help='run multiple target programs')
-        prunall.add_argument('-t', '--targets', nargs='+', metavar='TARGET',
-                default=[], choices=self.targets,
-                help='which targets to run')
-        prunall.add_argument('-i', '--instances', nargs='+', metavar='INSTANCE',
-                default=[], choices=self.instances,
-                help='which instances to run')
-        prunall.add_argument('-b', '--build', action='store_true',
-                help='build targets first (default false)')
-        prunall.add_argument('args', nargs=argparse.REMAINDER, choices=[],
-                help='run args (passed as-is to ALL targets)')
+        ptargets = prun.add_subparsers(
+                title='target', metavar='TARGET', dest='target',
+                description='which target to run')
+        ptargets.required = True
 
         # command: config
         pconfig = self.subparsers.add_parser('config',
@@ -131,6 +118,7 @@ class Setup:
                 help='list dependencies of all registered targets/instances')
 
         # command: pkg-config
+        # TODO: one subparser per package (is less efficient though)
         ppkgconfig = self.subparsers.add_parser('pkg-config',
                 help='print package-specific information')
         ppkgconfig.add_argument('package',
@@ -142,18 +130,31 @@ class Setup:
 
         for target in self.targets.values():
             target.add_build_args(pbuild)
-            target.add_run_args(prun)
-            target.add_run_args(prunall)
+
+            ptarget = ptargets.add_parser(target.name,
+                    help='run the %s target' % target.name)
+            target.add_run_args(ptarget)
 
         for instance in self.instances.values():
             instance.add_build_args(pbuild)
-            instance.add_run_args(prun)
-            instance.add_run_args(prunall)
 
         # enable bash autocompletion if supported
         try:
             import argcomplete
-            argcomplete.autocomplete(parser, always_complete_options=False)
+
+            # use a custom completer that moves non-positional options to the
+            # end of the completion list, and excludes --help
+            class MyCompleter(argcomplete.CompletionFinder):
+                def filter_completions(self, completions):
+                    completions = super().filter_completions(completions)
+                    if completions:
+                        for i, value in enumerate(completions):
+                            if not value.startswith('-'):
+                                return completions[i:] + completions[:i]
+                    return completions
+
+            MyCompleter().__call__(parser, append_space=True,
+                                   exclude=['--help'])
         except ImportError:
             pass
 
@@ -475,9 +476,6 @@ class Setup:
         for target in targets:
             self.clean_target(target)
 
-    def run_runall(self):
-        self.do_run(self.args.targets, self.args.instances)
-
     def run_run(self):
         self.do_run([self.args.target], [self.args.instance])
 
@@ -508,7 +506,7 @@ class Setup:
                 instance.prepare_run(self.ctx)
 
                 target.goto_rootdir(self.ctx)
-                target.run(self.ctx, instance, self.args.args)
+                target.run(self.ctx, instance)
 
                 self.ctx = oldctx
 
@@ -558,8 +556,6 @@ class Setup:
                 self.run_clean()
             elif self.args.command == 'run':
                 self.run_run()
-            elif self.args.command == 'runall':
-                self.run_runall()
             elif self.args.command == 'config':
                 self.run_config()
             elif self.args.command == 'pkg-config':

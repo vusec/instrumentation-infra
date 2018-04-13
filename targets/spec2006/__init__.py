@@ -30,19 +30,19 @@ class SPEC2006(Target):
         # - source dir to install from
         # - existing install dir
 
-    def add_benchmarks_arg(self, parser, desc, default):
-        parser.add_argument('--spec2006-benchmarks',
-                nargs='+', metavar='BENCHMARK', default=default,
-                choices=list(self.benchmarks.keys()),
-                help='which SPEC2006 benchmarks to ' + desc)
-
     def add_build_args(self, parser, desc='build'):
-        self.add_benchmarks_arg(parser, 'run', ['c', 'c++'])
+        parser.add_argument('--spec2006-benchmarks',
+                nargs='+', metavar='BENCHMARK', default=['c', 'c++'],
+                choices=list(self.benchmarks.keys()),
+                help='which SPEC-CPU2006 benchmarks to build')
 
     def add_run_args(self, parser):
-        # TODO: one subparser per target
-        self.add_benchmarks_arg(parser, 'run', [])
-        parser.add_argument('--spec2006-measuremem', action='store_true',
+        parser.add_argument('--benchmarks', '--spec2006-benchmarks',
+                dest='spec2006_benchmarks',
+                nargs='+', metavar='BENCHMARK', default=[],
+                choices=list(self.benchmarks.keys()),
+                help='which benchmarks to run')
+        parser.add_argument('--measuremem', action='store_true',
                 help='measure memory usage (single run, does not support '
                      'runspec arguments)')
 
@@ -90,7 +90,7 @@ class SPEC2006(Target):
                 'killwrap_tree runspec --config=%s --action=build %s' %
                 (config, bench), teeout=print_output)
 
-    def run(self, ctx, instance, args):
+    def run(self, ctx, instance):
         config = 'infra-' + instance.name
         config_root = os.path.dirname(os.path.abspath(__file__))
 
@@ -98,24 +98,26 @@ class SPEC2006(Target):
             raise FatalError('%s-%s has not been built yet!' %
                              (self.name, instance.name))
 
+        runspec_args = self.get_benchmarks(ctx, instance)
+        # TODO: other args
+
         wrapper =  'killwrap_tree'
         if self.nothp:
             wrapper += ' nothp'
         if self.force_cpu >= 0:
             wrapper += ' taskset -c %d' % self.force_cpu
 
-        if ctx.args.spec2006_measuremem:
+        if ctx.args.measuremem:
             specdir = self.path(ctx, 'install')
-            benchmarks = qjoin(self.get_benchmarks(ctx, instance))
             self.run_bash(ctx,
-                'runspec --config={config} --action=setup {benchmarks};'
+                'runspec --config={config} --action=setup {runspec_args};'
                 '{wrapper} {config_root}/measuremem.py {specdir} {config}'
                 ' {benchmarks}'.format(**locals()),
                 teeout=True)
         else:
             self.run_bash(ctx,
                 '%s runspec --config=%s --nobuild %s' %
-                (wrapper, config, qjoin(args + self.get_benchmarks(ctx, instance))),
+                (wrapper, config, qjoin(runspec_args)),
                 teeout=True)
 
     def run_bash(self, ctx, commands, **kwargs):
