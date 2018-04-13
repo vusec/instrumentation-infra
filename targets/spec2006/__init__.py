@@ -6,6 +6,7 @@ from contextlib import redirect_stdout
 from ...util import run, apply_patch, qjoin, FatalError
 from ...target import Target
 from ...packages import Nothp
+from .benchmark_sets import benchmark_sets
 
 
 class SPEC2006(Target):
@@ -33,7 +34,7 @@ class SPEC2006(Target):
 
     def add_build_args(self, parser, desc='build'):
         parser.add_argument('--spec2006-benchmarks',
-                nargs='+', metavar='BENCHMARK', default=['c', 'c++'],
+                nargs='+', metavar='BENCHMARK', default=['all_c', 'all_cpp'],
                 choices=list(self.benchmarks.keys()),
                 help='which SPEC-CPU2006 benchmarks to build')
 
@@ -226,76 +227,80 @@ class SPEC2006(Target):
 
     # define benchmark sets
     # TODO: generate these from spec sets
-    benchmarks = {
-        'int': [
-            '400.perlbench',
-            '401.bzip2',
-            '403.gcc',
-            '429.mcf',
-            '445.gobmk',
-            '456.hmmer',
-            '458.sjeng',
-            '462.libquantum',
-            '464.h264ref',
-            '471.omnetpp',
-            '473.astar',
-            '483.xalancbmk'
-        ],
-        'fp': [
-            '410.bwaves',
-            '416.gamess',
-            '433.milc',
-            '434.zeusmp',
-            '435.gromacs',
-            '436.cactusADM',
-            '437.leslie3d',
-            '444.namd',
-            '447.dealII',
-            '450.soplex',
-            '453.povray',
-            '454.calculix',
-            '459.GemsFDTD',
-            '465.tonto',
-            '470.lbm',
-            '481.wrf',
-            '482.sphinx3'
-        ],
-        'c': [
-            '400.perlbench',
-            '401.bzip2',
-            '403.gcc',
-            '429.mcf',
-            '433.milc',
-            '445.gobmk',
-            '456.hmmer',
-            '458.sjeng',
-            '462.libquantum',
-            '464.h264ref',
-            '470.lbm',
-            '482.sphinx3'
-        ],
-        'c++': [
-            '444.namd',
-            '447.dealII',
-            '450.soplex',
-            '453.povray',
-            '471.omnetpp',
-            '473.astar',
-            '483.xalancbmk'
-        ],
-        'fortran': [
-            '410.bwaves',
-            '416.gamess',
-            '434.zeusmp',
-            '435.gromacs',
-            '436.cactusADM',
-            '437.leslie3d',
-            '454.calculix',
-            '459.GemsFDTD',
-            '465.tonto',
-            '481.wrf'
-        ]
-    }
-    benchmarks['all'] = sorted(benchmarks['int'] + benchmarks['fp'])
-    for bench in benchmarks['all']:
-        benchmarks[bench] = [bench]
+    #benchmarks = {
+    #    'all_int': [
+    #        '400.perlbench',
+    #        '401.bzip2',
+    #        '403.gcc',
+    #        '429.mcf',
+    #        '445.gobmk',
+    #        '456.hmmer',
+    #        '458.sjeng',
+    #        '462.libquantum',
+    #        '464.h264ref',
+    #        '471.omnetpp',
+    #        '473.astar',
+    #        '483.xalancbmk'
+    #    ],
+    #    'all_fp': [
+    #        '410.bwaves',
+    #        '416.gamess',
+    #        '433.milc',
+    #        '434.zeusmp',
+    #        '435.gromacs',
+    #        '436.cactusADM',
+    #        '437.leslie3d',
+    #        '444.namd',
+    #        '447.dealII',
+    #        '450.soplex',
+    #        '453.povray',
+    #        '454.calculix',
+    #        '459.GemsFDTD',
+    #        '465.tonto',
+    #        '470.lbm',
+    #        '481.wrf',
+    #        '482.sphinx3'
+    #    ],
+    #    'all_c': [
+    #        '400.perlbench',
+    #        '401.bzip2',
+    #        '403.gcc',
+    #        '429.mcf',
+    #        '433.milc',
+    #        '445.gobmk',
+    #        '456.hmmer',
+    #        '458.sjeng',
+    #        '462.libquantum',
+    #        '464.h264ref',
+    #        '470.lbm',
+    #        '482.sphinx3'
+    #    ],
+    #    'all_cpp': [
+    #        '444.namd',
+    #        '447.dealII',
+    #        '450.soplex',
+    #        '453.povray',
+    #        '471.omnetpp',
+    #        '473.astar',
+    #        '483.xalancbmk'
+    #    ],
+    #    'all_fortran': [
+    #        '410.bwaves',
+    #        '416.gamess',
+    #        '434.zeusmp',
+    #        '437.leslie3d',
+    #        '459.GemsFDTD',
+    #        '465.tonto'
+    #    ],
+    #    'all_mixed': [
+    #        '435.gromacs',
+    #        '436.cactusADM',
+    #        '454.calculix',
+    #        '481.wrf'
+    #    ]
+    #}
+    #benchmarks['all'] = sorted(benchmarks['int'] + benchmarks['fp'])
+    #for bench in benchmarks['all']:
+    #    benchmarks[bench] = [bench]
+
+    benchmarks = benchmark_sets
