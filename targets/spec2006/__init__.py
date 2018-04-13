@@ -157,9 +157,7 @@ class SPEC2006(Target):
                 print('CLD         = %s %s' % (ctx.cc, ldflags))
                 print('CXXLD       = %s %s' % (ctx.cxx, ldflags))
                 print('COPTIMIZE   = -std=gnu89')
-                # fix __float128 error in clang:
-                # FIXME: try -std=c++11
-                print('CXXPORTABILITY = -D__STRICT_ANSI__')
+                print('CXXOPTIMIZE = -std=c++98') # fix __float128 in old clang
 
                 # post-build hooks call back into the setup script
                 if ctx.hooks.post_build:
