@@ -12,25 +12,32 @@ from .benchmark_sets import benchmark_sets
 class SPEC2006(Target):
     name = 'spec2006'
 
-    def __init__(self, specdir=None, giturl=None, patches=[],
-                 nothp=True, force_cpu=0):
-        if not specdir and not giturl:
-            raise FatalError('should specify one of specdir or giturl')
+    def __init__(self,
+            source=None,      # where to install spec from
+            source_type=None, # see below
+            patches=[],       # patches to apply after installing
+            nothp=True,       # run without transparent huge pages?
+            force_cpu=0       # bind runspec to this cpu core (-1 to disable)
+            ):
 
-        if specdir and giturl:
-            raise FatalError('cannot specify specdir AND giturl')
+        # mounted    mounted/extracted ISO
+        # installed  installed SPEC from other project
+        # tarfile    compressed tarfile to extract
+        # git        git repo containing extracted ISO
+        if source_type not in ('mounted', 'installed', 'tarfile', 'git'):
+            raise FatalError('invalid source type "%s"' % source_type)
 
-        self.specdir = specdir
-        self.giturl = giturl
+        if source_type == 'installed':
+            shrc = self.source + '/shrc'
+            if not os.path.exists(shrc):
+                shrc = os.path.abspath(shrc)
+                raise FatalError(shrc + ' is not a valid SPEC installation')
+
+        self.source = source
+        self.source_type = source_type
         self.patches = patches
         self.nothp = nothp
         self.force_cpu = force_cpu
-
-        # TODO: 4 options for fetching:
-        # - git repo
-        # - tarfile
-        # - source dir to install from
-        # - existing install dir
 
     def add_build_args(self, parser, desc='build'):
         parser.add_argument('--spec2006-benchmarks',
@@ -59,23 +66,30 @@ class SPEC2006(Target):
             yield Nothp()
 
     def is_fetched(self, ctx):
-        return os.path.exists('install/shrc')
+        return self.source_type == 'installed' or os.path.exists('install/shrc')
 
     def fetch(self, ctx):
-        if self.giturl:
-            ctx.log.debug('cloning SPEC2006 repo')
-            run(ctx, ['git', 'clone', '--depth', 1, self.giturl, 'src'])
+        if self.source_type == 'mounted':
+            os.chdir(self.source)
+        elif self.source_type == 'tarfile':
+            ctx.log.debug('extracting SPEC-CPU2006 source files')
+            os.makedirs('src', exist_ok=True)
+            os.chdir('src')
+            run(ctx, ['tar', 'xf', self.source])
+        elif self.source_type == 'git':
+            ctx.log.debug('cloning SPEC-CPU2006 repo')
+            run(ctx, ['git', 'clone', '--depth', 1, self.source, 'src'])
             os.chdir('src')
         else:
-            os.chdir(self.specdir)
+            assert False
 
         install_path = self.path(ctx, 'install')
-        ctx.log.debug('installing SPEC2006 into ' + install_path)
+        ctx.log.debug('installing SPEC-CPU2006 into ' + install_path)
         run(ctx, ['./install.sh', '-f', '-d', install_path],
             env={'PERL_TEST_NUMCONVERTS': 1})
 
-        if self.giturl:
-            ctx.log.debug('removing cloned SPEC2006 repo to save disk space')
+        if self.source_type in ('tarfile', 'git'):
+            ctx.log.debug('removing SPEC-CPU2006 source files to save disk space')
             shutil.rmtree(self.path(ctx, 'src'))
 
     def apply_patches(self, ctx):
@@ -84,11 +98,14 @@ class SPEC2006(Target):
         for path in self.patches:
             if '/' not in path:
                 path = '%s/%s.patch' % (config_root, path)
-            apply_patch(ctx, path, 1)
+            if apply_patch(ctx, path, 1) and self.source_type == 'installed':
+                ctx.log.warning('applied patch %s to external SPEC-CPU2006 '
+                                'directory' % path)
 
     def build(self, ctx, instance):
         # apply any pending patches (doing this at build time allows adding
-        # patches during instance development)
+        # patches during instance development, and is needed to apply patches
+        # when self.source_type == 'installed')
         self.apply_patches(ctx)
 
         os.chdir(self.path(ctx))
