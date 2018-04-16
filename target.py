@@ -48,6 +48,9 @@ class Target(metaclass=ABCMeta):
     def run(self, ctx, instance):
         raise NotImplementedError(self.__class__.__name__)
 
+    def run_parallel(self, ctx, instance, prun):
+        raise NotImplementedError(self.__class__.__name__)
+
     def is_clean(self, ctx):
         return not os.path.exists(self.path(ctx))
 

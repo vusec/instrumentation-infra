@@ -2,6 +2,7 @@ import os
 import shutil
 import logging
 import argparse
+import datetime
 from contextlib import redirect_stdout
 from ...util import run, apply_patch, qjoin, FatalError
 from ...target import Target
@@ -113,12 +114,13 @@ class SPEC2006(Target):
         print_output = ctx.loglevel == logging.DEBUG
 
         for bench in self.get_benchmarks(ctx, instance):
-            ctx.log.info('building %s-%s %s' % (self.name, instance.name, bench))
+            ctx.log.info('building %s-%s %s' %
+                         (self.name, instance.name, bench))
             self.run_bash(ctx,
                 'killwrap_tree runspec --config=%s --action=build %s' %
                 (config, bench), teeout=print_output)
 
-    def run(self, ctx, instance):
+    def run(self, ctx, instance, prun=None):
         config = 'infra-' + instance.name
         config_root = os.path.dirname(os.path.abspath(__file__))
 
@@ -126,11 +128,17 @@ class SPEC2006(Target):
             raise FatalError('%s-%s has not been built yet!' %
                              (self.name, instance.name))
 
-        runspec_args = self.get_benchmarks(ctx, instance)
+        # TODO: use --iterations
+        runargs = []
         if ctx.args.test:
-            runspec_args += ['--size', 'test', '--iterations', '1']
-        runspec_args += ctx.args.runspec_args
-        runspec_args = qjoin(runspec_args)
+            if ctx.args.iterations:
+                ctx.log.warning('ignoring --iterations=%d because --test '
+                                'is specified' % ctx.args.iterations)
+            runargs += ['--size', 'test', '--iterations', '1']
+        elif ctx.args.iterations and not prun:
+            runargs += ['--iterations', '%d' % ctx.args.iterations]
+        runargs += ctx.args.runspec_args
+        runargs = qjoin(runargs)
 
         wrapper =  'killwrap_tree'
         if self.nothp:
@@ -140,27 +148,43 @@ class SPEC2006(Target):
 
         if ctx.args.measuremem:
             specdir = self.path(ctx, 'install')
-            self.run_bash(ctx,
-                'runspec --config={config} --action=setup {runspec_args};'
-                '{wrapper} {config_root}/measuremem.py {specdir} {config}'
-                ' {benchmarks}'.format(**locals()),
-                teeout=True)
+            cmd = 'runspec --config={config} --action=setup {runargs} %s;' \
+                  '{wrapper} {config_root}/measuremem.py {specdir} {config} %s'
         else:
-            self.run_bash(ctx,
-                '%s runspec --config=%s --nobuild %s' %
-                (wrapper, config, runspec_args),
-                teeout=True)
+            cmd = '{wrapper} runspec --config={config} --nobuild {runargs} %s'
 
-    def run_bash(self, ctx, commands, **kwargs):
+        cmd = cmd.format(**locals())
+
+        benchmarks = self.get_benchmarks(ctx, instance)
+
+        if prun:
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%d.%H:%M:%S')
+            for bench in benchmarks:
+                ctx.log.info('running %s-%s %s' %
+                             (self.name, instance.name, bench))
+                outfile = os.path.join(ctx.paths.prun_results, timestamp,
+                                       self.name, instance.name)
+                self.run_bash(ctx, cmd % bench, self, instance, prun=prun)
+        else:
+            self.run_bash(ctx, cmd % qjoin(benchmarks), teeout=True)
+
+    def run_parallel(self, ctx, instance, prun):
+        self.run(ctx, instance, prun=prun)
+
+    def run_bash(self, ctx, commands, prun=None, outfile=None, **kwargs):
         config_root = os.path.dirname(os.path.abspath(__file__))
-        return run(ctx, [
+        cmd = [
             'bash', '-c',
             'cd %s/install;'
             'source shrc;'
             'source "%s/scripts/kill-tree-on-interrupt.inc";'
             '%s' %
             (self.path(ctx), config_root, commands)
-        ], **kwargs)
+        ]
+        if prun:
+            return prun.run(ctx, cmd, outfile, **kwargs)
+        else:
+            return run(ctx, cmd, **kwargs)
 
     def make_spec_config(self, ctx, instance):
         config_name = 'infra-' + instance.name

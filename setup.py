@@ -6,6 +6,7 @@ import traceback
 from collections import OrderedDict
 from multiprocessing import cpu_count
 from .util import FatalError, Namespace, qjoin
+from .prun import PrunScheduler
 
 
 # disable .pyc file generation
@@ -96,6 +97,16 @@ class Setup:
                 help='run a single target program')
         prun.add_argument('--build', action='store_true',
                 help='build target first (default false)')
+        prun.add_argument('-n', '--iterations', metavar='N',
+                type=int, default=1,
+                help='number of runs per benchmark')
+        prun.add_argument('--prun', action='store_true',
+                help='run iterations in parallel with prun (on DAS cluster)')
+        prun.add_argument('--prun-parallelmax', metavar='NODES',
+                type=int, default=64,
+                help='limit simultaneous node reservations (default: 64)')
+        prun.add_argument('--prun-opts', nargs='+', default=[],
+                help='additional options for prun')
         prun.add_argument('instance',
                 metavar='INSTANCE', choices=self.instances,
                 help='%s' % ' | '.join(self.instances))
@@ -190,6 +201,7 @@ class Setup:
         paths.runlog = os.path.join(paths.log, 'commands.txt')
         paths.packages = os.path.join(paths.buildroot, 'packages')
         paths.targets = os.path.join(paths.buildroot, 'targets')
+        paths.prun_results = os.path.join(paths.root, 'results')
 
         # FIXME move to package?
         self.ctx.runenv = Namespace()
@@ -507,7 +519,13 @@ class Setup:
                 instance.prepare_run(self.ctx)
 
                 target.goto_rootdir(self.ctx)
-                target.run(self.ctx, instance)
+                if self.args.prun:
+                    prun = PrunScheduler(self.args.prun_parallelmax,
+                                         self.args.iterations,
+                                         self.args.prun_opts)
+                    target.run_parallel(self.ctx, instance, prun)
+                else:
+                    target.run(self.ctx, instance)
 
                 self.ctx = oldctx
 

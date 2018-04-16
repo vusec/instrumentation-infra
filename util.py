@@ -28,7 +28,8 @@ def apply_patch(ctx, path, strip_count):
     return True
 
 
-def run(ctx, cmd, allow_error=False, silent=False, teeout=False, env={}, *args, **kwargs):
+def run(ctx, cmd, allow_error=False, silent=False, teeout=False, defer=False,
+        env={}, **kwargs):
     cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd]
     cmd_print = qjoin(cmd)
     stdin = kwargs.get('stdin', None)
@@ -72,7 +73,13 @@ def run(ctx, cmd, allow_error=False, silent=False, teeout=False, env={}, *args, 
     kwargs.setdefault('universal_newlines', True)
 
     try:
-        proc = subprocess.run(cmd, *args, **kwargs, env=renv)
+        if defer:
+            proc = subprocess.Popen(cmd, env=renv, **kwargs)
+            proc.cmd_print = cmd_print
+            return proc
+
+        proc = subprocess.run(cmd, env=renv, **kwargs)
+
     except FileNotFoundError:
         logfn = ctx.log.debug if allow_error else ctx.log.error
         logfn('command not found: %s' % cmd_print)
