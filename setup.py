@@ -31,7 +31,7 @@ class Setup:
         parser = argparse.ArgumentParser(
                 description='Frontend for building/running instrumented benchmarks.')
 
-        nproc = cpu_count()
+        nproc = max(cpu_count(), 16)
 
         # global options
         parser.add_argument('-v', '--verbosity', default='info',
