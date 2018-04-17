@@ -3,6 +3,7 @@ import sys
 import os.path
 import glob
 import re
+import argparse
 from pprint import pprint
 
 
@@ -22,14 +23,23 @@ if __name__ == '__main__':
         print('usage: %s SPECDIR' % sys.argv[0])
         sys.exit(1)
 
-    specdir = sys.argv[1]
-    assert os.path.exists(specdir)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-x', '--exclude', nargs='+',
+            default=['998.specrand', '999.specrand'],
+            help='names of benchmarks to exclude from all sets '
+                 '(default 998.specrand,999.specrand)')
+    parser.add_argument('specdir',
+            help='location of SPEC directory')
+    args = parser.parse_args()
+
+    assert os.path.exists(args.specdir)
 
     sets = {}
     allbench = set()
 
-    for path in glob.glob(specdir + '/benchspec/CPU2006/*.bset'):
+    for path in glob.glob(args.specdir + '/benchspec/CPU2006/*.bset'):
         name, benchmarks = parse_setfile(path)
+        benchmarks = [b for b in benchmarks if b not in args.exclude]
         sets[name] = benchmarks
 
         for bench in benchmarks:
