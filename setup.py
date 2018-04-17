@@ -165,8 +165,7 @@ class Setup:
                                 return completions[i:] + completions[:i]
                     return completions
 
-            MyCompleter().__call__(parser, append_space=True,
-                                   exclude=['--help'])
+            MyCompleter().__call__(parser, exclude=['--help'])
         except ImportError:
             pass
 
