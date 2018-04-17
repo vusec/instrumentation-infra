@@ -43,8 +43,15 @@ def run(ctx, cmd, allow_error=False, silent=False, teeout=False, defer=False,
     renv = os.environ.copy()
     renv.update(logenv)
 
-    log_output = not silent and 'stdout' not in kwargs and 'runlog' in ctx
-    if log_output:
+    log_output = False
+    if defer:
+        kwargs['stdout'] = subprocess.PIPE
+        kwargs['stderr'] = subprocess.PIPE
+    elif silent:
+        kwargs.setdefault('stdout', subprocess.PIPE)
+    elif 'stdout' not in kwargs and 'runlog' in ctx:
+        log_output = True
+
         # 'tee' output to logfile and string; does line buffering in a separate
         # thread to be able to flush the logfile during long-running commands
         # (use tail -f to view command output)
@@ -66,10 +73,9 @@ def run(ctx, cmd, allow_error=False, silent=False, teeout=False, defer=False,
             kwargs['stdout'] = Tee(ctx.runtee, sys.stdout)
         else:
             kwargs['stdout'] = ctx.runtee
-    elif silent:
-        kwargs.setdefault('stdout', subprocess.PIPE)
 
-    kwargs.setdefault('stderr', subprocess.STDOUT)
+        kwargs.setdefault('stderr', subprocess.STDOUT)
+
     kwargs.setdefault('universal_newlines', True)
 
     try:

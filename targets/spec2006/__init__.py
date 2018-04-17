@@ -4,6 +4,7 @@ import logging
 import argparse
 import datetime
 import getpass
+import re
 from contextlib import redirect_stdout
 from ...util import run, apply_patch, qjoin, FatalError
 from ...target import Target
@@ -132,12 +133,18 @@ class SPEC2006(Target):
         runargs = []
 
         if ctx.args.test:
-            if ctx.args.iterations:
-                ctx.log.warning('ignoring --iterations=%d because --test '
-                                'is specified' % ctx.args.iterations)
-            runargs += ['--size', 'test', '--iterations', '1']
-        elif ctx.args.iterations and not prun:
-            runargs += ['--iterations', '%d' % ctx.args.iterations]
+            #if ctx.args.iterations != 1:
+            #    ctx.log.warning('ignoring --iterations=%d because --test '
+            #                    'is specified' % ctx.args.iterations)
+            #    ctx.args.iterations = 1
+            #    if prun:
+            #        prun.iterations = 1
+
+            runargs += ['--size', 'test']
+
+        # the prun scheduler will pass --iterations as -np to prun, so only run
+        # one iteration in runspec
+        runargs += ['--iterations', '1' if prun else '%d' % ctx.args.iterations]
 
         # set output root to local disk when using prun to avoid noise due to
         # network lag when writing output files
@@ -158,7 +165,7 @@ class SPEC2006(Target):
             wrapper += ' taskset -c %d' % self.force_cpu
 
         if ctx.args.measuremem:
-            cmd = 'runspec --config={config} --action=setup {runargs} %s;' \
+            cmd = 'runspec --config={config} --action=setup {runargs} %s\n' \
                   '{wrapper} {config_root}/measuremem.py {output_root} {config} {{bench}}'
         else:
             cmd = '{wrapper} runspec --config={config} --nobuild {runargs} {{bench}}'
@@ -172,7 +179,7 @@ class SPEC2006(Target):
 
             # prepare output dir on local disk before running,
             # and move output files to network disk after completion
-            cmd = '''
+            cmd = unindent('''
             rm -rf "{output_root}"
             mkdir -p "{output_root}"
             mkdir -p "{specdir}/result"
@@ -182,18 +189,19 @@ class SPEC2006(Target):
                 cp -r "{specdir}/benchspec/CPU2006/{{bench}}/exe" \\
                     "{output_root}/benchspec/CPU2006/{{bench}}"
             fi
-            {cmd} | sed "s,{output_root}/result/,{specdir}/result/,g"
-            cp `find "{output_root}" -name simpleprof.*.txt` \\
-                "{specdir}/result" || true
+            {{{{ {cmd}; }}}} | \\
+                sed "s,{output_root}/result/,{specdir}/result/,g"
             rm -rf "{output_root}"
-            '''.format(**locals())
+            ''').format(**locals())
 
             for bench in benchmarks:
-                ctx.log.info('running %s-%s %s' %
+                ctx.log.info('running %s-%s %s with prun' %
                              (self.name, instance.name, bench))
-                outfile = os.path.join(ctx.paths.prun_results, timestamp,
-                                       self.name, instance.name)
-                self.run_bash(ctx, cmd.format(bench=bench), self, instance, prun=prun)
+                outdir = os.path.join(ctx.paths.prun_results, timestamp,
+                                      self.name, instance.name)
+                os.makedirs(outdir, exist_ok=True)
+                outfile = os.path.join(outdir, bench)
+                self.run_bash(ctx, cmd.format(bench=bench), prun, outfile)
         else:
             self.run_bash(ctx, cmd.format(bench=qjoin(benchmarks)), teeout=True)
 
@@ -204,11 +212,12 @@ class SPEC2006(Target):
         config_root = os.path.dirname(os.path.abspath(__file__))
         cmd = [
             'bash', '-c',
-            'cd %s/install;'
-            'source shrc;'
-            'source "%s/scripts/kill-tree-on-interrupt.inc";'
-            '%s' %
-            (self.path(ctx), config_root, commands)
+            '\n' + unindent('''
+            cd %s/install
+            source shrc
+            source "%s/scripts/kill-tree-on-interrupt.inc"
+            %s
+            ''' % (self.path(ctx), config_root, commands))
         ]
         if prun:
             return prun.run(ctx, cmd, outfile, **kwargs)
@@ -229,14 +238,15 @@ class SPEC2006(Target):
                 print('teerunout   = no')
                 print('makeflags   = -j%d' % ctx.jobs)
                 print('strict_rundir_verify = no')
-                print('')
-                print('default=default=default=default:')
 
                 # allow different output root to be set using
                 # --define output_root=...
                 print('%ifdef %{output_root}')
                 print('  output_root = %{output_root}')
                 print('%endif')
+
+                print('')
+                print('default=default=default=default:')
 
                 # see https://www.spec.org/cpu2006/Docs/makevars.html#nofbno1
                 # for flags ordering
@@ -303,3 +313,11 @@ class SPEC2006(Target):
 
     # define benchmark sets, generated using scripts/parse-benchmarks-sets.py
     benchmarks = benchmark_sets
+
+
+def unindent(cmd):
+    stripped = re.sub(r'^\n|\n *$', '', cmd)
+    indent = re.search('^ +', stripped, re.M)
+    if indent:
+        return re.sub(r'^' + indent.group(0), '', stripped, 0, re.M)
+    return stripped

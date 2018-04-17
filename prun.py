@@ -2,6 +2,7 @@ import sys
 import threading
 import time
 import shlex
+from subprocess import PIPE
 from .util import run, FatalError
 
 
@@ -9,6 +10,8 @@ class PrunScheduler:
     poll_interval = 0.050 # seconds
 
     def __init__(self, parallelmax=None, iterations=1, prun_opts=[]):
+        self.poller = None
+
         if parallelmax is not None and parallelmax % iterations != 0:
             raise FatalError('%s: parallelmax should be a multiple of '
                              'iterations' % self.__class__.__name__)
@@ -18,11 +21,11 @@ class PrunScheduler:
         self.prun_opts = prun_opts
         self.jobs = set()
         self.jobctx = {}
-        self.poller = None
 
     def __del__(self):
         self.done = True
-        self.poller.join(self.poll_interval)
+        if self.poller:
+            self.poller.join(self.poll_interval)
 
     def start_poller(self):
         if self.poller is None:
@@ -65,15 +68,19 @@ class PrunScheduler:
         if isinstance(cmd, str):
             cmd = shlex.split(cmd)
         cmd = ['prun', '-v', '-np', '%d' % self.iterations, '-1',
-               '-o', outfile, *self.prun_opts, '--', *cmd]
+               '-o', outfile, *self.prun_opts, *cmd]
 
-        job = run(ctx, cmd, defer=True, teeout=True, **kwargs)
+        job = run(ctx, cmd, defer=True, **kwargs)
         self.jobctx[job] = ctx
 
         with self.queue_lock:
-            self.jobs.add(job)
+           self.jobs.add(job)
 
         return job
+
+    def wait_all(self):
+        while len(self.jobs):
+            time.sleep(self.poll_interval)
 
     def onsuccess(self, job, ctx):
         ctx.log.info('prun command finished successfully')

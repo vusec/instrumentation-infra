@@ -507,6 +507,16 @@ class Setup:
             self.ctx.jobs = cpu_count()
             self.run_build()
 
+        parallelmax = self.args.prun_parallelmax
+        iters = self.args.iterations
+        quot, rem = divmod(parallelmax, iters)
+        if rem:
+            parallelmax = iters * (quot + 1)
+            self.ctx.log.warning('--prun-parallelmax=%d should be divisible by '
+                                 '--iterations=%d, rounding up to %d' %
+                                 (self.args.prun_parallelmax, iters, parallelmax))
+        prun = PrunScheduler(parallelmax, iters, self.args.prun_opts)
+
         for instance in instances:
             for target in targets:
                 oldctx = self.ctx.copy()
@@ -519,14 +529,13 @@ class Setup:
 
                 target.goto_rootdir(self.ctx)
                 if self.args.prun:
-                    prun = PrunScheduler(self.args.prun_parallelmax,
-                                         self.args.iterations,
-                                         self.args.prun_opts)
                     target.run_parallel(self.ctx, instance, prun)
                 else:
                     target.run(self.ctx, instance)
 
                 self.ctx = oldctx
+
+        prun.wait_all()
 
     def run_config(self):
         if self.args.list_instances:
