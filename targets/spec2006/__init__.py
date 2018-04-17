@@ -3,6 +3,7 @@ import shutil
 import logging
 import argparse
 import datetime
+import getpass
 from contextlib import redirect_stdout
 from ...util import run, apply_patch, qjoin, FatalError
 from ...target import Target
@@ -128,8 +129,8 @@ class SPEC2006(Target):
             raise FatalError('%s-%s has not been built yet!' %
                              (self.name, instance.name))
 
-        # TODO: use --iterations
         runargs = []
+
         if ctx.args.test:
             if ctx.args.iterations:
                 ctx.log.warning('ignoring --iterations=%d because --test '
@@ -137,6 +138,16 @@ class SPEC2006(Target):
             runargs += ['--size', 'test', '--iterations', '1']
         elif ctx.args.iterations and not prun:
             runargs += ['--iterations', '%d' % ctx.args.iterations]
+
+        # set output root to local disk when using prun to avoid noise due to
+        # network lag when writing output files
+        specdir = self.path(ctx, 'install')
+        if prun:
+            output_root = '/local/%s/cpu2006-output-root' % getpass.getuser()
+            runargs += ['--define', 'output_root=' + output_root]
+        else:
+            output_root = specdir
+
         runargs += ctx.args.runspec_args
         runargs = qjoin(runargs)
 
@@ -147,11 +158,10 @@ class SPEC2006(Target):
             wrapper += ' taskset -c %d' % self.force_cpu
 
         if ctx.args.measuremem:
-            specdir = self.path(ctx, 'install')
             cmd = 'runspec --config={config} --action=setup {runargs} %s;' \
-                  '{wrapper} {config_root}/measuremem.py {specdir} {config} %s'
+                  '{wrapper} {config_root}/measuremem.py {output_root} {config} {{bench}}'
         else:
-            cmd = '{wrapper} runspec --config={config} --nobuild {runargs} %s'
+            cmd = '{wrapper} runspec --config={config} --nobuild {runargs} {{bench}}'
 
         cmd = cmd.format(**locals())
 
@@ -159,14 +169,33 @@ class SPEC2006(Target):
 
         if prun:
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d.%H:%M:%S')
+
+            # prepare output dir on local disk before running,
+            # and move output files to network disk after completion
+            cmd = '''
+            rm -rf "{output_root}"
+            mkdir -p "{output_root}"
+            mkdir -p "{specdir}/result"
+            ln -s "{specdir}/result" "{output_root}"
+            if [ -d "{specdir}/benchspec/CPU2006/{{bench}}/exe" ]; then
+                mkdir -p "{output_root}/benchspec/CPU2006/{{bench}}"
+                cp -r "{specdir}/benchspec/CPU2006/{{bench}}/exe" \\
+                    "{output_root}/benchspec/CPU2006/{{bench}}"
+            fi
+            {cmd} | sed "s,{output_root}/result/,{specdir}/result/,g"
+            cp `find "{output_root}" -name simpleprof.*.txt` \\
+                "{specdir}/result" || true
+            rm -rf "{output_root}"
+            '''.format(**locals())
+
             for bench in benchmarks:
                 ctx.log.info('running %s-%s %s' %
                              (self.name, instance.name, bench))
                 outfile = os.path.join(ctx.paths.prun_results, timestamp,
                                        self.name, instance.name)
-                self.run_bash(ctx, cmd % bench, self, instance, prun=prun)
+                self.run_bash(ctx, cmd.format(bench=bench), self, instance, prun=prun)
         else:
-            self.run_bash(ctx, cmd % qjoin(benchmarks), teeout=True)
+            self.run_bash(ctx, cmd.format(bench=qjoin(benchmarks)), teeout=True)
 
     def run_parallel(self, ctx, instance, prun):
         self.run(ctx, instance, prun=prun)
@@ -202,6 +231,12 @@ class SPEC2006(Target):
                 print('strict_rundir_verify = no')
                 print('')
                 print('default=default=default=default:')
+
+                # allow different output root to be set using
+                # --define output_root=...
+                print('%ifdef %{output_root}')
+                print('  output_root = %{output_root}')
+                print('%endif')
 
                 # see https://www.spec.org/cpu2006/Docs/makevars.html#nofbno1
                 # for flags ordering
