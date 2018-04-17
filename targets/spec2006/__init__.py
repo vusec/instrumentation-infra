@@ -51,7 +51,7 @@ class SPEC2006(Target):
     def add_run_args(self, parser):
         parser.add_argument('--benchmarks', '--spec2006-benchmarks',
                 dest='spec2006_benchmarks',
-                nargs='+', metavar='BENCHMARK', default=[],
+                nargs='+', metavar='BENCHMARK', default=['all_c', 'all_cpp'],
                 choices=list(self.benchmarks.keys()),
                 help='which benchmarks to run')
         parser.add_argument('--test', action='store_true',
