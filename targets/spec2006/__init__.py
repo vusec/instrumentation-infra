@@ -245,7 +245,7 @@ class SPEC2006(Target):
                 ldflags = qjoin(ctx.ldflags)
                 print('CC          = %s %s' % (ctx.cc, cflags))
                 print('CXX         = %s %s' % (ctx.cxx, cxxflags))
-                print('FC          = `which false`')
+                print('FC          = `which gfortran || which false`')
                 print('CLD         = %s %s' % (ctx.cc, ldflags))
                 print('CXXLD       = %s %s' % (ctx.cxx, ldflags))
                 print('COPTIMIZE   = -std=gnu89')
