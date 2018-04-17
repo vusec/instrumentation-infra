@@ -46,9 +46,10 @@ def run(ctx, cmd, allow_error=False, silent=False, teeout=False, defer=False,
     log_output = False
     if defer:
         kwargs['stdout'] = subprocess.PIPE
-        kwargs['stderr'] = subprocess.PIPE
+        kwargs.setdefault('stderr', subprocess.PIPE)
     elif silent:
         kwargs.setdefault('stdout', subprocess.PIPE)
+        kwargs.setdefault('stderr', subprocess.PIPE)
     elif 'stdout' not in kwargs and 'runlog' in ctx:
         log_output = True
 

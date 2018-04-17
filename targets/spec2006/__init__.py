@@ -122,6 +122,8 @@ class SPEC2006(Target):
                 'killwrap_tree runspec --config=%s --action=build %s' %
                 (config, bench), teeout=print_output)
 
+        # TODO: parallel build with --prun
+
     def run(self, ctx, instance, prun=None):
         config = 'infra-' + instance.name
         config_root = os.path.dirname(os.path.abspath(__file__))
@@ -195,20 +197,21 @@ class SPEC2006(Target):
             ''').format(**locals())
 
             for bench in benchmarks:
-                ctx.log.info('running %s-%s %s with prun' %
-                             (self.name, instance.name, bench))
+                #jobid = '%s-%s %s' % (self.name, instance.name, bench)
+                jobid = bench
+                ctx.log.info('scheduling ' + jobid)
                 outdir = os.path.join(ctx.paths.prun_results, timestamp,
                                       self.name, instance.name)
                 os.makedirs(outdir, exist_ok=True)
                 outfile = os.path.join(outdir, bench)
-                self.run_bash(ctx, cmd.format(bench=bench), prun, outfile)
+                self.run_bash(ctx, cmd.format(bench=bench), prun, outfile, jobid)
         else:
             self.run_bash(ctx, cmd.format(bench=qjoin(benchmarks)), teeout=True)
 
     def run_parallel(self, ctx, instance, prun):
         self.run(ctx, instance, prun=prun)
 
-    def run_bash(self, ctx, commands, prun=None, outfile=None, **kwargs):
+    def run_bash(self, ctx, commands, prun=None, outfile=None, jobid=None, **kwargs):
         config_root = os.path.dirname(os.path.abspath(__file__))
         cmd = [
             'bash', '-c',
@@ -220,7 +223,7 @@ class SPEC2006(Target):
             ''' % (self.path(ctx), config_root, commands))
         ]
         if prun:
-            return prun.run(ctx, cmd, outfile, **kwargs)
+            return prun.run(ctx, cmd, outfile, jobid, **kwargs)
         else:
             return run(ctx, cmd, **kwargs)
 

@@ -93,6 +93,7 @@ class Setup:
                 help='which packages to clean').completer = self.complete_pkg
 
         # command: run
+        # TODO: support multiple instances (useful with prun)
         prun = self.subparsers.add_parser('run',
                 help='run a single target program')
         prun.add_argument('--build', action='store_true',
@@ -515,7 +516,7 @@ class Setup:
             self.ctx.log.warning('--prun-parallelmax=%d should be divisible by '
                                  '--iterations=%d, rounding up to %d' %
                                  (self.args.prun_parallelmax, iters, parallelmax))
-        prun = PrunScheduler(parallelmax, iters, self.args.prun_opts)
+        prun = PrunScheduler(self.ctx.log, parallelmax, iters, self.args.prun_opts)
 
         for instance in instances:
             for target in targets:

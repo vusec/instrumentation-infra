@@ -2,66 +2,96 @@ import sys
 import threading
 import time
 import shlex
-from subprocess import PIPE
+import select
+import re
+import subprocess
 from .util import run, FatalError
 
 
 class PrunScheduler:
-    poll_interval = 0.050 # seconds
+    poll_interval = 0.050  # seconds to wait for blocking actions
+    default_job_time = 900 # if prun reserves this amount, it is not logged
 
-    def __init__(self, parallelmax=None, iterations=1, prun_opts=[]):
-        self.poller = None
-
+    def __init__(self, logger, parallelmax=None, iterations=1, prun_opts=[]):
         if parallelmax is not None and parallelmax % iterations != 0:
             raise FatalError('%s: parallelmax should be a multiple of '
                              'iterations' % self.__class__.__name__)
 
+        self.log = logger
         self.iterations = iterations
         self.parallelmax = parallelmax / iterations
         self.prun_opts = prun_opts
-        self.jobs = set()
-        self.jobctx = {}
+        self.jobs = {}
 
     def __del__(self):
-        self.done = True
-        if self.poller:
-            self.poller.join(self.poll_interval)
+        if hasattr(self, 'pollthread'):
+            self.done = True
+            self.pollthread.join(self.poll_interval)
 
     def start_poller(self):
-        if self.poller is None:
-            self.poller = threading.Thread(target=self.poller_thread,
-                                           name='prun-poller')
-            self.poller.daemon = True
-            self.queue_lock = threading.Lock()
+        if not hasattr(self, 'pollthread'):
+            self.poller = select.epoll()
+            self.pollthread = threading.Thread(target=self.poller_thread,
+                                               name='prun-poller')
+            self.pollthread.daemon = True
             self.done = False
-            self.poller.start()
+            self.pollthread.start()
 
     def poller_thread(self):
         # monitor the job queue for finished jobs, remove them from the queue
         # and call success/error callbacks
         while not self.done:
-            finished = set()
-            with self.queue_lock:
-                for job in self.jobs:
-                    if job.poll() is not None:
-                        finished.add(job)
-                self.jobs -= finished
+            for fd, flags in self.poller.poll(timeout=self.poll_interval):
+                if flags & (select.EPOLLIN | select.EPOLLPRI):
+                    self.append_and_parse_output(self.jobs[fd])
 
-            for job in finished:
-                ctx = self.jobctx.pop(job)
-                if job.returncode == 0:
-                    self.onsuccess(job, ctx)
-                else:
-                    self.onerror(job, ctx)
+                if flags & select.EPOLLERR:
+                    self.poller.unregister(fd)
+                    job = self.jobs.pop(fd)
+                    self.onerror(job)
 
-            time.sleep(self.poll_interval)
+                if flags & select.EPOLLHUP:
+                    self.poller.unregister(fd)
+                    job = self.jobs.pop(fd)
+                    if job.poll() == 0:
+                        self.onsuccess(job)
+                    else:
+                        self.onerror(job)
+
+    def append_and_parse_output(self, job):
+        job.output += job.stdout.read(1024).decode('utf-8')
+
+        numseconds = -1
+        nodes = []
+        for line in job.output.splitlines():
+            if line.startswith(':'):
+                for nodeid in line[1:].split():
+                    m = re.fullmatch('node(\d+)/(\d+)', nodeid)
+                    if not m:
+                        return
+                    machine = int(m.group(1))
+                    core = int(m.group(2))
+                    nodes.append((machine, core))
+            elif numseconds == -1:
+                m = re.search('for (\d+) seconds', line)
+                if m:
+                    numseconds = int(m.group(1))
+
+        if nodes:
+            assert numseconds > 0
+            desc = 'node' if len(nodes) == 1 else 'nodes'
+            nodelist = ', '.join('%d/%d' % ids for ids in nodes)
+            suffix = '' if numseconds == self.default_job_time \
+                     else ' for %d seconds' % numseconds
+            self.log.info('running %s on %s %s%s' %
+                          (job.jobid, desc, nodelist, suffix))
 
     def wait_for_queue_space(self):
         if self.parallelmax is not None:
             while len(self.jobs) >= self.parallelmax:
                 time.sleep(self.poll_interval)
 
-    def run(self, ctx, cmd, outfile, **kwargs):
+    def run(self, ctx, cmd, outfile, jobid, **kwargs):
         self.start_poller()
         self.wait_for_queue_space()
 
@@ -70,28 +100,24 @@ class PrunScheduler:
         cmd = ['prun', '-v', '-np', '%d' % self.iterations, '-1',
                '-o', outfile, *self.prun_opts, *cmd]
 
-        job = run(ctx, cmd, defer=True, **kwargs)
-        self.jobctx[job] = ctx
-
-        with self.queue_lock:
-           self.jobs.add(job)
-
+        job = run(ctx, cmd, defer=True, stderr=subprocess.STDOUT, bufsize=0,
+                  universal_newlines=False, **kwargs)
+        job.jobid = jobid
+        job.output = ''
+        self.jobs[job.stdout.fileno()] = job
+        self.poller.register(job.stdout, select.EPOLLIN | select.EPOLLPRI |
+                                         select.EPOLLERR | select.EPOLLHUP)
         return job
 
     def wait_all(self):
         while len(self.jobs):
             time.sleep(self.poll_interval)
 
-    def onsuccess(self, job, ctx):
-        ctx.log.info('prun command finished successfully')
-        ctx.log.debug('command: %s' % job.cmd_print)
-        stdout, stderr = job.communicate()
-        sys.stdout.write(stdout)
-        sys.stdout.write(stderr)
+    def onsuccess(self, job):
+        self.log.info('job %s finished successfully' % job.jobid)
+        self.log.debug('command: %s' % job.cmd_print)
 
-    def onerror(self, job, ctx):
-        ctx.log.error('prun command returned status %d' % job.returncode)
-        ctx.log.error('command: %s' % job.cmd_print)
-        stdout, stderr = job.communicate()
-        sys.stdout.write(stdout)
-        sys.stdout.write(stderr)
+    def onerror(self, job):
+        self.log.error('job %s returned status %d' % (job.jobid, job.poll()))
+        self.log.error('command: %s' % job.cmd_print)
+        sys.stdout.write(job.output)
