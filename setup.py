@@ -67,7 +67,7 @@ class Setup:
                 help='only link targets, don\'t rebuild object files')
         pbuild.add_argument('--clean', action='store_true',
                 help='clean targets and packages (not all deps, only from -p) first')
-        pbuild.add_argument('-n', '--dry-run', action='store_true',
+        pbuild.add_argument('--dry-run', action='store_true',
                 help='don\'t actually build anything, just show what will be done')
 
         # command: exec-hook
