@@ -500,6 +500,16 @@ class Setup:
         targets = [self.get_target(name) for name in target_names]
         instances = [self.get_instance(name) for name in instance_names]
 
+        parallelmax = self.args.prun_parallelmax
+        iters = self.args.iterations
+        rem = parallelmax % iters
+        if rem:
+            parallelmax -= rem
+            self.ctx.log.warning('--prun-parallelmax=%d should be divisible by '
+                                 '--iterations=%d, rounding down to %d' %
+                                 (self.args.prun_parallelmax, iters, parallelmax))
+        prun = PrunScheduler(self.ctx.log, parallelmax, self.args.prun_opts)
+
         if self.args.build:
             self.args.targets = target_names
             self.args.instances = instance_names
@@ -510,17 +520,8 @@ class Setup:
             self.args.dry_run = False
             self.args.relink = False
             self.ctx.jobs = cpu_count()
-            self.run_build()
-
-        parallelmax = self.args.prun_parallelmax
-        iters = self.args.iterations
-        quot, rem = divmod(parallelmax, iters)
-        if rem:
-            parallelmax = iters * (quot + 1)
-            self.ctx.log.warning('--prun-parallelmax=%d should be divisible by '
-                                 '--iterations=%d, rounding up to %d' %
-                                 (self.args.prun_parallelmax, iters, parallelmax))
-        prun = PrunScheduler(self.ctx.log, parallelmax, iters, self.args.prun_opts)
+            if self.args.prun:
+                self.run_build()
 
         for instance in instances:
             for target in targets:

@@ -6,21 +6,16 @@ import select
 import re
 import subprocess
 import math
-from .util import run, FatalError
+from .util import run
 
 
 class PrunScheduler:
     poll_interval = 0.050  # seconds to wait for blocking actions
     default_job_time = 900 # if prun reserves this amount, it is not logged
 
-    def __init__(self, logger, parallelmax=None, iterations=1, prun_opts=[]):
-        if parallelmax is not None and parallelmax % iterations != 0:
-            raise FatalError('%s: parallelmax should be a multiple of '
-                             'iterations' % self.__class__.__name__)
-
+    def __init__(self, logger, parallelmax=None, prun_opts=[]):
         self.log = logger
-        self.iterations = iterations
-        self.parallelmax = parallelmax / iterations
+        self.parallelmax = parallelmax
         self.prun_opts = prun_opts
         self.jobs = {}
 
@@ -88,22 +83,24 @@ class PrunScheduler:
                           (job.jobid, desc, nodelist, suffix))
             job.start_time = time.time()
 
-    def wait_for_queue_space(self):
+    def wait_for_queue_space(self, nodes_needed):
         if self.parallelmax is not None:
-            while len(self.jobs) >= self.parallelmax:
+            nnodes = sum(job.nnodes for job in self.jobs.values())
+            while nnodes + nodes_needed > self.parallelmax:
                 time.sleep(self.poll_interval)
 
-    def run(self, ctx, cmd, outfile, jobid, **kwargs):
+    def run(self, ctx, cmd, jobid, outfile, nnodes, **kwargs):
         self.start_poller()
-        self.wait_for_queue_space()
+        self.wait_for_queue_space(nnodes)
 
         if isinstance(cmd, str):
             cmd = shlex.split(cmd)
-        cmd = ['prun', '-v', '-np', '%d' % self.iterations, '-1',
+        cmd = ['prun', '-v', '-np', '%d' % nnodes, '-1',
                '-o', outfile, *self.prun_opts, *cmd]
 
         job = run(ctx, cmd, defer=True, stderr=subprocess.STDOUT, bufsize=0,
                   universal_newlines=False, **kwargs)
+        job.nnodes = nnodes
         job.jobid = jobid
         job.output = ''
         self.jobs[job.stdout.fileno()] = job

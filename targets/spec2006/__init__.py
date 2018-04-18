@@ -204,14 +204,16 @@ class SPEC2006(Target):
                                       self.name, instance.name)
                 os.makedirs(outdir, exist_ok=True)
                 outfile = os.path.join(outdir, bench)
-                self.run_bash(ctx, cmd.format(bench=bench), prun, outfile, jobid)
+                self.run_bash(ctx, cmd.format(bench=bench), prun,
+                              jobid=jobid, outfile=outfile,
+                              nnodes=ctx.args.iterations)
         else:
             self.run_bash(ctx, cmd.format(bench=qjoin(benchmarks)), teeout=True)
 
     def run_parallel(self, ctx, instance, prun):
         self.run(ctx, instance, prun=prun)
 
-    def run_bash(self, ctx, commands, prun=None, outfile=None, jobid=None, **kwargs):
+    def run_bash(self, ctx, commands, prun=None, **kwargs):
         config_root = os.path.dirname(os.path.abspath(__file__))
         cmd = [
             'bash', '-c',
@@ -223,9 +225,8 @@ class SPEC2006(Target):
             ''' % (self.path(ctx), config_root, commands))
         ]
         if prun:
-            return prun.run(ctx, cmd, outfile, jobid, **kwargs)
-        else:
-            return run(ctx, cmd, **kwargs)
+            return prun.run(ctx, cmd, **kwargs)
+        return run(ctx, cmd, **kwargs)
 
     def make_spec_config(self, ctx, instance):
         config_name = 'infra-' + instance.name
