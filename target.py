@@ -41,6 +41,9 @@ class Target(metaclass=ABCMeta):
     def build(self, ctx, instance):
         pass
 
+    def build_parallel(self, ctx, instance, prun):
+        raise NotImplementedError(self.__class__.__name__)
+
     @abstractmethod
     def link(self, ctx, instance):
         pass

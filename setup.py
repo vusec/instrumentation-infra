@@ -33,6 +33,10 @@ class Setup:
 
         nproc = max(cpu_count(), 16)
 
+        prun_must_suppress = not prun_supported()
+        def prun_suppress(helpmsg):
+            return argparse.SUPPRESS if prun_must_suppress else helpmsg
+
         # global options
         parser.add_argument('-v', '--verbosity', default='info',
                 choices=['critical', 'error', 'warning', 'info', 'debug'],
@@ -69,6 +73,13 @@ class Setup:
                 help='clean targets and packages (not all deps, only from -p) first')
         pbuild.add_argument('--dry-run', action='store_true',
                 help='don\'t actually build anything, just show what will be done')
+        pbuild.add_argument('--prun', action='store_true',
+                help=prun_suppress('build benchmarks in parallel with prun (on DAS cluster)'))
+        pbuild.add_argument('--prun-parallelmax', metavar='NODES',
+                type=int, default=64,
+                help=prun_suppress('limit simultaneous node reservations (default: 64)'))
+        pbuild.add_argument('--prun-opts', nargs='+', default=[],
+                help=prun_suppress('additional options for prun'))
 
         # command: exec-hook
         phook = self.subparsers.add_parser('exec-hook',
@@ -91,10 +102,6 @@ class Setup:
         pclean.add_argument('-p', '--packages', nargs='+', metavar='PACKAGE',
                 default=[],
                 help='which packages to clean').completer = self.complete_pkg
-
-        prun_must_suppress = not prun_supported()
-        def prun_suppress(helpmsg):
-            return argparse.SUPPRESS if prun_must_suppress else helpmsg
 
         # command: run
         # TODO: support multiple instances (useful with prun)
@@ -357,10 +364,28 @@ class Setup:
             if not self.args.dry_run:
                 target.clean(self.ctx)
 
+    def make_prun_scheduler(self):
+        if not self.args.prun:
+            return
+
+        parallelmax = self.args.prun_parallelmax
+
+        if 'iterations' in self.args:
+            iters = self.args.iterations
+            rem = parallelmax % iters
+            if rem:
+                parallelmax -= rem
+                self.ctx.log.warning('--prun-parallelmax=%d should be divisible by '
+                                    '--iterations=%d, rounding down to %d' %
+                                    (self.args.prun_parallelmax, iters, parallelmax))
+
+        return PrunScheduler(self.ctx.log, parallelmax, self.args.prun_opts)
+
     def run_build(self):
         targets = [self.get_target(name) for name in self.args.targets]
         instances = [self.get_instance(name) for name in self.args.instances]
         packages = [self.get_package(name) for name in self.args.packages]
+        prun = self.make_prun_scheduler()
 
         if self.args.deps_only:
             if not targets and not instances and not packages:
@@ -448,7 +473,10 @@ class Setup:
                     if not self.args.dry_run:
                         if not self.args.relink:
                             target.goto_rootdir(self.ctx)
-                            target.build(self.ctx, instance)
+                            if prun:
+                                target.build_parallel(self.ctx, instance, prun)
+                            else:
+                                target.build(self.ctx, instance)
                         target.goto_rootdir(self.ctx)
                         target.link(self.ctx, instance)
                         target.run_hooks_post_build(self.ctx, instance)
@@ -456,6 +484,9 @@ class Setup:
                 self.ctx = oldctx_inner
 
             self.ctx = oldctx_outer
+
+        if prun:
+            prun.wait_all()
 
     def run_exec_hook(self):
         instance = self.get_instance(self.args.instance)
@@ -499,16 +530,7 @@ class Setup:
     def do_run(self, target_names, instance_names):
         targets = [self.get_target(name) for name in target_names]
         instances = [self.get_instance(name) for name in instance_names]
-
-        parallelmax = self.args.prun_parallelmax
-        iters = self.args.iterations
-        rem = parallelmax % iters
-        if rem:
-            parallelmax -= rem
-            self.ctx.log.warning('--prun-parallelmax=%d should be divisible by '
-                                 '--iterations=%d, rounding down to %d' %
-                                 (self.args.prun_parallelmax, iters, parallelmax))
-        prun = PrunScheduler(self.ctx.log, parallelmax, self.args.prun_opts)
+        prun = self.make_prun_scheduler()
 
         if self.args.build:
             self.args.targets = target_names
@@ -533,14 +555,15 @@ class Setup:
                 instance.prepare_run(self.ctx)
 
                 target.goto_rootdir(self.ctx)
-                if self.args.prun:
+                if prun:
                     target.run_parallel(self.ctx, instance, prun)
                 else:
                     target.run(self.ctx, instance)
 
                 self.ctx = oldctx
 
-        prun.wait_all()
+        if prun:
+            prun.wait_all()
 
     def run_config(self):
         if self.args.list_instances:

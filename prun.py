@@ -99,6 +99,7 @@ class PrunScheduler:
         cmd = ['prun', '-v', '-np', '%d' % nnodes, '-1',
                '-o', outfile, *self.prun_opts, *cmd]
 
+        ctx.log.info('scheduling ' + jobid)
         job = run(ctx, cmd, defer=True, stderr=subprocess.STDOUT, bufsize=0,
                   universal_newlines=False, **kwargs)
         job.nnodes = nnodes
