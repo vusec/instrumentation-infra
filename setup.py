@@ -520,8 +520,7 @@ class Setup:
             self.args.dry_run = False
             self.args.relink = False
             self.ctx.jobs = cpu_count()
-            if self.args.prun:
-                self.run_build()
+            self.run_build()
 
         for instance in instances:
             for target in targets:
