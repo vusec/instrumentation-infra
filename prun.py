@@ -130,3 +130,7 @@ class PrunScheduler:
         if not hasattr(job, 'start_time'):
             return ''
         return ' after %d seconds' % (math.ceil(time.time() - job.start_time))
+
+
+def prun_supported():
+    return subprocess.run(['prun', '--help']).returncode == 0

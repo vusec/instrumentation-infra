@@ -6,7 +6,7 @@ import traceback
 from collections import OrderedDict
 from multiprocessing import cpu_count
 from .util import FatalError, Namespace, qjoin
-from .prun import PrunScheduler
+from .prun import PrunScheduler, prun_supported
 
 
 # disable .pyc file generation
@@ -92,6 +92,10 @@ class Setup:
                 default=[],
                 help='which packages to clean').completer = self.complete_pkg
 
+        prun_must_suppress = not prun_supported()
+        def prun_suppress(helpmsg):
+            return argparse.SUPPRESS if prun_must_suppress else helpmsg
+
         # command: run
         # TODO: support multiple instances (useful with prun)
         prun = self.subparsers.add_parser('run',
@@ -102,12 +106,12 @@ class Setup:
                 type=int, default=1,
                 help='number of runs per benchmark')
         prun.add_argument('--prun', action='store_true',
-                help='run iterations in parallel with prun (on DAS cluster)')
+                help=prun_suppress('run iterations in parallel with prun (on DAS cluster)'))
         prun.add_argument('--prun-parallelmax', metavar='NODES',
                 type=int, default=64,
-                help='limit simultaneous node reservations (default: 64)')
+                help=prun_suppress('limit simultaneous node reservations (default: 64)'))
         prun.add_argument('--prun-opts', nargs='+', default=[],
-                help='additional options for prun')
+                help=prun_suppress('additional options for prun'))
         prun.add_argument('instance',
                 metavar='INSTANCE', choices=self.instances,
                 help='%s' % ' | '.join(self.instances))
