@@ -157,6 +157,9 @@ class SPEC2006(Target):
         else:
             output_root = specdir
 
+        if 'target_run_wrapper' in ctx:
+            runargs += ['--define', 'run_wrapper=' + ctx.target_run_wrapper]
+
         runargs += ctx.args.runspec_args
         runargs = qjoin(runargs)
 
@@ -274,9 +277,10 @@ class SPEC2006(Target):
                         (ctx.paths.setup, instance.name, config_name))
                     print('')
 
-                if 'target_run_wrapper' in ctx:
-                    print('')
-                    print('monitor_wrapper = %s \$command' % ctx.target_run_wrapper)
+                # allow run wrapper to be set using --define run_wrapper=...
+                print('%ifdef %{run_wrapper}')
+                print('  monitor_wrapper = %{run_wrapper} $command')
+                print('%endif')
 
                 # configure benchmarks for 64-bit Linux (hardcoded for now)
                 print('')
