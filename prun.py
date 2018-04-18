@@ -2,6 +2,7 @@ import sys
 import threading
 import time
 import shlex
+import shutil
 import select
 import re
 import subprocess
@@ -130,4 +131,4 @@ class PrunScheduler:
 
 
 def prun_supported():
-    return subprocess.run(['prun', '--help']).returncode == 0
+    return shutil.which('prun') is not None
