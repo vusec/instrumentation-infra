@@ -5,6 +5,7 @@ import shlex
 import select
 import re
 import subprocess
+import math
 from .util import run, FatalError
 
 
@@ -85,6 +86,7 @@ class PrunScheduler:
                      else ' for %d seconds' % numseconds
             self.log.info('running %s on %s %s%s' %
                           (job.jobid, desc, nodelist, suffix))
+            job.start_time = time.time()
 
     def wait_for_queue_space(self):
         if self.parallelmax is not None:
@@ -114,10 +116,17 @@ class PrunScheduler:
             time.sleep(self.poll_interval)
 
     def onsuccess(self, job):
-        self.log.info('job %s finished successfully' % job.jobid)
+        self.log.info('job %s finished%s' %
+                      (job.jobid, self.get_elapsed(job)))
         self.log.debug('command: %s' % job.cmd_print)
 
     def onerror(self, job):
-        self.log.error('job %s returned status %d' % (job.jobid, job.poll()))
+        self.log.error('job %s returned status %d%s' %
+                      (job.jobid, job.poll(), self.get_elapsed(job)))
         self.log.error('command: %s' % job.cmd_print)
         sys.stdout.write(job.output)
+
+    def get_elapsed(self, job):
+        if not hasattr(job, 'start_time'):
+            return ''
+        return ' after %d seconds' % (math.ceil(time.time() - job.start_time))
