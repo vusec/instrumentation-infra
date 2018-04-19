@@ -39,6 +39,9 @@ class Setup:
         def prun_suppress(helpmsg):
             return argparse.SUPPRESS if prun_must_suppress else helpmsg
 
+        targets_help = '%s' % ' | '.join(self.targets)
+        instances_help = '%s' % ' | '.join(self.instances)
+
         # global options
         parser.add_argument('-v', '--verbosity', default='info',
                 choices=['critical', 'error', 'warning', 'info', 'debug'],
@@ -55,10 +58,10 @@ class Setup:
                 help='build target programs (also builds dependencies)')
         pbuild.add_argument('-t', '--targets', nargs='+',
                 metavar='TARGET', choices=self.targets, default=[],
-                help='which target programs to build')
+                help=targets_help)
         pbuild.add_argument('-i', '--instances', nargs='+',
                 metavar='INSTANCE', choices=self.instances, default=[],
-                help='which instances to build')
+                help=instances_help)
         pbuild.add_argument('-p', '--packages', nargs='+',
                 metavar='PACKAGE', default=[],
                 help='which packages to build (either on top of dependencies, '
@@ -90,7 +93,7 @@ class Setup:
                 help='hook type')
         phook.add_argument('instance',
                 metavar='INSTANCE', choices=self.instances,
-                help='which instance to run hooks for')
+                help=instances_help)
         phook.add_argument('targetfile',
                 help='file to run hook on')
 
@@ -127,7 +130,7 @@ class Setup:
 
         ptargets = prun.add_subparsers(
                 title='target', metavar='TARGET', dest='target',
-                help='%s' % ' | '.join(self.targets))
+                help=targets_help)
         ptargets.required = True
 
         # command: config
