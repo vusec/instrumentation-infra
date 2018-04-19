@@ -103,13 +103,12 @@ class Setup:
                      'packages and targets')
         pclean.add_argument('-t', '--targets', nargs='+', metavar='TARGET',
                 default=[], choices=self.targets,
-                help='which target programs to clean')
+                help=targets_help)
         pclean.add_argument('-p', '--packages', nargs='+', metavar='PACKAGE',
                 default=[],
                 help='which packages to clean').completer = self.complete_pkg
 
         # command: run
-        # TODO: support multiple instances (useful with prun)
         prun = self.subparsers.add_parser('run',
                 help='run a single target program')
         prun.add_argument('--build', action='store_true',
@@ -124,10 +123,6 @@ class Setup:
                 help=prun_suppress('limit simultaneous node reservations (default: 64)'))
         prun.add_argument('--prun-opts', nargs='+', default=[],
                 help=prun_suppress('additional options for prun'))
-        prun.add_argument('instance',
-                metavar='INSTANCE', choices=self.instances,
-                help='%s' % ' | '.join(self.instances))
-
         ptargets = prun.add_subparsers(
                 title='target', metavar='TARGET', dest='target',
                 help=targets_help)
@@ -162,6 +157,9 @@ class Setup:
             target.add_build_args(pbuild)
 
             ptarget = ptargets.add_parser(target.name)
+            ptarget.add_argument('instances', nargs='+',
+                    metavar='INSTANCE', choices=self.instances,
+                    help=instances_help)
             target.add_run_args(ptarget)
 
         for instance in self.instances.values():
@@ -530,16 +528,12 @@ class Setup:
             self.clean_target(target)
 
     def run_run(self):
-        self.do_run([self.args.target], [self.args.instance])
-
-    def do_run(self, target_names, instance_names):
-        targets = [self.get_target(name) for name in target_names]
-        instances = [self.get_instance(name) for name in instance_names]
+        target = self.get_target(self.args.target)
+        instances = [self.get_instance(name) for name in self.args.instances]
         prun = self.make_prun_scheduler()
 
         if self.args.build:
-            self.args.targets = target_names
-            self.args.instances = instance_names
+            self.args.targets = [self.args.target]
             self.args.packages = []
             self.args.deps_only = False
             self.args.clean = False
@@ -549,23 +543,22 @@ class Setup:
             self.ctx.jobs = max(cpu_count(), self.max_default_jobs)
             self.run_build()
 
+        for package in self.get_deps([target]):
+            package.install_env(self.ctx)
+
         for instance in instances:
-            for target in targets:
-                oldctx = self.ctx.copy()
-                self.ctx.log.info('running %s-%s' % (target.name, instance.name))
+            oldctx = self.ctx.copy()
+            self.ctx.log.info('running %s-%s' % (target.name, instance.name))
 
-                for package in self.get_deps([target]):
-                    package.install_env(self.ctx)
+            instance.prepare_run(self.ctx)
 
-                instance.prepare_run(self.ctx)
+            target.goto_rootdir(self.ctx)
+            if prun:
+                target.run_parallel(self.ctx, instance, prun)
+            else:
+                target.run(self.ctx, instance)
 
-                target.goto_rootdir(self.ctx)
-                if prun:
-                    target.run_parallel(self.ctx, instance, prun)
-                else:
-                    target.run(self.ctx, instance)
-
-                self.ctx = oldctx
+            self.ctx = oldctx
 
         if prun:
             prun.wait_all()
