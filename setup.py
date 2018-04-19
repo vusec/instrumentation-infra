@@ -87,14 +87,15 @@ class Setup:
                 help=prun_suppress('additional options for prun'))
 
         # command: exec-hook
-        phook = self.subparsers.add_parser('exec-hook',
-                help='run post-build hooks of an instance on a target file')
+        # this does not appear in main --help usage because it is meant to be
+        # used as a callback for build scripts
+        phook = self.subparsers.add_parser('exec-hook')
         phook.add_argument('hooktype', choices=['post-build'],
                 help='hook type')
         phook.add_argument('instance',
                 metavar='INSTANCE', choices=self.instances,
                 help=instances_help)
-        phook.add_argument('targetfile',
+        phook.add_argument('targetfile', metavar='TARGETFILE',
                 help='file to run hook on')
 
         # command: clean
@@ -180,7 +181,7 @@ class Setup:
                                 return completions[i:] + completions[:i]
                     return completions
 
-            MyCompleter().__call__(parser, exclude=['--help'])
+            MyCompleter().__call__(parser, exclude=['--help', 'exec-hook'])
         except ImportError:
             pass
 
