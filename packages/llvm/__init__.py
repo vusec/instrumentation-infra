@@ -5,6 +5,7 @@ from ...util import run, apply_patch, download, FatalError
 from ..gnu import Bash, CoreUtils, BinUtils, Make, \
         M4, AutoConf, AutoMake, LibTool
 from ..cmake import CMake
+from ..ninja import Ninja
 
 
 class LLVM(Package):
@@ -37,6 +38,7 @@ class LLVM(Package):
         yield AutoMake('1.15.1')
         yield LibTool('2.4.6')
         yield CMake('3.8.2')
+        yield Ninja('1.8.2')
 
     def fetch(self, ctx):
         def get(repo, clonedir):
@@ -77,10 +79,9 @@ class LLVM(Package):
 
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
-        generator = 'Ninja' if self.ninja_supported(ctx) else 'Unix Makefiles'
         run(ctx, [
             'cmake',
-            '-G', generator,
+            '-G', 'Ninja',
             '-DCMAKE_INSTALL_PREFIX=' + self.path(ctx, 'install'),
             '-DLLVM_BINUTILS_INCDIR=' + self.binutils.path(ctx, 'src/include'),
             '-DCMAKE_BUILD_TYPE=Release',
@@ -90,10 +91,6 @@ class LLVM(Package):
             '../src'
         ])
         run(ctx, 'cmake --build . -- -j %d' % ctx.jobs)
-
-    def ninja_supported(self, ctx):
-        proc = run(ctx, 'ninja --version', allow_error=True)
-        return proc and proc.returncode == 0
 
     def install(self, ctx):
         os.chdir('obj')
