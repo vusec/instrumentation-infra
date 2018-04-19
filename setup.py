@@ -14,6 +14,8 @@ sys.dont_write_bytecode = True
 
 
 class Setup:
+    max_default_jobs = 16
+
     def __init__(self, setup_path):
         self.setup_path = os.path.abspath(setup_path)
         self.instances = OrderedDict()
@@ -31,7 +33,7 @@ class Setup:
         parser = argparse.ArgumentParser(
                 description='Frontend for building/running instrumented benchmarks.')
 
-        nproc = max(cpu_count(), 16)
+        nproc = max(cpu_count(), self.max_default_jobs)
 
         prun_must_suppress = not prun_supported()
         def prun_suppress(helpmsg):
@@ -541,7 +543,7 @@ class Setup:
             self.args.force_rebuild_deps = False
             self.args.dry_run = False
             self.args.relink = False
-            self.ctx.jobs = cpu_count()
+            self.ctx.jobs = max(cpu_count(), self.max_default_jobs)
             self.run_build()
 
         for instance in instances:
