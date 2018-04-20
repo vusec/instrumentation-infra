@@ -33,7 +33,7 @@ class Setup:
         parser = argparse.ArgumentParser(
                 description='Frontend for building/running instrumented benchmarks.')
 
-        nproc = max(cpu_count(), self.max_default_jobs)
+        nproc = min(cpu_count(), self.max_default_jobs)
 
         prun_must_suppress = not prun_supported()
         def prun_suppress(helpmsg):
@@ -541,7 +541,7 @@ class Setup:
             self.args.force_rebuild_deps = False
             self.args.dry_run = False
             self.args.relink = False
-            self.ctx.jobs = max(cpu_count(), self.max_default_jobs)
+            self.ctx.jobs = min(cpu_count(), self.max_default_jobs)
             self.run_build()
 
         for package in self.get_deps([target]):
