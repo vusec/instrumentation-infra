@@ -25,7 +25,7 @@ class Ninja(Package):
 
     def install(self, ctx):
         os.makedirs('install/bin', exist_ok=True)
-        shutil.copyfile('obj/ninja', 'install/bin/ninja')
+        shutil.copy('obj/ninja', 'install/bin')
 
     def is_fetched(self, ctx):
         return os.path.exists('src')
