@@ -1,8 +1,8 @@
 from ..instance import Instance
 
 
-class Default(Instance):
-    name = 'default'
+class Clang(Instance):
+    name = 'clang'
 
     def __init__(self, llvm):
         self.llvm = llvm
@@ -16,8 +16,8 @@ class Default(Instance):
         ctx.cxxflags += ['-O2']
 
 
-class DefaultLTO(Default):
-    name = 'default-lto'
+class ClangLTO(Clang):
+    name = 'clang-lto'
 
     def configure(self, ctx):
         super().configure(ctx)

@@ -1,1 +1,1 @@
-from .default import Default, DefaultLTO
+from .clang import Clang, ClangLTO
