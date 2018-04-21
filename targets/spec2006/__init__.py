@@ -122,7 +122,7 @@ class SPEC2006(Target):
             cmd = 'killwrap_tree runspec --config=%s --action=build %s' % \
                   (config, bench)
             if prun:
-                jobid = 'build-' + bench
+                jobid = 'build-%s-%s' % (instance.name, bench)
                 outdir = os.path.join(ctx.paths.prun_results, 'build',
                                       self.name, instance.name)
                 os.makedirs(outdir, exist_ok=True)
@@ -213,8 +213,7 @@ class SPEC2006(Target):
             ''').format(**locals())
 
             for bench in benchmarks:
-                #jobid = '%s-%s %s' % (self.name, instance.name, bench)
-                jobid = bench
+                jobid = 'run-%s-%s' % (instance.name, bench)
                 outdir = os.path.join(ctx.paths.prun_results, timestamp,
                                       self.name, instance.name)
                 os.makedirs(outdir, exist_ok=True)
