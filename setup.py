@@ -369,21 +369,10 @@ class Setup:
                 target.clean(self.ctx)
 
     def make_prun_scheduler(self):
-        if not self.args.prun:
-            return
-
-        parallelmax = self.args.prun_parallelmax
-
-        if 'iterations' in self.args:
-            iters = self.args.iterations
-            rem = parallelmax % iters
-            if rem:
-                parallelmax -= rem
-                self.ctx.log.warning('--prun-parallelmax=%d should be divisible by '
-                                    '--iterations=%d, rounding down to %d' %
-                                    (self.args.prun_parallelmax, iters, parallelmax))
-
-        return PrunScheduler(self.ctx.log, parallelmax, self.args.prun_opts)
+        if self.args.prun:
+            return PrunScheduler(self.ctx.log,
+                                 self.args.prun_parallelmax,
+                                 self.args.prun_opts)
 
     def run_build(self):
         targets = [self.get_target(name) for name in self.args.targets]
