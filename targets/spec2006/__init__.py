@@ -107,7 +107,6 @@ class SPEC2006(Target):
 
     def build_parallel(self, ctx, instance, prun):
         self.build(ctx, instance, prun=prun)
-        prun.wait_all()
 
     def build(self, ctx, instance, prun=None):
         # apply any pending patches (doing this at build time allows adding
@@ -137,7 +136,6 @@ class SPEC2006(Target):
 
     def run_parallel(self, ctx, instance, prun):
         self.run(ctx, instance, prun=prun)
-        prun.wait_all()
 
     def run(self, ctx, instance, prun=None):
         config = 'infra-' + instance.name
