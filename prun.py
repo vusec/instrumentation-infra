@@ -86,8 +86,8 @@ class PrunScheduler:
 
     def wait_for_queue_space(self, nodes_needed):
         if self.parallelmax is not None:
-            nnodes = sum(job.nnodes for job in self.jobs.values())
-            while nnodes + nodes_needed > self.parallelmax:
+            nnodes = lambda: sum(job.nnodes for job in self.jobs.values())
+            while nnodes() + nodes_needed > self.parallelmax:
                 time.sleep(self.poll_interval)
 
     def run(self, ctx, cmd, jobid, outfile, nnodes, **kwargs):

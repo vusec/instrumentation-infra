@@ -8,7 +8,7 @@ import re
 from contextlib import redirect_stdout
 from ...util import run, apply_patch, qjoin, FatalError
 from ...target import Target
-from ...packages import Nothp
+from ...packages import Bash, Nothp
 from .benchmark_sets import benchmark_sets
 
 
@@ -65,6 +65,7 @@ class SPEC2006(Target):
                 help='additional arguments for runspec')
 
     def dependencies(self):
+        yield Bash('4.3')
         if self.nothp:
             yield Nothp()
 
