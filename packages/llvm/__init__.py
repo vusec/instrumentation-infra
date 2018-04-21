@@ -118,7 +118,7 @@ class LLVM(Package):
 
         return os.path.exists('install/bin/llvm-config')
 
-    def configure(self, ctx, lto=False):
+    def configure(self, ctx):
         ctx.cc = 'clang'
         ctx.cxx = 'clang++'
         ctx.ar = 'llvm-ar'
