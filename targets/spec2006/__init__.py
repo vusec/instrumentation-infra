@@ -282,8 +282,9 @@ class SPEC2006(Target):
                 if ctx.hooks.post_build:
                     print('')
                     print('build_post_bench = %s exec-hook post-build %s '
-                        '`echo ${commandexe} | sed "s/_\\[a-z0-9\\]\\\\+\\\\.%s\\\\\\$//"`' %
-                        (ctx.paths.setup, instance.name, config_name))
+                          '`echo ${commandexe} '
+                          '| sed "s/_\\[a-z0-9\\]\\\\+\\\\.%s\\\\\\$//"`' %
+                          (ctx.paths.setup, instance.name, config_name))
                     print('')
 
                 # allow run wrapper to be set using --define run_wrapper=...
