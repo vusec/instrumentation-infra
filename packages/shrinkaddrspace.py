@@ -7,9 +7,10 @@ from . import Prelink, PatchElf, PyElfTools
 class ShrinkAddrSpace(Package):
     git_url = ''
 
-    def __init__(self, addrspace_bits, commit='master', srcdir=None):
+    def __init__(self, addrspace_bits, commit='master', debug=False, srcdir=None):
         self.addrspace_bits = addrspace_bits
         self.commit = commit
+        self.debug = debug
         self.custom_srcdir = os.path.abspath(srcdir) if srcdir else None
 
     def ident(self):
@@ -30,7 +31,9 @@ class ShrinkAddrSpace(Package):
 
     def build(self, ctx):
         os.chdir('src')
-        run(ctx, ['make', '-j%d' % ctx.jobs, 'OBJDIR=' + self.path(ctx, 'obj')])
+        run(ctx, ['make', '-j%d' % ctx.jobs,
+                  'OBJDIR=' + self.path(ctx, 'obj'),
+                  'DEBUG=' + ('1' if self.debug else '0')])
 
     def install(self, ctx):
         pass
