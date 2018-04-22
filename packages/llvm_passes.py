@@ -68,6 +68,7 @@ class LLVMPasses(Package):
     def configure(self, ctx):
         libpath = self.path(ctx, 'install/libpasses.so')
         ctx.cflags += ['-flto']
+        ctx.cxxflags += ['-flto']
         ctx.ldflags += ['-flto', '-Wl,-plugin-opt=-load=' + libpath]
 
     def runtime_cflags(self, ctx):
