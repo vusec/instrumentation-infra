@@ -106,10 +106,10 @@ class SPEC2006(Target):
                 ctx.log.warning('applied patch %s to external SPEC-CPU2006 '
                                 'directory' % path)
 
-    def build_parallel(self, ctx, instance, prun):
-        self.build(ctx, instance, prun=prun)
+    def build_parallel(self, ctx, instance, pool):
+        self.build(ctx, instance, pool=pool)
 
-    def build(self, ctx, instance, prun=None):
+    def build(self, ctx, instance, pool=None):
         # apply any pending patches (doing this at build time allows adding
         # patches during instance development, and is needed to apply patches
         # when self.source_type == 'installed')
@@ -122,23 +122,23 @@ class SPEC2006(Target):
         for bench in self.get_benchmarks(ctx, instance):
             cmd = 'killwrap_tree runspec --config=%s --action=build %s' % \
                   (config, bench)
-            if prun:
+            if pool:
                 jobid = 'build-%s-%s' % (instance.name, bench)
-                outdir = os.path.join(ctx.paths.prun_results, 'build',
+                outdir = os.path.join(ctx.paths.pool_results, 'build',
                                       self.name, instance.name)
                 os.makedirs(outdir, exist_ok=True)
                 outfile = os.path.join(outdir, bench)
-                self.run_bash(ctx, cmd, prun, jobid=jobid,
+                self.run_bash(ctx, cmd, pool, jobid=jobid,
                               outfile=outfile, nnodes=1)
             else:
                 ctx.log.info('building %s-%s %s' %
                              (self.name, instance.name, bench))
                 self.run_bash(ctx, cmd, teeout=print_output)
 
-    def run_parallel(self, ctx, instance, prun):
-        self.run(ctx, instance, prun=prun)
+    def run_parallel(self, ctx, instance, pool):
+        self.run(ctx, instance, pool=pool)
 
-    def run(self, ctx, instance, prun=None):
+    def run(self, ctx, instance, pool=None):
         config = 'infra-' + instance.name
         config_root = os.path.dirname(os.path.abspath(__file__))
 
@@ -149,23 +149,16 @@ class SPEC2006(Target):
         runargs = []
 
         if ctx.args.test:
-            #if ctx.args.iterations != 1:
-            #    ctx.log.warning('ignoring --iterations=%d because --test '
-            #                    'is specified' % ctx.args.iterations)
-            #    ctx.args.iterations = 1
-            #    if prun:
-            #        prun.iterations = 1
-
             runargs += ['--size', 'test']
 
-        # the prun scheduler will pass --iterations as -np to prun, so only run
+        # the pool scheduler will pass --iterations as -np to prun, so only run
         # one iteration in runspec
-        runargs += ['--iterations', '1' if prun else '%d' % ctx.args.iterations]
+        runargs += ['--iterations', '1' if pool else '%d' % ctx.args.iterations]
 
         # set output root to local disk when using prun to avoid noise due to
         # network lag when writing output files
         specdir = self.path(ctx, 'install')
-        if prun:
+        if pool:
             output_root = '/local/%s/cpu2006-output-root' % getpass.getuser()
             runargs += ['--define', 'output_root=' + output_root]
         else:
@@ -193,7 +186,7 @@ class SPEC2006(Target):
 
         benchmarks = self.get_benchmarks(ctx, instance)
 
-        if prun:
+        if pool:
             timestamp = datetime.datetime.now().strftime('run-%Y-%m-%d.%H:%M:%S')
 
             # prepare output dir on local disk before running,
@@ -215,17 +208,17 @@ class SPEC2006(Target):
 
             for bench in benchmarks:
                 jobid = 'run-%s-%s' % (instance.name, bench)
-                outdir = os.path.join(ctx.paths.prun_results, timestamp,
+                outdir = os.path.join(ctx.paths.pool_results, timestamp,
                                       self.name, instance.name)
                 os.makedirs(outdir, exist_ok=True)
                 outfile = os.path.join(outdir, bench)
-                self.run_bash(ctx, cmd.format(bench=bench), prun,
+                self.run_bash(ctx, cmd.format(bench=bench), pool,
                               jobid=jobid, outfile=outfile,
                               nnodes=ctx.args.iterations)
         else:
             self.run_bash(ctx, cmd.format(bench=qjoin(benchmarks)), teeout=True)
 
-    def run_bash(self, ctx, commands, prun=None, **kwargs):
+    def run_bash(self, ctx, commands, pool=None, **kwargs):
         config_root = os.path.dirname(os.path.abspath(__file__))
         cmd = [
             'bash', '-c',
@@ -236,8 +229,8 @@ class SPEC2006(Target):
             %s
             ''' % (self.path(ctx), config_root, commands))
         ]
-        if prun:
-            return prun.run(ctx, cmd, **kwargs)
+        if pool:
+            return pool.run(ctx, cmd, **kwargs)
         return run(ctx, cmd, **kwargs)
 
     def make_spec_config(self, ctx, instance):

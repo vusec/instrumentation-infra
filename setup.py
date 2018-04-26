@@ -6,7 +6,7 @@ import traceback
 from collections import OrderedDict
 from multiprocessing import cpu_count
 from .util import FatalError, Namespace, qjoin
-from .prun import PrunScheduler, prun_supported
+from .parallel import ProcessPool, PrunPool
 
 
 # disable .pyc file generation
@@ -33,11 +33,10 @@ class Setup:
         parser = argparse.ArgumentParser(
                 description='Frontend for building/running instrumented benchmarks.')
 
-        nproc = min(cpu_count(), self.max_default_jobs)
-
-        prun_must_suppress = not prun_supported()
-        def prun_suppress(helpmsg):
-            return argparse.SUPPRESS if prun_must_suppress else helpmsg
+        ncpus = cpu_count()
+        nproc = min(ncpus, self.max_default_jobs)
+        proc_default_parallelmax = ncpus
+        prun_default_parallelmax = 64
 
         targets_help = '%s' % ' | '.join(self.targets)
         instances_help = '%s' % ' | '.join(self.instances)
@@ -78,13 +77,15 @@ class Setup:
                 help='clean targets and packages (not all deps, only from -p) first')
         pbuild.add_argument('--dry-run', action='store_true',
                 help='don\'t actually build anything, just show what will be done')
-        pbuild.add_argument('--prun', action='store_true',
-                help=prun_suppress('build benchmarks in parallel with prun (on DAS cluster)'))
-        pbuild.add_argument('--prun-parallelmax', metavar='NODES',
-                type=int, default=64,
-                help=prun_suppress('limit simultaneous node reservations (default: 64)'))
+        pbuild.add_argument('--parallel', choices=('none', 'proc', 'prun'),
+                default='none',
+                help='build benchmarks in parallel ("proc" for local processes, "prun" for DAS cluster)')
+        pbuild.add_argument('--parallelmax', metavar='PROCESSES_OR_NODES',
+                type=int, default=None,
+                help='limit simultaneous node reservations (default: %d for proc, %d for prun)' %
+                     (proc_default_parallelmax, prun_default_parallelmax))
         pbuild.add_argument('--prun-opts', nargs='+', default=[],
-                help=prun_suppress('additional options for prun'))
+                help='additional options for prun (for --parallel=prun)')
 
         # command: exec-hook
         # this does not appear in main --help usage because it is meant to be
@@ -117,13 +118,14 @@ class Setup:
         prun.add_argument('-n', '--iterations', metavar='N',
                 type=int, default=1,
                 help='number of runs per benchmark')
-        prun.add_argument('--prun', action='store_true',
-                help=prun_suppress('run iterations in parallel with prun (on DAS cluster)'))
-        prun.add_argument('--prun-parallelmax', metavar='NODES',
-                type=int, default=64,
-                help=prun_suppress('limit simultaneous node reservations (default: 64)'))
-        prun.add_argument('--prun-opts', nargs='+', default=[],
-                help=prun_suppress('additional options for prun'))
+        pbuild.add_argument('--parallel', choices=('none', 'proc', 'prun'),
+                default='none',
+                help='run benchmarks in parallel ("proc" for local processes, "prun" for DAS cluster)')
+        pbuild.add_argument('--parallelmax', metavar='PROCESSES_OR_NODES', type=int,
+                help='limit simultaneous node reservations (default: %d for proc, %d for prun)' %
+                     (proc_default_parallelmax, prun_default_parallelmax))
+        pbuild.add_argument('--prun-opts', nargs='+', default=[],
+                help='additional options for prun (for --parallel=prun)')
         ptargets = prun.add_subparsers(
                 title='target', metavar='TARGET', dest='target',
                 help=targets_help)
@@ -186,8 +188,15 @@ class Setup:
             pass
 
         self.ctx.args = self.args = parser.parse_args()
+
         if 'jobs' in self.args:
             self.ctx.jobs = self.args.jobs
+
+        if 'parallelmax' not in self.args:
+            if self.args.parallel == 'proc':
+                self.args.parallelmax = proc_default_parallelmax
+            elif self.args.parallel == 'prun':
+                self.args.parallelmax = prun_default_parallelmax
 
     def complete_pkg(self, prefix, parsed_args, **kwargs):
         objs = list(self.targets.values())
@@ -216,7 +225,7 @@ class Setup:
         paths.runlog = os.path.join(paths.log, 'commands.txt')
         paths.packages = os.path.join(paths.buildroot, 'packages')
         paths.targets = os.path.join(paths.buildroot, 'targets')
-        paths.prun_results = os.path.join(paths.root, 'results')
+        paths.pool_results = os.path.join(paths.root, 'results')
 
         # FIXME move to package?
         self.ctx.runenv = Namespace()
@@ -369,17 +378,26 @@ class Setup:
             if not self.args.dry_run:
                 target.clean(self.ctx)
 
-    def make_prun_scheduler(self):
-        if self.args.prun:
-            return PrunScheduler(self.ctx.log,
-                                 self.args.prun_parallelmax,
-                                 self.args.prun_opts)
+    def make_pool(self):
+        if self.args.parallel == 'proc':
+            if len(self.args.prun_opts):
+                raise FatalError('--prun-opts not supported for --parallel=proc')
+            return ProcessPool(self.ctx.log, self.args.parallelmax)
+
+        if self.args.parallel == 'prun':
+            return PrunPool(self.ctx.log, self.args.parallelmax,
+                            self.args.prun_opts)
+
+        if len(self.args.parallelmax):
+            raise FatalError('--parallelmax not supported for --parallel=none')
+        if len(self.args.prun_opts):
+            raise FatalError('--prun-opts not supported for --parallel=none')
 
     def run_build(self):
         targets = [self.get_target(name) for name in self.args.targets]
         instances = [self.get_instance(name) for name in self.args.instances]
         packages = [self.get_package(name) for name in self.args.packages]
-        prun = self.make_prun_scheduler()
+        pool = self.make_pool()
 
         if self.args.deps_only:
             if not targets and not instances and not packages:
@@ -467,8 +485,8 @@ class Setup:
                     if not self.args.dry_run:
                         if not self.args.relink:
                             target.goto_rootdir(self.ctx)
-                            if prun:
-                                target.build_parallel(self.ctx, instance, prun)
+                            if pool:
+                                target.build_parallel(self.ctx, instance, pool)
                             else:
                                 target.build(self.ctx, instance)
                         target.goto_rootdir(self.ctx)
@@ -479,8 +497,8 @@ class Setup:
 
             self.ctx = oldctx_outer
 
-        if prun:
-            prun.wait_all()
+        if pool:
+            pool.wait_all()
 
     def run_exec_hook(self):
         instance = self.get_instance(self.args.instance)
@@ -521,7 +539,7 @@ class Setup:
     def run_run(self):
         target = self.get_target(self.args.target)
         instances = [self.get_instance(name) for name in self.args.instances]
-        prun = self.make_prun_scheduler()
+        pool = self.make_pool()
 
         if self.args.build:
             self.args.targets = [self.args.target]
@@ -544,15 +562,15 @@ class Setup:
             instance.prepare_run(self.ctx)
 
             target.goto_rootdir(self.ctx)
-            if prun:
-                target.run_parallel(self.ctx, instance, prun)
+            if pool:
+                target.run_parallel(self.ctx, instance, pool)
             else:
                 target.run(self.ctx, instance)
 
             self.ctx = oldctx
 
-        if prun:
-            prun.wait_all()
+        if pool:
+            pool.wait_all()
 
     def run_config(self):
         if self.args.list_instances:
