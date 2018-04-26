@@ -226,6 +226,7 @@ class Setup:
         self.ctx.nm = 'nm'
         self.ctx.ranlib = 'ranlib'
         self.ctx.cflags = []
+        self.ctx.cxxflags = []
         self.ctx.ldflags = []
 
     def create_dirs(self):
