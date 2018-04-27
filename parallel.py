@@ -6,7 +6,6 @@ import shlex
 import select
 import re
 import subprocess
-import math
 import io
 import fcntl
 from abc import ABCMeta, abstractmethod
@@ -115,7 +114,7 @@ class Pool(metaclass=ABCMeta):
     def get_elapsed(self, job):
         if not hasattr(job, 'start_time'):
             return ''
-        return ' after %d seconds' % (math.ceil(time.time() - job.start_time))
+        return ' after %d seconds' % round(time.time() - job.start_time)
 
 
 class ProcessPool(Pool):
