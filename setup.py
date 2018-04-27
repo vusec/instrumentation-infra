@@ -114,6 +114,8 @@ class Setup:
                 help='run a single target program')
         prun.add_argument('--build', action='store_true',
                 help='build target first (default false)')
+        prun.add_argument('-j', '--jobs', type=int, default=nproc,
+                help='maximum number of build processes (default %d)' % nproc)
         prun.add_argument('-n', '--iterations', metavar='N',
                 type=int, default=1,
                 help='number of runs per benchmark')
