@@ -77,8 +77,7 @@ class Setup:
                 help='clean targets and packages (not all deps, only from -p) first')
         pbuild.add_argument('--dry-run', action='store_true',
                 help='don\'t actually build anything, just show what will be done')
-        pbuild.add_argument('--parallel', choices=('none', 'proc', 'prun'),
-                default='none',
+        pbuild.add_argument('--parallel', choices=('proc', 'prun'), default=None,
                 help='build benchmarks in parallel ("proc" for local processes, "prun" for DAS cluster)')
         pbuild.add_argument('--parallelmax', metavar='PROCESSES_OR_NODES',
                 type=int, default=None,
@@ -118,13 +117,12 @@ class Setup:
         prun.add_argument('-n', '--iterations', metavar='N',
                 type=int, default=1,
                 help='number of runs per benchmark')
-        pbuild.add_argument('--parallel', choices=('none', 'proc', 'prun'),
-                default='none',
+        prun.add_argument('--parallel', choices=('proc', 'prun'), default=None,
                 help='run benchmarks in parallel ("proc" for local processes, "prun" for DAS cluster)')
-        pbuild.add_argument('--parallelmax', metavar='PROCESSES_OR_NODES', type=int,
+        prun.add_argument('--parallelmax', metavar='PROCESSES_OR_NODES', type=int,
                 help='limit simultaneous node reservations (default: %d for proc, %d for prun)' %
                      (proc_default_parallelmax, prun_default_parallelmax))
-        pbuild.add_argument('--prun-opts', nargs='+', default=[],
+        prun.add_argument('--prun-opts', nargs='+', default=[],
                 help='additional options for prun (for --parallel=prun)')
         ptargets = prun.add_subparsers(
                 title='target', metavar='TARGET', dest='target',

@@ -7,8 +7,14 @@ import select
 import re
 import subprocess
 import math
+import io
+import fcntl
 from abc import ABCMeta, abstractmethod
 from .util import run
+
+
+# TODO: rewrite this to use
+# https://docs.python.org/3/library/concurrent.futures.html?
 
 
 class Pool(metaclass=ABCMeta):
@@ -86,6 +92,7 @@ class Pool(metaclass=ABCMeta):
             assert hasattr(job, 'stdout')
             job.onsuccess = onsuccess
             job.onerror = onerror
+            job.output = ''
             self.jobs[job.stdout.fileno()] = job
             self.poller.register(job.stdout, select.EPOLLIN | select.EPOLLPRI |
                                              select.EPOLLERR | select.EPOLLHUP)
@@ -114,24 +121,41 @@ class Pool(metaclass=ABCMeta):
 class ProcessPool(Pool):
     def make_jobs(self, ctx, cmd, jobid_base, outfile_base, nnodes, **kwargs):
         for i in range(nnodes):
-            jobid = '%s-%d' % (jobid_base, i)
-            outfile = '%s.%d' % (outfile_base, i)
+            jobid = jobid_base
+            outfile = outfile_base
+            if nnodes > 1:
+                jobid += '-%d' % i
+                outfile += '-%d' % i
 
             self.wait_for_queue_space(1)
             ctx.log.info('running ' + jobid)
 
-            os.makedirs(os.path.dirname(outfile), exist_ok=True)
-            fout = open(outfile, 'w')
-
-            job = run(ctx, cmd, defer=True, stdout=fout,
-                      stderr=subprocess.STDOUT, **kwargs)
+            job = run(ctx, cmd, defer=True, stderr=subprocess.STDOUT,
+                      bufsize=io.DEFAULT_BUFFER_SIZE,
+                      universal_newlines=False, **kwargs)
+            set_non_blocking(job.stdout)
+            job.start_time = time.time()
             job.jobid = jobid
             job.nnodes = 1
-            job.start_time = time.time()
+
+            os.makedirs(os.path.dirname(outfile), exist_ok=True)
+            job.outfile = open(outfile, 'wb')
+
             yield job
 
     def process_job_output(self, job):
-        pass
+        buf = job.stdout.read(io.DEFAULT_BUFFER_SIZE)
+        if buf is not None:
+            job.output += buf.decode('ascii')
+            job.outfile.write(buf)
+
+    def onsuccess(self, job):
+        super().onsuccess(job)
+        job.outfile.close()
+
+    def onerror(self, job):
+        super().onerror(job)
+        job.outfile.close()
 
 
 class PrunPool(Pool):
@@ -148,12 +172,17 @@ class PrunPool(Pool):
                '-o', outfile, *self.prun_opts, *cmd]
         job = run(ctx, cmd, defer=True, stderr=subprocess.STDOUT, bufsize=0,
                   universal_newlines=False, **kwargs)
+        set_non_blocking(job.stdout)
         job.jobid = jobid
         job.nnodes = nnodes
         yield job
 
     def process_job_output(self, job):
-        job.output += job.stdout.read(1024).decode('utf-8')
+        buf = job.stdout.read(1024)
+        if buf is None:
+            return
+
+        job.output += buf.decode('ascii')
 
         numseconds = -1
         nodes = []
@@ -180,3 +209,8 @@ class PrunPool(Pool):
             self.log.info('running %s on %s %s%s' %
                           (job.jobid, desc, nodelist, suffix))
             job.start_time = time.time()
+
+
+def set_non_blocking(f):
+    flags = fcntl.fcntl(f, fcntl.F_GETFL)
+    fcntl.fcntl(f, fcntl.F_SETFL, flags | os.O_NONBLOCK)
