@@ -9,6 +9,7 @@ from contextlib import redirect_stdout
 from ...util import run, apply_patch, qjoin, FatalError
 from ...target import Target
 from ...packages import Bash, Nothp
+from ...parallel import PrunPool
 from .benchmark_sets import benchmark_sets
 
 
@@ -158,7 +159,7 @@ class SPEC2006(Target):
         # set output root to local disk when using prun to avoid noise due to
         # network lag when writing output files
         specdir = self.path(ctx, 'install')
-        if pool:
+        if isinstance(pool, PrunPool):
             output_root = '/local/%s/cpu2006-output-root' % getpass.getuser()
             runargs += ['--define', 'output_root=' + output_root]
         else:
@@ -189,22 +190,23 @@ class SPEC2006(Target):
         if pool:
             timestamp = datetime.datetime.now().strftime('run-%Y-%m-%d.%H:%M:%S')
 
-            # prepare output dir on local disk before running,
-            # and move output files to network disk after completion
-            cmd = unindent('''
-            rm -rf "{output_root}"
-            mkdir -p "{output_root}"
-            mkdir -p "{specdir}/result"
-            ln -s "{specdir}/result" "{output_root}"
-            if [ -d "{specdir}/benchspec/CPU2006/{{bench}}/exe" ]; then
-                mkdir -p "{output_root}/benchspec/CPU2006/{{bench}}"
-                cp -r "{specdir}/benchspec/CPU2006/{{bench}}/exe" \\
-                    "{output_root}/benchspec/CPU2006/{{bench}}"
-            fi
-            {{{{ {cmd}; }}}} | \\
-                sed "s,{output_root}/result/,{specdir}/result/,g"
-            rm -rf "{output_root}"
-            ''').format(**locals())
+            if isinstance(pool, PrunPool):
+                # prepare output dir on local disk before running,
+                # and move output files to network disk after completion
+                cmd = unindent('''
+                rm -rf "{output_root}"
+                mkdir -p "{output_root}"
+                mkdir -p "{specdir}/result"
+                ln -s "{specdir}/result" "{output_root}"
+                if [ -d "{specdir}/benchspec/CPU2006/{{bench}}/exe" ]; then
+                    mkdir -p "{output_root}/benchspec/CPU2006/{{bench}}"
+                    cp -r "{specdir}/benchspec/CPU2006/{{bench}}/exe" \\
+                        "{output_root}/benchspec/CPU2006/{{bench}}"
+                fi
+                {{{{ {cmd}; }}}} | \\
+                    sed "s,{output_root}/result/,{specdir}/result/,g"
+                rm -rf "{output_root}"
+                ''').format(**locals())
 
             for bench in benchmarks:
                 jobid = 'run-%s-%s' % (instance.name, bench)

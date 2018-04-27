@@ -27,7 +27,7 @@ class Pool(metaclass=ABCMeta):
     def process_job_output(self, job):
         pass
 
-    def __init__(self, logger, parallelmax=None):
+    def __init__(self, logger, parallelmax):
         self.log = logger
         self.parallelmax = parallelmax
         self.jobs = {}

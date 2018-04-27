@@ -35,7 +35,7 @@ class Setup:
 
         ncpus = cpu_count()
         nproc = min(ncpus, self.max_default_jobs)
-        proc_default_parallelmax = ncpus
+        proc_default_parallelmax = nproc
         prun_default_parallelmax = 64
 
         targets_help = '%s' % ' | '.join(self.targets)
@@ -79,8 +79,7 @@ class Setup:
                 help='don\'t actually build anything, just show what will be done')
         pbuild.add_argument('--parallel', choices=('proc', 'prun'), default=None,
                 help='build benchmarks in parallel ("proc" for local processes, "prun" for DAS cluster)')
-        pbuild.add_argument('--parallelmax', metavar='PROCESSES_OR_NODES',
-                type=int, default=None,
+        pbuild.add_argument('--parallelmax', metavar='PROCESSES_OR_NODES', type=int,
                 help='limit simultaneous node reservations (default: %d for proc, %d for prun)' %
                      (proc_default_parallelmax, prun_default_parallelmax))
         pbuild.add_argument('--prun-opts', nargs='+', default=[],
@@ -192,7 +191,7 @@ class Setup:
         if 'jobs' in self.args:
             self.ctx.jobs = self.args.jobs
 
-        if 'parallelmax' not in self.args:
+        if self.args.parallelmax is None:
             if self.args.parallel == 'proc':
                 self.args.parallelmax = proc_default_parallelmax
             elif self.args.parallel == 'prun':
@@ -388,7 +387,7 @@ class Setup:
             return PrunPool(self.ctx.log, self.args.parallelmax,
                             self.args.prun_opts)
 
-        if len(self.args.parallelmax):
+        if self.args.parallelmax:
             raise FatalError('--parallelmax not supported for --parallel=none')
         if len(self.args.prun_opts):
             raise FatalError('--prun-opts not supported for --parallel=none')
