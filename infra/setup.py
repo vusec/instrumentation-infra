@@ -275,7 +275,7 @@ class Setup:
         if 'jobs' in self.args:
             self.ctx.jobs = self.args.jobs
 
-        if self.args.parallelmax is None:
+        if 'parallelmax' in self.args and self.args.parallelmax is None:
             if self.args.parallel == 'proc':
                 self.args.parallelmax = proc_default_parallelmax
             elif self.args.parallel == 'prun':
