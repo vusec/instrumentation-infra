@@ -172,3 +172,9 @@ sys.path.insert(0, os.path.abspath('..'))
 
 # Make autodoc include all documented module/class members by default
 autodoc_default_flags = ['members']
+
+
+# -- Add pygments stylesheet to fix highlighting on RTD ----------------------
+
+def setup(app):
+    app.add_stylesheet('css/pygments.css')
