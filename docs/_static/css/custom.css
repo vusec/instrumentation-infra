@@ -1,0 +1,8 @@
+.rst-content table.docutils th,
+.rst-content table.docutils td {
+  padding: 6px 12px;
+}
+.rst-content table.docutils tr ul,
+.rst-content table.docutils tr p {
+  margin-bottom: 0 !important;
+}

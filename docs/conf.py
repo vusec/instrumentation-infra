@@ -180,5 +180,8 @@ def setup(app):
     # Add pygments stylesheet to fix highlighting on RTD
     app.add_stylesheet('css/pygments.css')
 
+    # RTD stylesheet tweaks
+    app.add_stylesheet('css/custom.css')
+
     # Use type annotations to generate param/return types in docstrings
     sphinx_autodoc_annotation.setup(app)
