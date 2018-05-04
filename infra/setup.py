@@ -14,6 +14,83 @@ sys.dont_write_bytecode = True
 
 
 class Setup:
+    """
+    Defines the main execution of framework commands.
+
+    The setup takes care of complicated things like command-line parsing,
+    logging, parallelism, environment setup and generating build paths. You
+    should only need to use the methods documented here. To use the setup, you
+    must first populate it with targets and instances using :func:`add_target`
+    and :func:`add_instance`:
+
+    >>> setup = infra.Setup(__file__)
+    >>> setup.add_instance(MyAwesomeInstance())
+    >>> setup.add_target(MyBeautifulTarget())
+    >>> setup.main()
+
+    :func:`main` creates a "context" that it passes to methods of
+    targets/instances/packages. You can see it being used as ``ctx`` by many
+    API methods below. The context contains setup configuration data, such as
+    absolute build paths, and environment variables for build/run commands,
+    such as which compiler and CFLAGS to use to build the current target. Your
+    own targets and instances should read/write to the context.
+
+    Consider an example project hosted in directory `/project`, with the
+    infrastructure cloned as a submodule in `/project/infra` and a setup script
+    like the one above in `/project/setup.py`. The context will look like this
+    after initialization:
+
+    >>> setup.ctx
+    Namespace({
+        'paths': Namespace({
+            'root': '/project',
+            'setup': '/project/setup.py',
+            'infra': '/project/infra/infra'
+            'buildroot': '/project/build',
+            'log': '/project/build/log',
+            'debuglog': '/project/build/log/debug.txt',
+            'runlog': '/project/build/log/commands.txt',
+            'packages': '/project/build/packages',
+            'targets': '/project/build/targets',
+            'tools': '/project/infra/tools',
+            'pool_results': '/project/results'
+        }),
+        'runenv': Namespace({}),
+        'cc': 'cc',
+        'cxx': 'c++',
+        'ar': 'ar',
+        'nm': 'nm',
+        'ranlib': 'ranlib',
+        'cflags': [],
+        'cxxflags': [],
+        'ldflags': []
+    })
+
+    The :class:`Namespace <util.Namespace>` class is simply a dictionary whose
+    members can be accessed like attributes.
+
+    ``ctx.paths`` are absolute paths to be used (readonly) by build scripts.
+
+    ``ctx.runenv`` defines environment variables for :func:`util.run`, which is
+    a wrapper for :func:`subprocess.run` that does logging and other useful
+    things. 
+
+    ``ctx.{cc,cxx,ar,nm,ranlib}`` define default tools of the compiler
+    toolchain, and should be used by target definitions to configure build
+    scripts. ``ctx.{c,cxx,ld}flags`` similarly define build flags for targets
+    in a list and should be joined into a string using :func:`util.qjoin` when
+    being passed as a string to a build script by a target definition.
+
+    **The job of an instance is to manipulate the the context such that a
+    target is built in the desired way.** This manipulation happens in
+    predefined API methods which you must overwrite (see below). Hence, these
+    methods receive the context as a parameter.
+
+    :param str setup_path: Path to the script running :func:`Setup.main`.
+                           Needed to allow build scripts to call back into the
+                           setup script for build hooks.
+    """
+
     max_default_jobs = 16
 
     def __init__(self, setup_path):
@@ -22,6 +99,13 @@ class Setup:
         self.targets = OrderedDict()
 
     def main(self):
+        """
+        Run the configured setup:
+
+        #. Parse command-line arguments.
+        #. Create build directories and log files.
+        #. Run the issued command.
+        """
         self.ctx = Namespace()
         self.init_context()
         self.parse_argv()
@@ -271,6 +355,13 @@ class Setup:
             pass
 
     def add_instance(self, instance):
+        """
+        Register an instance. Only registered instances can be referenced in
+        commands, so also :doc:`built-in instances <instances>` must be
+        registered.
+
+        :param Instance instance: The instance to register.
+        """
         if instance.name in self.instances:
             self.ctx.log.warning('overwriting existing instance "%s"' % instance)
         self.instances[instance.name] = instance
@@ -281,6 +372,12 @@ class Setup:
         return self.instances[name]
 
     def add_target(self, target):
+        """
+        Register a target. Only registered targets can be referenced in
+        commands, so also :doc:`built-in targets <targets>` must be registered.
+
+        :param Target target: The target to register.
+        """
         if target.name in self.targets:
             self.ctx.log.warning('overwriting existing target "%s"' % target)
         self.targets[target.name] = target

@@ -11,6 +11,8 @@ from contextlib import redirect_stdout
 
 
 def apply_patch(ctx, path, strip_count):
+    """
+    """
     path = os.path.abspath(path)
     name = os.path.basename(path).replace('.patch', '')
     stamp = '.patched-' + name
@@ -30,6 +32,8 @@ def apply_patch(ctx, path, strip_count):
 
 def run(ctx, cmd, allow_error=False, silent=False, teeout=False, defer=False,
         env={}, **kwargs):
+    """
+    """
     cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd]
     cmd_print = qjoin(cmd)
     stdin = kwargs.get('stdin', None)
@@ -116,10 +120,14 @@ def run(ctx, cmd, allow_error=False, silent=False, teeout=False, defer=False,
 
 
 def qjoin(args):
+    """
+    """
     return ' '.join(shlex.quote(arg) for arg in args)
 
 
 def download(ctx, url, outfile=None):
+    """
+    """
     if outfile:
         ctx.log.debug('downloading %s to %s' % (url, outfile))
     else:
@@ -183,6 +191,8 @@ class Tee(io.IOBase):
 
 
 class Namespace(dict):
+    """
+    """
     def __getattr__(self, key):
         return self[key]
 
@@ -209,4 +219,6 @@ class Namespace(dict):
 
 
 class FatalError(Exception):
+    """
+    """
     pass

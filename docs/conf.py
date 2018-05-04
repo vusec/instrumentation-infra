@@ -169,3 +169,6 @@ intersphinx_mapping = {
 # Add import path for autodoc
 import sys, os.path
 sys.path.insert(0, os.path.abspath('..'))
+
+# Make autodoc include all documented module/class members by default
+autodoc_default_flags = ['members']
