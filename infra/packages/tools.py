@@ -13,10 +13,10 @@ class Nothp(Package):
         pass
 
     def build(self, ctx):
-        self.run_make(ctx, '-j%d' % ctx.jobs)
+        self._run_make(ctx, '-j%d' % ctx.jobs)
 
     def install(self, ctx):
-        self.run_make(ctx, 'install')
+        self._run_make(ctx, 'install')
 
     def is_fetched(self, ctx):
         return True
@@ -27,7 +27,7 @@ class Nothp(Package):
     def is_installed(self, ctx):
         return os.path.exists('install/nothp')
 
-    def run_make(self, ctx, *args):
+    def _run_make(self, ctx, *args):
         os.chdir(ctx.paths.tools + '/nothp')
         run(ctx, [
             'make',

@@ -3,10 +3,6 @@ from ..package import Package
 from ..util import run, FatalError
 
 
-def strip_prefix(prefix, full):
-    return full[len(prefix):] if full.startswith(prefix) else full
-
-
 class LLVMPasses(Package):
     def __init__(self, llvm, custom_srcdir, build_suffix, use_builtins):
         self.llvm = llvm
@@ -20,7 +16,7 @@ class LLVMPasses(Package):
         #        autodetect the build suffix from the srcdir
         return 'llvm-passes-' + self.build_suffix
 
-    def srcdir(self, ctx):
+    def _srcdir(self, ctx):
         if not os.path.exists(self.custom_srcdir):
             raise FatalError('llvm-passes dir "%s" does not exist' %
                              self.custom_srcdir)
@@ -36,14 +32,14 @@ class LLVMPasses(Package):
 
     def build(self, ctx):
         os.makedirs('obj', exist_ok=True)
-        os.chdir(self.srcdir(ctx))
-        self.run_make(ctx, '-j%d' % ctx.jobs)
+        os.chdir(self._srcdir(ctx))
+        self._run_make(ctx, '-j%d' % ctx.jobs)
 
     def install(self, ctx):
-        os.chdir(self.srcdir(ctx))
-        self.run_make(ctx, 'install')
+        os.chdir(self._srcdir(ctx))
+        self._run_make(ctx, 'install')
 
-    def run_make(self, ctx, *args, **kwargs):
+    def _run_make(self, ctx, *args, **kwargs):
         return run(ctx, [
             'make', *args,
             'OBJDIR=' + self.path(ctx, 'obj'),
@@ -72,6 +68,8 @@ class LLVMPasses(Package):
         ctx.ldflags += ['-flto', '-Wl,-plugin-opt=-load=' + libpath]
 
     def runtime_cflags(self, ctx):
+        """
+        """
         if self.builtin_passes:
             return self.builtin_passes.runtime_cflags(ctx)
         return []
@@ -81,7 +79,7 @@ class BuiltinLLVMPasses(LLVMPasses):
     def __init__(self, llvm):
         LLVMPasses.__init__(self, llvm, None, 'builtin-' + llvm.version, False)
 
-    def srcdir(self, ctx, *subdirs):
+    def _srcdir(self, ctx, *subdirs):
         return os.path.join(ctx.paths.infra, 'llvm-passes',
                             self.llvm.version, *subdirs)
 
@@ -96,14 +94,16 @@ class BuiltinLLVMPasses(LLVMPasses):
     def pkg_config_options(self, ctx):
         yield ('--cxxflags',
                'pass compile flags',
-               ['-I', self.srcdir(ctx)])
+               ['-I', self._srcdir(ctx)])
         yield ('--runtime-cflags',
                'runtime compile flags',
                self.runtime_cflags(ctx))
         yield ('--target-cflags',
                'target compile flags for instrumentation helpers',
-               ['-I', self.srcdir(ctx, 'include')])
+               ['-I', self._srcdir(ctx, 'include')])
         yield from LLVMPasses.pkg_config_options(self, ctx)
 
     def runtime_cflags(self, ctx):
-        return ['-I', self.srcdir(ctx, 'include')]
+        """
+        """
+        return ['-I', self._srcdir(ctx, 'include')]

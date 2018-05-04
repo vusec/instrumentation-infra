@@ -97,7 +97,7 @@ class SPEC2006(Target):
             ctx.log.debug('removing SPEC-CPU2006 source files to save disk space')
             shutil.rmtree(self.path(ctx, 'src'))
 
-    def apply_patches(self, ctx):
+    def _apply_patches(self, ctx):
         os.chdir(self.path(ctx, 'install'))
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
@@ -114,13 +114,13 @@ class SPEC2006(Target):
         # apply any pending patches (doing this at build time allows adding
         # patches during instance development, and is needed to apply patches
         # when self.source_type == 'installed')
-        self.apply_patches(ctx)
+        self._apply_patches(ctx)
 
         os.chdir(self.path(ctx))
-        config = self.make_spec_config(ctx, instance)
+        config = self._make_spec_config(ctx, instance)
         print_output = ctx.loglevel == logging.DEBUG
 
-        for bench in self.get_benchmarks(ctx, instance):
+        for bench in self._get_benchmarks(ctx, instance):
             cmd = 'killwrap_tree runspec --config=%s --action=build %s' % \
                   (config, bench)
             if pool:
@@ -129,12 +129,12 @@ class SPEC2006(Target):
                                       self.name, instance.name)
                 os.makedirs(outdir, exist_ok=True)
                 outfile = os.path.join(outdir, bench)
-                self.run_bash(ctx, cmd, pool, jobid=jobid,
+                self._run_bash(ctx, cmd, pool, jobid=jobid,
                               outfile=outfile, nnodes=1)
             else:
                 ctx.log.info('building %s-%s %s' %
                              (self.name, instance.name, bench))
-                self.run_bash(ctx, cmd, teeout=print_output)
+                self._run_bash(ctx, cmd, teeout=print_output)
 
     def run_parallel(self, ctx, instance, pool):
         self.run(ctx, instance, pool=pool)
@@ -185,7 +185,7 @@ class SPEC2006(Target):
 
         cmd = cmd.format(**locals())
 
-        benchmarks = self.get_benchmarks(ctx, instance)
+        benchmarks = self._get_benchmarks(ctx, instance)
 
         if pool:
             timestamp = datetime.datetime.now().strftime('run-%Y-%m-%d.%H:%M:%S')
@@ -193,7 +193,7 @@ class SPEC2006(Target):
             if isinstance(pool, PrunPool):
                 # prepare output dir on local disk before running,
                 # and move output files to network disk after completion
-                cmd = unindent('''
+                cmd = _unindent('''
                 rm -rf "{output_root}"
                 mkdir -p "{output_root}"
                 mkdir -p "{specdir}/result"
@@ -214,17 +214,17 @@ class SPEC2006(Target):
                                       self.name, instance.name)
                 os.makedirs(outdir, exist_ok=True)
                 outfile = os.path.join(outdir, bench)
-                self.run_bash(ctx, cmd.format(bench=bench), pool,
+                self._run_bash(ctx, cmd.format(bench=bench), pool,
                               jobid=jobid, outfile=outfile,
                               nnodes=ctx.args.iterations)
         else:
-            self.run_bash(ctx, cmd.format(bench=qjoin(benchmarks)), teeout=True)
+            self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)), teeout=True)
 
-    def run_bash(self, ctx, commands, pool=None, **kwargs):
+    def _run_bash(self, ctx, commands, pool=None, **kwargs):
         config_root = os.path.dirname(os.path.abspath(__file__))
         cmd = [
             'bash', '-c',
-            '\n' + unindent('''
+            '\n' + _unindent('''
             cd %s/install
             source shrc
             source "%s/scripts/kill-tree-on-interrupt.inc"
@@ -235,7 +235,7 @@ class SPEC2006(Target):
             return pool.run(ctx, cmd, **kwargs)
         return run(ctx, cmd, **kwargs)
 
-    def make_spec_config(self, ctx, instance):
+    def _make_spec_config(self, ctx, instance):
         config_name = 'infra-' + instance.name
         config_path = self.path(ctx, 'install/config/%s.cfg' % config_name)
         ctx.log.debug('writing SPEC2006 config to ' + config_path)
@@ -316,7 +316,7 @@ class SPEC2006(Target):
     def run_hooks_post_build(self, ctx, instance):
         pass
 
-    def get_benchmarks(self, ctx, instance):
+    def _get_benchmarks(self, ctx, instance):
         benchmarks = set()
         for bset in ctx.args.spec2006_benchmarks:
             for bench in self.benchmarks[bset]:
@@ -329,7 +329,7 @@ class SPEC2006(Target):
     benchmarks = benchmark_sets
 
 
-def unindent(cmd):
+def _unindent(cmd):
     stripped = re.sub(r'^\n|\n *$', '', cmd)
     indent = re.search('^ +', stripped, re.M)
     if indent:

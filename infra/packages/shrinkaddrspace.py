@@ -60,11 +60,11 @@ class ShrinkAddrSpace(Package):
             ]
 
             # patch binary and prelink libraries after build
-            ctx.hooks.post_build += [self.prelink_binary, self.fix_preinit]
+            ctx.hooks.post_build += [self._prelink_binary, self._fix_preinit]
         else:
             raise NotImplementedError
 
-    def prelink_binary(self, ctx, binary):
+    def _prelink_binary(self, ctx, binary):
         libpath = ctx.runenv.join_paths().get('LD_LIBRARY_PATH', '')
         run(ctx, [
             self.path(ctx, 'src/prelink_binary.py'),
@@ -75,7 +75,7 @@ class ShrinkAddrSpace(Package):
             binary
         ])
 
-    def fix_preinit(self, ctx, binary):
+    def _fix_preinit(self, ctx, binary):
         run(ctx, [
             self.path(ctx, 'src/fix_preinit.py'),
             '--preinit-name', '__shrinkaddrspace_preinit',
@@ -83,4 +83,6 @@ class ShrinkAddrSpace(Package):
         ])
 
     def run_wrapper(self, ctx):
+        """
+        """
         return self.path(ctx, 'src/rpath_wrapper.sh')

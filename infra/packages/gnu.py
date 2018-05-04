@@ -146,7 +146,7 @@ class BinUtils(Package):
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
 
-        if not self.bison_installed(ctx):
+        if not self._bison_installed(ctx):
             raise FatalError('bison not found (required to build binutils)')
 
         configure = ['../src/configure',
@@ -183,6 +183,6 @@ class BinUtils(Package):
     def is_installed(self, ctx):
         return os.path.exists('install/bin/ld')
 
-    def bison_installed(self, ctx):
+    def _bison_installed(self, ctx):
         proc = run(ctx, ['bison', '--version'], allow_error=True, silent=True)
         return proc and proc.returncode == 0

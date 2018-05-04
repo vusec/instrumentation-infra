@@ -9,12 +9,12 @@ class Python(Package):
     def ident(self):
         return 'python-' + self.version
 
-    def binary(self):
+    def _binary(self):
         return 'python' + self.version
 
     def fetch(self, ctx):
         if not self.is_installed(ctx):
-            raise FatalError(self.binary() + ' not found, please install it')
+            raise FatalError(self._binary() + ' not found, please install it')
 
     def build(self, ctx):
         pass
@@ -29,5 +29,5 @@ class Python(Package):
         return False
 
     def is_installed(self, ctx):
-        proc = run(ctx, [self.binary(), '--version'], allow_error=True, silent=True)
+        proc = run(ctx, [self._binary(), '--version'], allow_error=True, silent=True)
         return proc and proc.returncode == 0

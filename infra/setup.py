@@ -91,11 +91,11 @@ class Setup:
                            setup script for build hooks.
     """
 
-    max_default_jobs = 16
+    _max_default_jobs = 16
 
     def __init__(self, setup_path):
         self.setup_path = os.path.abspath(setup_path)
-        elf.instances = OrderedDict()
+        self.instances = OrderedDict()
         self.targets = OrderedDict()
 
     def main(self):
@@ -107,18 +107,18 @@ class Setup:
         #. Run the issued command.
         """
         self.ctx = Namespace()
-        self.init_context()
-        self.parse_argv()
-        self.create_dirs()
-        self.initialize_logger()
-        self.run_command()
+        self._init_context()
+        self._parse_argv()
+        self._create_dirs()
+        self._initialize_logger()
+        self._run_command()
 
-    def parse_argv(self):
+    def _parse_argv(self):
         parser = argparse.ArgumentParser(
                 description='Frontend for building/running instrumented benchmarks.')
 
         ncpus = cpu_count()
-        nproc = min(ncpus, self.max_default_jobs)
+        nproc = min(ncpus, self._max_default_jobs)
         proc_default_parallelmax = nproc
         prun_default_parallelmax = 64
 
@@ -148,7 +148,7 @@ class Setup:
         pbuild.add_argument('-p', '--packages', nargs='+',
                 metavar='PACKAGE', default=[],
                 help='which packages to build (either on top of dependencies, '
-                     'or to force a rebuild)').completer = self.complete_pkg
+                     'or to force a rebuild)').completer = self._complete_pkg
         pbuild.add_argument('-j', '--jobs', type=int, default=nproc,
                 help='maximum number of build processes (default %d)' % nproc)
         pbuild.add_argument('--deps-only', action='store_true',
@@ -190,7 +190,7 @@ class Setup:
                 help=targets_help)
         pclean.add_argument('-p', '--packages', nargs='+', metavar='PACKAGE',
                 default=[],
-                help='which packages to clean').completer = self.complete_pkg
+                help='which packages to clean').completer = self._complete_pkg
 
         # command: run
         prun = self.subparsers.add_parser('run',
@@ -233,7 +233,7 @@ class Setup:
         ppkgconfig = self.subparsers.add_parser('pkg-config',
                 help='print package-specific information')
         ppkgconfig.add_argument('package',
-                help='package to configure').completer = self.complete_pkg
+                help='package to configure').completer = self._complete_pkg
         #ppkgconfig.add_argument('option',
         #        help='configuration option').completer = self.complete_pkg_config
         ppkgconfig.add_argument('args', nargs=argparse.REMAINDER, choices=[],
@@ -281,20 +281,20 @@ class Setup:
             elif self.args.parallel == 'prun':
                 self.args.parallelmax = prun_default_parallelmax
 
-    def complete_pkg(self, prefix, parsed_args, **kwargs):
+    def _complete_pkg(self, prefix, parsed_args, **kwargs):
         objs = list(self.targets.values())
         objs += list(self.instances.values())
-        for package in self.get_deps(objs):
+        for package in self._get_deps(objs):
             name = package.ident()
             if name.startswith(prefix):
                 yield name
 
     #def complete_pkg_config(self, prefix, parsed_args, **kwargs):
-    #    package = self.get_package(parsed_args.package)
+    #    package = self._get_package(parsed_args.package)
     #    return (arg for arg, desc, value in package.pkg_config(self.ctx)
     #            if arg.startswith(prefix))
 
-    def init_context(self):
+    def _init_context(self):
         self.ctx.hooks = Namespace(post_build=[])
 
         self.ctx.paths = paths = Namespace()
@@ -321,12 +321,12 @@ class Setup:
         self.ctx.cxxflags = []
         self.ctx.ldflags = []
 
-    def create_dirs(self):
+    def _create_dirs(self):
         os.makedirs(self.ctx.paths.log, exist_ok=True)
         os.makedirs(self.ctx.paths.packages, exist_ok=True)
         os.makedirs(self.ctx.paths.targets, exist_ok=True)
 
-    def initialize_logger(self):
+    def _initialize_logger(self):
         fmt = '%(asctime)s [%(levelname)s] %(message)s'
         datefmt = '%H:%M:%S'
 
@@ -366,7 +366,7 @@ class Setup:
             self.ctx.log.warning('overwriting existing instance "%s"' % instance)
         self.instances[instance.name] = instance
 
-    def get_instance(self, name):
+    def _get_instance(self, name):
         if name not in self.instances:
             raise FatalError('no instance called "%s"' % name)
         return self.instances[name]
@@ -382,20 +382,20 @@ class Setup:
             self.ctx.log.warning('overwriting existing target "%s"' % target)
         self.targets[target.name] = target
 
-    def get_target(self, name):
+    def _get_target(self, name):
         if name not in self.targets:
             raise FatalError('no target called "%s"' % name)
         return self.targets[name]
 
-    def get_package(self, name):
+    def _get_package(self, name):
         objs = list(self.targets.values())
         objs += list(self.instances.values())
-        for package in self.get_deps(objs):
+        for package in self._get_deps(objs):
             if package.ident() == name:
                 return package
         raise FatalError('no package called %s' % name)
 
-    def get_deps(self, objs):
+    def _get_deps(self, objs):
         deps = []
 
         def add_dep(dep, visited):
@@ -418,7 +418,7 @@ class Setup:
 
         return deps
 
-    def fetch_package(self, package, force_rebuild, *args):
+    def _fetch_package(self, package, force_rebuild, *args):
         package.goto_rootdir(self.ctx)
 
         if package.is_fetched(self.ctx):
@@ -431,7 +431,7 @@ class Setup:
                 package.goto_rootdir(self.ctx)
                 package.fetch(self.ctx, *args)
 
-    def build_package(self, package, force_rebuild, *args):
+    def _build_package(self, package, force_rebuild, *args):
         package.goto_rootdir(self.ctx)
 
         if not force_rebuild and package.is_built(self.ctx):
@@ -445,7 +445,7 @@ class Setup:
                 package.goto_rootdir(self.ctx)
                 package.build(self.ctx, *args)
 
-    def install_package(self, package, force_rebuild, *args):
+    def _install_package(self, package, force_rebuild, *args):
         package.goto_rootdir(self.ctx)
 
         if not force_rebuild and package.is_installed(self.ctx):
@@ -458,7 +458,7 @@ class Setup:
 
         package.goto_rootdir(self.ctx)
 
-    def clean_package(self, package):
+    def _clean_package(self, package):
         if package.is_clean(self.ctx):
             self.ctx.log.debug('package %s is already cleaned' % package.ident())
         else:
@@ -466,7 +466,7 @@ class Setup:
             if not self.args.dry_run:
                 package.clean(self.ctx)
 
-    def clean_target(self, target):
+    def _clean_target(self, target):
         if target.is_clean(self.ctx):
             self.ctx.log.debug('target %s is already cleaned' % target.name)
         else:
@@ -474,7 +474,7 @@ class Setup:
             if not self.args.dry_run:
                 target.clean(self.ctx)
 
-    def make_pool(self):
+    def _make_pool(self):
         if self.args.parallel == 'proc':
             if len(self.args.prun_opts):
                 raise FatalError('--prun-opts not supported for --parallel=proc')
@@ -489,11 +489,11 @@ class Setup:
         if len(self.args.prun_opts):
             raise FatalError('--prun-opts not supported for --parallel=none')
 
-    def run_build(self):
-        targets = [self.get_target(name) for name in self.args.targets]
-        instances = [self.get_instance(name) for name in self.args.instances]
-        packages = [self.get_package(name) for name in self.args.packages]
-        pool = self.make_pool()
+    def _run_build(self):
+        targets = [self._get_target(name) for name in self.args.targets]
+        instances = [self._get_instance(name) for name in self.args.instances]
+        packages = [self._get_package(name) for name in self.args.packages]
+        pool = self._make_pool()
 
         if self.args.deps_only:
             if not targets and not instances and not packages:
@@ -501,7 +501,7 @@ class Setup:
         elif (not targets or not instances) and not packages:
             raise FatalError('need at least one target and instance to build')
 
-        deps = self.get_deps(targets + instances + packages)
+        deps = self._get_deps(targets + instances + packages)
         force_deps = set()
         separate_packages = []
         for package in packages:
@@ -513,14 +513,14 @@ class Setup:
         # clean packages and targets if requested
         if self.args.clean:
             for package in packages:
-                self.clean_package(package)
+                self._clean_package(package)
             for target in targets:
-                self.clean_target(target)
+                self._clean_target(target)
 
         # first fetch all necessary code so that the internet connection can be
         # broken during building
         for package in deps + separate_packages:
-            self.fetch_package(package, self.args.force_rebuild_deps)
+            self._fetch_package(package, self.args.force_rebuild_deps)
 
         if not self.args.deps_only:
             for target in targets:
@@ -531,18 +531,18 @@ class Setup:
                     self.ctx.log.info('fetching %s' % target.name)
                     target.fetch(self.ctx)
 
-        cached_deps = {t: self.get_deps([t]) for t in targets}
+        cached_deps = {t: self._get_deps([t]) for t in targets}
         for i in instances:
-            cached_deps[i] = self.get_deps([i])
+            cached_deps[i] = self._get_deps([i])
         for p in separate_packages:
-            cached_deps[p] = self.get_deps([p])
+            cached_deps[p] = self._get_deps([p])
 
         built_packages = set()
 
         def build_package_once(package, force):
             if package not in built_packages:
-                self.build_package(package, force)
-                self.install_package(package, force)
+                self._build_package(package, force)
+                self._install_package(package, force)
                 built_packages.add(package)
 
         def build_deps_once(obj):
@@ -596,8 +596,8 @@ class Setup:
         if pool:
             pool.wait_all()
 
-    def run_exec_hook(self):
-        instance = self.get_instance(self.args.instance)
+    def _run_exec_hook(self):
+        instance = self._get_instance(self.args.instance)
 
         absfile = os.path.abspath(self.args.targetfile)
         if not os.path.exists(absfile):
@@ -608,7 +608,7 @@ class Setup:
 
         # don't build packages (should have been done already since this
         # command should only be called recursively)
-        for package in self.get_deps([instance]):
+        for package in self._get_deps([instance]):
             package.install_env(self.ctx)
 
         # populate self.ctx.hooks[hooktype]
@@ -620,22 +620,22 @@ class Setup:
             os.chdir(basedir)
             hook(self.ctx, absfile)
 
-    def run_clean(self):
-        packages = [self.get_package(name) for name in self.args.packages]
-        targets = [self.get_target(name) for name in self.args.targets]
+    def _run_clean(self):
+        packages = [self._get_package(name) for name in self.args.packages]
+        targets = [self._get_target(name) for name in self.args.targets]
         if not packages and not targets:
             raise FatalError('no packages or targets specified')
 
         self.args.dry_run = False
         for package in packages:
-            self.clean_package(package)
+            self._clean_package(package)
         for target in targets:
-            self.clean_target(target)
+            self._clean_target(target)
 
-    def run_run(self):
-        target = self.get_target(self.args.target)
-        instances = [self.get_instance(name) for name in self.args.instances]
-        pool = self.make_pool()
+    def _run_run(self):
+        target = self._get_target(self.args.target)
+        instances = [self._get_instance(name) for name in self.args.instances]
+        pool = self._make_pool()
 
         if self.args.build:
             self.args.targets = [self.args.target]
@@ -645,10 +645,10 @@ class Setup:
             self.args.force_rebuild_deps = False
             self.args.dry_run = False
             self.args.relink = False
-            self.ctx.jobs = min(cpu_count(), self.max_default_jobs)
-            self.run_build()
+            self.ctx.jobs = min(cpu_count(), self._max_default_jobs)
+            self._run_build()
 
-        for package in self.get_deps([target]):
+        for package in self._get_deps([target]):
             package.install_env(self.ctx)
 
         for instance in instances:
@@ -668,7 +668,7 @@ class Setup:
         if pool:
             pool.wait_all()
 
-    def run_config(self):
+    def _run_config(self):
         if self.args.list_instances:
             for name in self.instances.keys():
                 print(name)
@@ -678,13 +678,13 @@ class Setup:
         elif self.args.list_packages:
             objs = list(self.targets.values())
             objs += list(self.instances.values())
-            for package in self.get_deps(objs):
+            for package in self._get_deps(objs):
                 print(package.ident())
         else:
             raise NotImplementedError
 
-    def run_pkg_config(self):
-        package = self.get_package(self.args.package)
+    def _run_pkg_config(self):
+        package = self._get_package(self.args.package)
         parser = self.subparsers.add_parser(
                 '%s %s' % (self.args.command, package.ident()))
         pgroup = parser.add_mutually_exclusive_group(required=True)
@@ -700,24 +700,24 @@ class Setup:
 
         print(value)
 
-    def run_command(self):
+    def _run_command(self):
         try:
             if self.args.command not in ('exec-hook', 'pkg-config'):
                 os.chdir(self.ctx.paths.root)
                 self.ctx.runlog = open(self.ctx.paths.runlog, 'w')
 
             if self.args.command == 'build':
-                self.run_build()
+                self._run_build()
             elif self.args.command == 'exec-hook':
-                self.run_exec_hook()
+                self._run_exec_hook()
             elif self.args.command == 'clean':
-                self.run_clean()
+                self._run_clean()
             elif self.args.command == 'run':
-                self.run_run()
+                self._run_run()
             elif self.args.command == 'config':
-                self.run_config()
+                self._run_config()
             elif self.args.command == 'pkg-config':
-                self.run_pkg_config()
+                self._run_pkg_config()
             else:
                 raise FatalError('unknown command %s' % self.args.command)
         except FatalError as e:

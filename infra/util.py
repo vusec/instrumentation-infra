@@ -58,7 +58,7 @@ def run(ctx, cmd, allow_error=False, silent=False, teeout=False, defer=False,
         # thread to be able to flush the logfile during long-running commands
         # (use tail -f to view command output)
         if 'runtee' not in ctx:
-            ctx.runtee = Tee(ctx.runlog, io.StringIO())
+            ctx.runtee = _Tee(ctx.runlog, io.StringIO())
 
         strbuf = ctx.runtee.writers[1]
 
@@ -72,7 +72,7 @@ def run(ctx, cmd, allow_error=False, silent=False, teeout=False, defer=False,
             print(hdr + '-' * (80 - len(hdr)))
 
         if teeout:
-            kwargs['stdout'] = Tee(ctx.runtee, sys.stdout)
+            kwargs['stdout'] = _Tee(ctx.runtee, sys.stdout)
         else:
             kwargs['stdout'] = ctx.runtee
 
@@ -136,18 +136,18 @@ def download(ctx, url, outfile=None):
     urlretrieve(url, outfile)
 
 
-class Tee(io.IOBase):
+class _Tee(io.IOBase):
     def __init__(self, *writers):
-        super(Tee, self).__init__()
+        super().__init__()
         assert len(writers) > 0
         self.writers = list(writers)
         self.readfd, self.writefd = os.pipe()
         self.running = False
-        self.thread = threading.Thread(target=self.flusher)
+        self.thread = threading.Thread(target=self._flusher)
         self.thread.daemon = True
         self.thread.start()
 
-    def flusher(self):
+    def _flusher(self):
         self.running = True
         poller = select.poll()
         poller.register(self.readfd, select.POLLIN | select.POLLPRI)
@@ -200,6 +200,8 @@ class Namespace(dict):
         self[key] = value
 
     def copy(self):
+        """
+        """
         ns = self.__class__()
         for key, value in self.items():
             if isinstance(value, (self.__class__, list, dict)):
@@ -208,6 +210,8 @@ class Namespace(dict):
         return ns
 
     def join_paths(self):
+        """
+        """
         new = self.__class__()
         for key, value in self.items():
             if isinstance(value, (tuple, list)):
