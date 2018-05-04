@@ -21,7 +21,8 @@ class Setup:
     logging, parallelism, environment setup and generating build paths. You
     should only need to use the methods documented here. To use the setup, you
     must first populate it with targets and instances using :func:`add_target`
-    and :func:`add_instance`:
+    and :func:`add_instance`, and then call :func:`main` to run the command
+    issued in the command-line arguments:
 
     >>> setup = infra.Setup(__file__)
     >>> setup.add_instance(MyAwesomeInstance())
