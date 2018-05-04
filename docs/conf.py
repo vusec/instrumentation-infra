@@ -70,7 +70,7 @@ language = None
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = 'python'
+pygments_style = 'python3'
 
 
 # -- Options for HTML output -------------------------------------------------
