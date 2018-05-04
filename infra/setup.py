@@ -289,11 +289,6 @@ class Setup:
             if name.startswith(prefix):
                 yield name
 
-    #def complete_pkg_config(self, prefix, parsed_args, **kwargs):
-    #    package = self._get_package(parsed_args.package)
-    #    return (arg for arg, desc, value in package.pkg_config(self.ctx)
-    #            if arg.startswith(prefix))
-
     def _init_context(self):
         self.ctx.hooks = Namespace(post_build=[])
 
