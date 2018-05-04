@@ -25,7 +25,7 @@ class Nothp(Package):
         return os.path.exists('obj/nothp')
 
     def is_installed(self, ctx):
-        return os.path.exists('install/nothp')
+        return os.path.exists('install/bin/nothp')
 
     def _run_make(self, ctx, *args):
         os.chdir(ctx.paths.tools + '/nothp')
