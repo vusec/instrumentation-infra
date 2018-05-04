@@ -46,14 +46,13 @@ class Setup:
         'paths': Namespace({
             'root':         '/project',
             'setup':        '/project/setup.py',
-            'infra':        '/project/infra/infra'
+            'infra':        '/project/infra'
             'buildroot':    '/project/build',
             'log':          '/project/build/log',
             'debuglog':     '/project/build/log/debug.txt',
             'runlog':       '/project/build/log/commands.txt',
             'packages':     '/project/build/packages',
             'targets':      '/project/build/targets',
-            'tools':        '/project/infra/tools',
             'pool_results': '/project/results'
         }),
         'runenv':   Namespace({}),
@@ -301,8 +300,7 @@ class Setup:
         self.ctx.paths = paths = Namespace()
         paths.setup = self.setup_path
         paths.root = os.path.dirname(self.setup_path)
-        paths.infra = os.path.dirname(__file__)
-        paths.tools = os.path.join(paths.infra, 'tools')
+        paths.infra = os.path.dirname(os.path.dirname(__file__))
         paths.buildroot = os.path.join(paths.root, 'build')
         paths.log = os.path.join(paths.buildroot, 'log')
         paths.debuglog = os.path.join(paths.log, 'debug.txt')

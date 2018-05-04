@@ -28,7 +28,7 @@ class Nothp(Package):
         return os.path.exists('install/bin/nothp')
 
     def _run_make(self, ctx, *args):
-        os.chdir(ctx.paths.tools + '/nothp')
+        os.chdir(ctx.paths.infra + '/tools/nothp')
         run(ctx, [
             'make',
             'OBJDIR=' + self.path(ctx, 'obj'),
