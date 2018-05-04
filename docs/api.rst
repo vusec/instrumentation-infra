@@ -21,4 +21,3 @@ Packages
 Utility functions
 =================
 .. automodule:: infra.util
-   :members: Namespace, run, FatalError

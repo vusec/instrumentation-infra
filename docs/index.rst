@@ -38,16 +38,15 @@ infrastructure, and run the setup script with the ``build`` and ``run`` commands
 to quickly see if things work on the builtin targets (e.g., SPEC).
 
 
-Usage
-=====
+Getting started
+===============
 
-The infrastructure is organized as a Python library. To build/run targets, you
-need to create a script that invokes :py:meth:`infra.Setup.main`, which in turn
-parses command-line arguments and runs the issued command. To use your
-instances and targets in :class:`infra.Setup`, you first need to register them.
-The easiest way to get started with this is to clone and adapt our `skeleton
-repository <https://github.com/vusec/instrumentation-skeleton>`_ which creates
-an example target and instrumentation instance.
+The easiest way to get started with the framework is to clone and adapt our
+`skeleton repository <https://github.com/vusec/instrumentation-skeleton>`_
+which creates an example target and instrumentation instance. Consult the
+:doc:`API docs <api>` for extensive documentation on the functions used. Read
+the :doc:`command-line usage guide <usage>` to see examples of how to invoke
+build and run commands.
 
 
 .. toctree::

@@ -15,7 +15,7 @@ sys.dont_write_bytecode = True
 
 class Setup:
     """
-    Defines the main execution of framework commands.
+    Defines framework commands.
 
     The setup takes care of complicated things like command-line parsing,
     logging, parallelism, environment setup and generating build paths. You
@@ -95,7 +95,7 @@ class Setup:
 
     def __init__(self, setup_path):
         self.setup_path = os.path.abspath(setup_path)
-        self.instances = OrderedDict()
+        elf.instances = OrderedDict()
         self.targets = OrderedDict()
 
     def main(self):
