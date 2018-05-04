@@ -43,27 +43,27 @@ class Setup:
     >>> setup.ctx
     Namespace({
         'paths': Namespace({
-            'root': '/project',
-            'setup': '/project/setup.py',
-            'infra': '/project/infra/infra'
-            'buildroot': '/project/build',
-            'log': '/project/build/log',
-            'debuglog': '/project/build/log/debug.txt',
-            'runlog': '/project/build/log/commands.txt',
-            'packages': '/project/build/packages',
-            'targets': '/project/build/targets',
-            'tools': '/project/infra/tools',
+            'root':         '/project',
+            'setup':        '/project/setup.py',
+            'infra':        '/project/infra/infra'
+            'buildroot':    '/project/build',
+            'log':          '/project/build/log',
+            'debuglog':     '/project/build/log/debug.txt',
+            'runlog':       '/project/build/log/commands.txt',
+            'packages':     '/project/build/packages',
+            'targets':      '/project/build/targets',
+            'tools':        '/project/infra/tools',
             'pool_results': '/project/results'
         }),
-        'runenv': Namespace({}),
-        'cc': 'cc',
-        'cxx': 'c++',
-        'ar': 'ar',
-        'nm': 'nm',
-        'ranlib': 'ranlib',
-        'cflags': [],
+        'runenv':   Namespace({}),
+        'cc':       'cc',
+        'cxx':      'c++',
+        'ar':       'ar',
+        'nm':       'nm',
+        'ranlib':   'ranlib',
+        'cflags':   [],
         'cxxflags': [],
-        'ldflags': []
+        'ldflags':  []
     })
 
     The :class:`Namespace <util.Namespace>` class is simply a dictionary whose
