@@ -3,7 +3,7 @@ import argparse
 import logging
 import sys
 import traceback
-import inspect
+from inspect import signature
 from collections import OrderedDict
 from multiprocessing import cpu_count
 from .util import FatalError, Namespace, qjoin
@@ -596,8 +596,7 @@ class Setup:
             pool.wait_all()
 
     def _call_with_pool(self, fn, args, pool):
-        nparams = len(inspect.signature(fn).parameters)
-        if nparams == len(args) + 1:
+        if len(signature(fn).parameters) == len(args) + 1:
             fn(*args, pool)
             return True
         if pool:
@@ -734,7 +733,3 @@ class Setup:
             self.ctx.log.warning('exiting because of keyboard interrupt')
         except Exception as e:
             self.ctx.log.critical('unkown error\n' + traceback.format_exc().rstrip())
-
-
-def get_nparams(fn):
-    return len(inspect.signature(fn).parameters)
