@@ -167,14 +167,18 @@ intersphinx_mapping = {
 }
 
 # Add import path for autodoc
-import sys, os.path
-sys.path.insert(0, os.path.abspath('..'))
+import sys
+sys.path.insert(0, '..')
 
 # Make autodoc include all documented module/class members by default
 autodoc_default_flags = ['members']
 
-
-# -- Add pygments stylesheet to fix highlighting on RTD ----------------------
+sys.path.insert(0, '.')
+import sphinx_autodoc_annotation
 
 def setup(app):
+    # Add pygments stylesheet to fix highlighting on RTD
     app.add_stylesheet('css/pygments.css')
+
+    # Use type annotations to generate param/return types in docstrings
+    sphinx_autodoc_annotation.setup(app)
