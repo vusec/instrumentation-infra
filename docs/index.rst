@@ -42,11 +42,11 @@ Getting started
 ===============
 
 The easiest way to get started with the framework is to clone and adapt our
-`skeleton repository <https://github.com/vusec/instrumentation-skeleton>`_
-which creates an example target and instrumentation instance. Consult the
-:doc:`API docs <api>` for extensive documentation on the functions used. Read
-the :doc:`command-line usage guide <usage>` to see examples of how to invoke
-build and run commands.
+`skeleton repository <https://github.com/vusec/instrumentation-skeleton>`_ which
+creates an example target and instrumentation instance. Consult the :doc:`API
+docs <api>` for extensive documentation on the functions used. Read the
+:doc:`usage guide <usage>` to find our how to set up your own project otherwise,
+and for examples of how to invoke build and run commands.
 
 
 .. toctree::
