@@ -114,7 +114,7 @@ def run(ctx: Namespace, cmd: Union[str, List[str]], allow_error=False,
                 :func:`subprocess.run`.
     :param allow_error: By default, ``sys.exit(-1)`` is called if the command
                         returns an error. Set to True to avoid this.
-    :param silent: Disables output logging (only logs the envocation and
+    :param silent: Disables output logging (only logs the invocation and
                    environment).
     :param teeout: Streams command output to ``sys.stdout`` as well as to the
                    log file.
