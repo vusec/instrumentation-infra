@@ -14,25 +14,37 @@ def typestr(obj):
     if obj is type(None):
         return 'None'
 
-    if not inspect.isclass(obj):
-        assert isinstance(obj, str)
+    if isinstance(obj, str):
         return obj
 
+    assert hasattr(obj, '__module__')
+
+    if inspect.isclass(obj):
+        classname = obj.__qualname__
+    else:
+        # Fix for python 3.6 where typing types are not classes
+        assert obj.__module__ == 'typing'
+        assert hasattr(obj, '__origin__')
+        classname = str(obj.__origin__).replace('typing.', '')
+
     if obj.__module__ == 'builtins':
-        return obj.__qualname__
+        return classname
 
     if obj.__module__ == 'typing':
-        if obj.__qualname__ in ('Union', 'Optional'):
-            a, b = obj.__union_params__
+        if classname in ('Union', 'Optional'):
+            if hasattr(obj, '__union_params__'):
+                a, b = obj.__union_params__
+            else:
+                a, b = obj.__args__  # Python 3.6
             return typestr(a) + ' or ' + typestr(b)
 
-        if obj.__qualname__ in ('List', 'Dict', 'Iterator', 'Iterable'):
+        if classname in ('List', 'Dict', 'Iterator', 'Iterable'):
             args = ', '.join(typestr(t) for t in obj.__args__)
-            return '%s[%s]' % (obj.__qualname__, args)
+            return '%s[%s]' % (classname, args)
 
         return str(obj)
 
-    return '%s.%s' % (obj.__module__, obj.__qualname__)
+    return '%s.%s' % (obj.__module__, classname)
 
 
 def get_param_type(param):
