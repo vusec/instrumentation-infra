@@ -63,7 +63,8 @@ class Setup:
         'ranlib':   'ranlib',
         'cflags':   [],
         'cxxflags': [],
-        'ldflags':  []
+        'ldflags':  [],
+        'args'      argparse.Namespace(...)
     })
 
     The :class:`Namespace <util.Namespace>` class is simply a dictionary whose
@@ -80,6 +81,10 @@ class Setup:
     scripts. ``ctx.{c,cxx,ld}flags`` similarly define build flags for targets
     in a list and should be joined into a string using :func:`util.qjoin` when
     being passed as a string to a build script by a target definition.
+
+    ``ctx.args`` is populated with processed command-line arguments, It is
+    available to read custom build/run arguments from that are added by
+    targets/instances.
 
     **The job of an instance is to manipulate the the context such that a
     target is built in the desired way.** This manipulation happens in
@@ -575,10 +580,7 @@ class Setup:
                     if not self.args.dry_run:
                         if not self.args.relink:
                             target.goto_rootdir(self.ctx)
-                            if pool:
-                                target.build_parallel(self.ctx, instance, pool)
-                            else:
-                                target.build(self.ctx, instance)
+                            target.build(self.ctx, instance, pool)
                         target.goto_rootdir(self.ctx)
                         target.link(self.ctx, instance)
                         target.run_hooks_post_build(self.ctx, instance)
@@ -652,10 +654,7 @@ class Setup:
             instance.prepare_run(self.ctx)
 
             target.goto_rootdir(self.ctx)
-            if pool:
-                target.run_parallel(self.ctx, instance, pool)
-            else:
-                target.run(self.ctx, instance)
+            target.run(self.ctx, instance, pool)
 
             self.ctx = oldctx
 

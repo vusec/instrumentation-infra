@@ -21,3 +21,4 @@ Packages
 Utility functions
 =================
 .. automodule:: infra.util
+.. automodule:: infra.parallel
