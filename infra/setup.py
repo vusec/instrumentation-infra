@@ -3,6 +3,7 @@ import argparse
 import logging
 import sys
 import traceback
+import inspect
 from collections import OrderedDict
 from multiprocessing import cpu_count
 from .util import FatalError, Namespace, qjoin
@@ -580,9 +581,10 @@ class Setup:
                     if not self.args.dry_run:
                         if not self.args.relink:
                             target.goto_rootdir(self.ctx)
-                            target.build(self.ctx, instance, pool)
+                            self._call_with_pool(target.build,
+                                                 (self.ctx, instance), pool)
                         target.goto_rootdir(self.ctx)
-                        target.link(self.ctx, instance)
+                        self._call_with_pool(target.link, (self.ctx, instance), pool)
                         target.run_hooks_post_build(self.ctx, instance)
 
                 self.ctx = oldctx_inner
@@ -591,6 +593,16 @@ class Setup:
 
         if pool:
             pool.wait_all()
+
+    def _call_with_pool(self, fn, args, pool):
+        nparams = len(inspect.signature(fn).parameters)
+        if nparams == len(args) + 1:
+            fn(*args, pool)
+            return True
+        if pool:
+            return False
+        fn(*args)
+        return True
 
     def _run_exec_hook(self):
         instance = self._get_instance(self.args.instance)
@@ -652,9 +664,11 @@ class Setup:
             self.ctx.log.info('running %s-%s' % (target.name, instance.name))
 
             instance.prepare_run(self.ctx)
-
             target.goto_rootdir(self.ctx)
-            target.run(self.ctx, instance, pool)
+
+            if not self._call_with_pool(target.run, (self.ctx, instance), pool):
+                raise FatalError('target %s does not support parallel runs' %
+                                 target.name)
 
             self.ctx = oldctx
 
@@ -719,3 +733,7 @@ class Setup:
             self.ctx.log.warning('exiting because of keyboard interrupt')
         except Exception as e:
             self.ctx.log.critical('unkown error\n' + traceback.format_exc().rstrip())
+
+
+def get_nparams(fn):
+    return len(inspect.signature(fn).parameters)

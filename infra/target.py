@@ -131,7 +131,7 @@ class Target(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def build(self, ctx, instance, pool):
+    def build(self, ctx, instance, pool=None):
         """
         :param util.Namespace ctx: the configuration context
         :param Instance instance: instance to build
@@ -141,15 +141,17 @@ class Target(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def link(self, ctx, instance):
+    def link(self, ctx, instance, pool=None):
         """
         :param util.Namespace ctx: the configuration context
         :param Instance instance: instance to link
+        :param pool: parallel process pool if ``--parallel`` is specified
+        :type pool: parallel.Pool or None
         """
         pass
 
     @abstractmethod
-    def run(self, ctx, instance, pool):
+    def run(self, ctx, instance, pool=None):
         """
         :param util.Namespace ctx: the configuration context
         :param Instance instance: instance to run
