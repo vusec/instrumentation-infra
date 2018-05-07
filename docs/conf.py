@@ -173,6 +173,9 @@ sys.path.insert(0, '..')
 # Make autodoc include all documented module/class members by default
 autodoc_default_flags = ['members']
 
+# Append __init__ docstring to class docstring
+autoclass_content = 'both'
+
 sys.path.insert(0, '.')
 import sphinx_autodoc_annotation
 

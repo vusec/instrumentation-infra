@@ -101,16 +101,22 @@ def add_annotation_content(obj, result):
 
 
 def process_docstring(app, what, name, obj, options, lines):
-    if what in ('function', 'method'):
+    if what in ('function', 'method', 'class'):
         add_annotation_content(obj, lines)
 
 
 def process_signature(app, what, name, obj, options, signature, return_annotation):
-    if what in ('function', 'method'):
-        oldsig = inspect.signature(obj)
+    if what in ('function', 'method', 'class'):
+        # Fix for concatenated class/__init__ docstrings where the parameter
+        # type is added to the class docstring but the signature information
+        # has to come from __init__
+        if what == 'class':
+            params = list(inspect.signature(obj.__init__).parameters.values())[1:]
+        else:
+            params = inspect.signature(obj).parameters.values()
 
         stripped_params = []
-        for p in oldsig.parameters.values():
+        for p in params:
             stripped_params.append(inspect.Parameter(p.name, p.kind, default=p.default))
 
         newsig = inspect.Signature(stripped_params)

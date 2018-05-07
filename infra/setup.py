@@ -91,15 +91,16 @@ class Setup:
     target is built in the desired way.** This manipulation happens in
     predefined API methods which you must overwrite (see below). Hence, these
     methods receive the context as a parameter.
-
-    :param str setup_path: Path to the script running :func:`Setup.main`.
-                           Needed to allow build scripts to call back into the
-                           setup script for build hooks.
     """
 
     _max_default_jobs = 16
 
-    def __init__(self, setup_path):
+    def __init__(self, setup_path: str):
+        """
+        :param setup_path: Path to the script running :func:`Setup.main`.
+                           Needed to allow build scripts to call back into the
+                           setup script for build hooks.
+        """
         self.setup_path = os.path.abspath(setup_path)
         self.instances = OrderedDict()
         self.targets = OrderedDict()
