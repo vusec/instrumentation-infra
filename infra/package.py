@@ -1,6 +1,8 @@
 import os
 import shutil
 from abc import ABCMeta, abstractmethod
+from typing import Iterable, Iterator, Tuple
+from .util import Namespace
 
 
 class Package(metaclass=ABCMeta):
@@ -15,73 +17,73 @@ class Package(metaclass=ABCMeta):
         return hash('package-' + self.ident())
 
     @abstractmethod
-    def ident(self):
+    def ident(self) -> str:
         """
         """
         pass
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator['Package']:
         """
         """
         yield from []
 
     @abstractmethod
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Namespace) -> bool:
         """
         """
         pass
 
     @abstractmethod
-    def is_built(self, ctx):
+    def is_built(self, ctx: Namespace) -> bool:
         """
         """
         pass
 
     @abstractmethod
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Namespace) -> bool:
         """
         """
         pass
 
     @abstractmethod
-    def fetch(self, ctx):
-        """
-        """
-        return NotImplemented
-
-    @abstractmethod
-    def build(self, ctx):
+    def fetch(self, ctx: Namespace):
         """
         """
         pass
 
     @abstractmethod
-    def install(self, ctx):
+    def build(self, ctx: Namespace):
         """
         """
         pass
 
-    def is_clean(self, ctx):
+    @abstractmethod
+    def install(self, ctx: Namespace):
+        """
+        """
+        pass
+
+    def is_clean(self, ctx: Namespace) -> bool:
         """
         """
         return not os.path.exists(self.path(ctx))
 
-    def clean(self, ctx):
+    def clean(self, ctx: Namespace):
         """
         """
         shutil.rmtree(self.path(ctx))
 
-    def configure(self, ctx):
+    def configure(self, ctx: Namespace):
         """
         """
-        return NotImplemented
+        pass
 
-    def path(self, ctx, *args):
+    def path(self, ctx: Namespace, *args: Iterable[str]) -> str:
         """
         """
         return os.path.join(ctx.paths.packages, self.ident(), *args)
 
-    def install_env(self, ctx):
+    def install_env(self, ctx: Namespace):
         """
         """
         prevbinpath = os.getenv('PATH', '').split(':')
@@ -99,7 +101,7 @@ class Package(metaclass=ABCMeta):
         os.makedirs(path, exist_ok=True)
         os.chdir(path)
 
-    def pkg_config_options(self, ctx):
+    def pkg_config_options(self, ctx: Namespace) -> Iterator[Tuple[str, str, str]]:
         """
         """
         yield ('--root',

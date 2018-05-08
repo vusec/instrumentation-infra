@@ -3,7 +3,7 @@
 # originally developed by Virgil Dupras and Nicolas Hainaux.
 
 import inspect
-from typing import Union
+from typing import Union, _ForwardRef
 from sphinx.ext.autodoc import FunctionDocumenter, MethodDocumenter
 
 
@@ -24,8 +24,14 @@ def typestr(obj):
     else:
         # Fix for python 3.6 where typing types are not classes
         assert obj.__module__ == 'typing'
-        assert hasattr(obj, '__origin__')
-        classname = str(obj.__origin__).replace('typing.', '')
+        if isinstance(obj, _ForwardRef):
+            # Cannot evaluate in current namespace, just return the string
+            # literal instead
+            #obj = obj._eval_type(globals(), locals())
+            return str(obj)[len("_ForwardRef('"):-len("')")]
+        else:
+            assert hasattr(obj, '__origin__')
+            classname = str(obj.__origin__).replace('typing.', '')
 
     if obj.__module__ == 'builtins':
         return classname
@@ -38,7 +44,7 @@ def typestr(obj):
                 a, b = obj.__args__  # Python 3.6
             return typestr(a) + ' or ' + typestr(b)
 
-        if classname in ('List', 'Dict', 'Iterator', 'Iterable'):
+        if classname in ('List', 'Tuple', 'Dict', 'Iterator', 'Iterable'):
             args = ', '.join(typestr(t) for t in obj.__args__)
             return '%s[%s]' % (classname, args)
 
