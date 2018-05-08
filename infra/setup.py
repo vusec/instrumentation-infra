@@ -7,6 +7,8 @@ from inspect import signature
 from collections import OrderedDict
 from multiprocessing import cpu_count
 from .util import FatalError, Namespace, qjoin
+from .instance import Instance
+from .target import Target
 from .parallel import ProcessPool, PrunPool
 
 
@@ -355,13 +357,13 @@ class Setup:
         except ImportError:
             pass
 
-    def add_instance(self, instance):
+    def add_instance(self, instance: Instance):
         """
         Register an instance. Only registered instances can be referenced in
         commands, so also :doc:`built-in instances <instances>` must be
         registered.
 
-        :param Instance instance: The instance to register.
+        :param instance: The instance to register.
         """
         if instance.name in self.instances:
             self.ctx.log.warning('overwriting existing instance "%s"' % instance)
@@ -372,12 +374,12 @@ class Setup:
             raise FatalError('no instance called "%s"' % name)
         return self.instances[name]
 
-    def add_target(self, target):
+    def add_target(self, target: Target):
         """
         Register a target. Only registered targets can be referenced in
         commands, so also :doc:`built-in targets <targets>` must be registered.
 
-        :param Target target: The target to register.
+        :param target: The target to register.
         """
         if target.name in self.targets:
             self.ctx.log.warning('overwriting existing target "%s"' % target)

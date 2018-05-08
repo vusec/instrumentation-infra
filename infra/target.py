@@ -1,6 +1,12 @@
 import os
 import shutil
 from abc import ABCMeta, abstractmethod
+from argparse import ArgumentParser
+from typing import List, Iterable, Iterator, Optional
+from .util import Namespace
+from .instance import Instance
+from .package import Package
+from .parallel import Pool
 
 
 class Target(metaclass=ABCMeta):
@@ -8,8 +14,8 @@ class Target(metaclass=ABCMeta):
     Abstract base class for target definitions. Built-in derived classes are
     listed :doc:`here <targets>`.
 
-    Each target must define a :any:`name` attribute that is used to reference
-    the target on the command line. The name must be unique among all
+    Each target must define a :py:attr:`name` attribute that is used to
+    reference the target on the command line. The name must be unique among all
     registered targets. Each target must also implement a number of methods
     that are called by :class:`Setup` when running commands.
 
@@ -47,12 +53,10 @@ class Target(metaclass=ABCMeta):
     below), but the following are mandatory to implement for each new target:
     :func:`is_fetched`, :func:`fetch`, :func:`build`, :func:`link` and
     :func:`run`.
-
-    :var str name: The target's name, must be unique.
     """
 
     #: The target's name, must be unique.
-    name = None
+    name: str = None
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and other.name == self.name
@@ -60,7 +64,7 @@ class Target(metaclass=ABCMeta):
     def __hash__(self):
         return hash('target-' + self.name)
 
-    def add_build_args(self, parser):
+    def add_build_args(self, parser: ArgumentParser):
         """
         Extend the command-line arguments for the ``build`` command with
         custom arguments for this target. These arguments end up in the global
@@ -70,11 +74,11 @@ class Target(metaclass=ABCMeta):
         For example, :class:`SPEC2006 <targets.SPEC2006>` defines
         ``--spec2006-benchmarks`` (rather than ``--benchmarks``).
 
-        :param argparse.ArgumentParser parser: the argument parser to extend
+        :param parser: the argument parser to extend
         """
         pass
 
-    def add_run_args(self, parser):
+    def add_run_args(self, parser: ArgumentParser):
         """
         Extend the command-line arguments for the ``run`` command with custom
         arguments for this target. Since only a single target can be run at a
@@ -84,29 +88,27 @@ class Target(metaclass=ABCMeta):
         For example, :class:`SPEC2006 <targets.SPEC2006>` defines
         ``--benchmarks`` and ``--test``.
 
-        :param argparse.ArgumentParser parser: the argument parser to extend
+        :param parser: the argument parser to extend
         """
         pass
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         """
         Specify dependencies that should be built and installed in the run
         environment before building this target.
 
         :returns: the packages this target depends on
-        :rtype: Iterator[Package]
         """
         yield from []
 
-    def path(self, ctx, *args):
+    def path(self, ctx: Namespace, *args: Iterable[str]) -> str:
         """
         Get the absolute path to the build directory of this target, optionally
         suffixed with a subpath.
 
-        :param util.Namespace ctx: the configuration context
-        :param Iterable[str] args: additional subpath to pass to :func:`os.path.join`
+        :param ctx: the configuration context
+        :param args: additional subpath to pass to :func:`os.path.join`
         :returns: the requested path
-        :rtype: str
         """
         return os.path.join(ctx.paths.targets, self.name, *args)
 
@@ -116,70 +118,63 @@ class Target(metaclass=ABCMeta):
         os.chdir(path)
 
     @abstractmethod
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Namespace) -> bool:
         """
-        :param util.Namespace ctx: the configuration context
-        :rtype: bool
-        """
-        pass
-
-    @abstractmethod
-    def fetch(self, ctx):
-        """
-        :param util.Namespace ctx: the configuration context
+        :param ctx: the configuration context
         """
         pass
 
     @abstractmethod
-    def build(self, ctx, instance, pool=None):
+    def fetch(self, ctx: Namespace):
         """
-        :param util.Namespace ctx: the configuration context
-        :param Instance instance: instance to build
+        :param ctx: the configuration context
+        """
+        pass
+
+    @abstractmethod
+    def build(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
+        """
+        :param ctx: the configuration context
+        :param instance: instance to build
         :param pool: parallel process pool if ``--parallel`` is specified
-        :type pool: parallel.Pool or None
         """
         pass
 
     @abstractmethod
-    def link(self, ctx, instance, pool=None):
+    def link(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
         """
-        :param util.Namespace ctx: the configuration context
-        :param Instance instance: instance to link
+        :param ctx: the configuration context
+        :param instance: instance to link
         :param pool: parallel process pool if ``--parallel`` is specified
-        :type pool: parallel.Pool or None
         """
         pass
 
     @abstractmethod
-    def run(self, ctx, instance, pool=None):
+    def run(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
         """
-        :param util.Namespace ctx: the configuration context
-        :param Instance instance: instance to run
+        :param ctx: the configuration context
+        :param instance: instance to run
         :param pool: parallel process pool if ``--parallel`` is specified
-        :type pool: parallel.Pool or None
-        :raises NotImplementedError: unless implemented
         """
         pass
 
-    def is_clean(self, ctx):
+    def is_clean(self, ctx: Namespace) -> bool:
         """
-        :param util.Namespace ctx: the configuration context
-        :rtype: bool
+        :param ctx: the configuration context
         """
         return not os.path.exists(self.path(ctx))
 
-    def clean(self, ctx):
+    def clean(self, ctx: Namespace):
         """
-        :param util.Namespace ctx: the configuration context
+        :param ctx: the configuration context
         """
         shutil.rmtree(self.path(ctx))
 
-    def binary_paths(self, ctx, instance):
+    def binary_paths(self, ctx: Namespace, instance: Instance) -> List[str]:
         """
-        :param util.Namespace ctx: the configuration context
-        :param Instance instance: instance to get paths for
+        :param ctx: the configuration context
+        :param instance: instance to get paths for
         :returns: paths to binaries
-        :rtype: List[str]
         :raises NotImplementedError: unless implemented
         """
         raise NotImplementedError(self.__class__.__name__)

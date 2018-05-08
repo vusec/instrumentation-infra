@@ -1,4 +1,8 @@
 from abc import ABCMeta, abstractmethod
+from argparse import ArgumentParser
+from typing import Iterator
+from .util import Namespace
+from .package import Package
 
 
 class Instance(metaclass=ABCMeta):
@@ -6,14 +10,13 @@ class Instance(metaclass=ABCMeta):
     Abstract base class for instance definitions. Built-in derived classes are
     listed :doc:`here <instances>`.
 
-    Each instance must define a ``name`` attribute that is used to reference
-    the instance on the command line. The name must be unique among all
-    registered instances.
-
-    :var str name: The instance's name, must be unique.
+    Each instance must define a :py:attr:`name` attribute that is used to
+    reference the instance on the command line. The name must be unique among
+    all registered instances.
     """
 
-    name = None
+    #: The instance's name, must be unique.
+    name: str = None
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and other.name == self.name
@@ -21,23 +24,23 @@ class Instance(metaclass=ABCMeta):
     def __hash__(self):
         return hash('instance-' + self.name)
 
-    def add_build_args(self, parser):
+    def add_build_args(self, parser: ArgumentParser):
         """
         """
         pass
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         """
         """
         yield from []
 
     @abstractmethod
-    def configure(self, ctx):
+    def configure(self, ctx: Namespace):
         """
         """
         pass
 
-    def prepare_run(self, ctx):
+    def prepare_run(self, ctx: Namespace):
         """
         """
         pass
