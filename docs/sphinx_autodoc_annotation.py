@@ -19,19 +19,19 @@ def typestr(obj):
 
     assert hasattr(obj, '__module__')
 
+    if isinstance(obj, _ForwardRef):
+        # Cannot evaluate in current namespace, just return the string literal
+        # instead
+        #obj = obj._eval_type(globals(), locals())
+        return str(obj)[len("_ForwardRef('"):-len("')")]
+
     if inspect.isclass(obj):
         classname = obj.__qualname__
     else:
         # Fix for python 3.6 where typing types are not classes
         assert obj.__module__ == 'typing'
-        if isinstance(obj, _ForwardRef):
-            # Cannot evaluate in current namespace, just return the string
-            # literal instead
-            #obj = obj._eval_type(globals(), locals())
-            return str(obj)[len("_ForwardRef('"):-len("')")]
-        else:
-            assert hasattr(obj, '__origin__')
-            classname = str(obj.__origin__).replace('typing.', '')
+        assert hasattr(obj, '__origin__')
+        classname = str(obj.__origin__).replace('typing.', '')
 
     if obj.__module__ == 'builtins':
         return classname
