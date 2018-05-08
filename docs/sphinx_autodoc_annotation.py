@@ -52,7 +52,6 @@ def typestr(obj):
         try:
             imported_class = getattr(__import__(basemod), classname)
             assert imported_class is obj
-            print('{mod}.{classname} -> {basemod}.{classname}'.format(**locals()))
             mod = basemod
         except AttributeError:
             break
@@ -76,21 +75,33 @@ def get_param_type(param):
             return type(param.default)
 
 
-def add_annotation_content(obj, result):
+def get_classvar_annotation(fullname, existing_contents):
+    modname, classname, attrname = fullname.split('.', 2)
+    mod = __import__(modname)
+    cls = getattr(mod, classname)
+    if attrname in cls.__annotations__:
+        ty = cls.__annotations__[attrname]
+        # FIXME: no nice annotation format for this?
+        return ['**Type**: :any:`%s`' % typestr(ty)]
+
+
+def get_callable_annotation(obj, existing_contents):
     try:
         sig = inspect.signature(obj)
+    except TypeError:
+        print('unsupported type:', obj)
+        return
     except ValueError:
-        # Can't extract signature, do nothing
+        # Object does not have a signature
         return
 
-    existing_contents = '\n'.join(result)
     toadd = []
 
     for param in sig.parameters.values():
         type_directive = ':type %s:' % param.name
 
         if type_directive in existing_contents:
-            # We already specidy the type of that argument in the docstring,
+            # We already specify the type of that argument in the docstring,
             # don't specify it again.
             continue
 
@@ -102,32 +113,44 @@ def add_annotation_content(obj, result):
         if ':rtype:' not in existing_contents:
             toadd.append(':rtype: %s' % typestr(sig.return_annotation))
 
-    if toadd:
-        # Let's see where we're going to insert our directives. We can't append
-        # it at the end of the docstring because there might be a section
-        # breaker between our params and the end of the list that will also
-        # break our :type: stuff. We have to try to keep them grouped.
-        for i, s in enumerate(result):
-            # TODO: do somewhting nicer with sorting, params before :returns:,
-            # :rtype: directly after
-            if s.startswith(':raises '):
-                insert_index = i
-                break
+    return toadd
 
-            if s.startswith(':'):
-                insert_index = i + 1
-        else:
-            # We don't have a metadata directive, just insert at the end and
-            # hope for the best
-            # FIXME: wtf is a section breaker?
-            insert_index = len(result)
 
-        result[insert_index:insert_index] = toadd
+def add_lines(toadd, lines, existing_contents):
+    # Let's see where we're going to insert our directives. We can't append
+    # it at the end of the docstring because there might be a section
+    # breaker between our params and the end of the list that will also
+    # break our :type: stuff. We have to try to keep them grouped.
+    for i, s in enumerate(lines):
+        # TODO: do somewhting nicer with sorting, params before :returns:,
+        # :rtype: directly after
+        if s.startswith(':raises '):
+            insert_index = i
+            break
+
+        if s.startswith(':'):
+            insert_index = i + 1
+    else:
+        # We don't have a metadata directive, just insert at the end and
+        # hope for the best
+        # FIXME: wtf is a section breaker?
+        insert_index = len(lines)
+
+    lines[insert_index:insert_index] = toadd
 
 
 def process_docstring(app, what, name, obj, options, lines):
-    if what in ('function', 'method', 'class'):
-        add_annotation_content(obj, lines)
+    if what in ('attribute', 'function', 'method', 'class'):
+        existing_contents = '\n'.join(lines)
+
+        if what == 'attribute':
+            toadd = get_classvar_annotation(name, existing_contents)
+        else:
+            toadd = get_callable_annotation(obj, existing_contents)
+
+        if toadd:
+            add_lines(toadd, lines, existing_contents)
+
 
 
 def process_signature(app, what, name, obj, options, signature, return_annotation):
@@ -140,10 +163,7 @@ def process_signature(app, what, name, obj, options, signature, return_annotatio
         else:
             params = inspect.signature(obj).parameters.values()
 
-        stripped_params = []
-        for p in params:
-            stripped_params.append(inspect.Parameter(p.name, p.kind, default=p.default))
-
+        stripped_params = [p.replace(annotation=inspect.Parameter.empty) for p in params]
         newsig = inspect.Signature(stripped_params)
 
         return str(newsig), None
