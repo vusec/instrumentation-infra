@@ -1,6 +1,7 @@
 # This is an adaptation by Taddeus Kroes of
 # https://github.com/nicolashainaux/sphinx-autodoc-annotation, which was
-# originally developed by Virgil Dupras and Nicolas Hainaux.
+# originally developed by Virgil Dupras and maintained by Nicolas Hainaux.
+# It has been tested pn Python 3.5 and 3.6.
 
 import inspect
 from typing import Union, _ForwardRef, get_type_hints
