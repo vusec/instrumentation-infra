@@ -44,7 +44,26 @@ def typestr(obj):
 
         return str(obj)
 
-    return '%s.%s' % (obj.__module__, classname)
+    mod = obj.__module__
+
+    # Strip nested modules if the class is exported at the toplevel
+    while '.' in mod:
+        basemod, nestedmod = mod.rsplit('.', 1)
+        try:
+            imported_class = getattr(__import__(basemod), classname)
+            assert imported_class is obj
+            print('{mod}.{classname} -> {basemod}.{classname}'.format(**locals()))
+            mod = basemod
+        except AttributeError:
+            break
+
+    fullname = '%s.%s' % (mod, classname)
+
+    # Strip the name of the package being documented (or it will be in every
+    # link)
+    fullname = fullname.replace('infra.', '')
+
+    return fullname
 
 
 def get_param_type(param):
@@ -89,6 +108,12 @@ def add_annotation_content(obj, result):
         # breaker between our params and the end of the list that will also
         # break our :type: stuff. We have to try to keep them grouped.
         for i, s in enumerate(result):
+            # TODO: do somewhting nicer with sorting, params before :returns:,
+            # :rtype: directly after
+            if s.startswith(':raises '):
+                insert_index = i
+                break
+
             if s.startswith(':'):
                 insert_index = i + 1
         else:
