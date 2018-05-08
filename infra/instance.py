@@ -15,8 +15,8 @@ class Instance(metaclass=ABCMeta):
     all registered instances.
     """
 
-    #: The instance's name, must be unique.
-    name: str = None
+    #: :class:`str` The instance's name, must be unique.
+    name = None
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and other.name == self.name

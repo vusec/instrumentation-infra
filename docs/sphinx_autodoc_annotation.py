@@ -3,7 +3,7 @@
 # originally developed by Virgil Dupras and Nicolas Hainaux.
 
 import inspect
-from typing import Union, _ForwardRef
+from typing import Union, _ForwardRef, get_type_hints
 from sphinx.ext.autodoc import FunctionDocumenter, MethodDocumenter
 
 
@@ -39,13 +39,17 @@ def typestr(obj):
     if obj.__module__ == 'typing':
         if classname in ('Union', 'Optional'):
             if hasattr(obj, '__union_params__'):
-                a, b = obj.__union_params__
+                a, b = obj.__union_params__  # Python 3.5
             else:
                 a, b = obj.__args__  # Python 3.6
             return typestr(a) + ' or ' + typestr(b)
 
         if classname in ('List', 'Tuple', 'Dict', 'Iterator', 'Iterable'):
-            args = ', '.join(typestr(t) for t in obj.__args__)
+            if hasattr(obj, '__tuple_params__'):
+                args = obj.__tuple_params__  # Python 3.5
+            else:
+                args = obj.__args__  # Python 3.6
+            args = ', '.join(typestr(t) for t in args)
             return '%s[%s]' % (classname, args)
 
         return str(obj)
@@ -85,7 +89,7 @@ def get_classvar_annotation(fullname, existing_contents):
     modname, classname, attrname = fullname.split('.', 2)
     mod = __import__(modname)
     cls = getattr(mod, classname)
-    if attrname in cls.__annotations__:
+    if hasattr(cls, '__annotations__') and attrname in cls.__annotations__:
         ty = cls.__annotations__[attrname]
         # FIXME: no nice annotation format for this?
         return ['**Type**: :any:`%s`' % typestr(ty)]

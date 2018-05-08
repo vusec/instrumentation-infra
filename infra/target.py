@@ -55,8 +55,8 @@ class Target(metaclass=ABCMeta):
     :func:`run`.
     """
 
-    #: The target's name, must be unique.
-    name: str = None
+    #: :class:`str` The target's name, must be unique.
+    name = None
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and other.name == self.name
