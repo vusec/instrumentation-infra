@@ -26,6 +26,8 @@ class Target(metaclass=ABCMeta):
     #. It calls :func:`is_fetched` to see if the source code for this target
        has been downloaded yet.
     #. If ``is_fetched() == False``, it calls :func:`fetch`.
+    #. It calls :func:`Instance.configure` on the instance that will be passed
+       to :func:`build`.
     #. All packages listed by :func:`dependencies` are built and installed into
        the environment (i.e., ``PATH`` and such are set).
     #. Unless ``--relink`` was passed on the command line, it calls
@@ -40,6 +42,8 @@ class Target(metaclass=ABCMeta):
     #. It calls :func:`add_run_args` to include any custom command-line
        arguments for this target.
     #. If ``--build`` was specified, it performs all build steps above.
+    #. It calls :func:`Instance.prepare_run` on the instance that will be passed
+       to :func:`run`.
     #. It calls :func:`run` to run the target binaries.
 
     For the ``clean`` command:
@@ -69,7 +73,7 @@ class Target(metaclass=ABCMeta):
         Extend the command-line arguments for the ``build`` command with
         custom arguments for this target. These arguments end up in the global
         namespace, so it is a good idea to prefix them with the target name to
-        avoid collisions with other targets.
+        avoid collisions with other targets and instances.
 
         For example, :class:`SPEC2006 <targets.SPEC2006>` defines
         ``--spec2006-benchmarks`` (rather than ``--benchmarks``).
@@ -120,6 +124,8 @@ class Target(metaclass=ABCMeta):
     @abstractmethod
     def is_fetched(self, ctx: Namespace) -> bool:
         """
+        Returns ``True`` if :func:`fetch` should be called before building.
+
         :param ctx: the configuration context
         """
         pass
@@ -127,6 +133,10 @@ class Target(metaclass=ABCMeta):
     @abstractmethod
     def fetch(self, ctx: Namespace):
         """
+        Fetches the source code for this target. This step is separated from
+        :func:`build` because the ``build`` command first fetches all pacakges
+        and targets before starting the build process.
+
         :param ctx: the configuration context
         """
         pass
@@ -134,6 +144,26 @@ class Target(metaclass=ABCMeta):
     @abstractmethod
     def build(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
         """
+        Build the target object files. Called some time after :func:`fetch`, but
+        before :func:`link` (see :class:`above <Target>`). You may choose to not
+        implement :func:`link` and link the target binaries here instead (since
+        some build systems are not flexible enough for this).
+
+        ``ctx.runenv`` will have been populated with the exported environments
+        of all packages returned by :func:`dependencies` (i.e.,
+        :func:`Package.install_env` has been called for each dependency). This
+        means that when you call :func:`util.run` here, the programs and
+        libraries from the dependencies are available in ``PATH`` and
+        ``LD_LIBRARY_PATH``, so you don't need to reference them with absolute
+        paths.
+
+        The build function should respect variables set in the configuration
+        context such as ``ctx.cc`` and ``ctx.cflags``, passing them to the
+        underlying build system as required. The :class:`Setup` docs show
+        default variables in the context that should at least be respected, but
+        complex instances may optionally overwrite them to be used by custom
+        targets.
+
         :param ctx: the configuration context
         :param instance: instance to build
         :param pool: parallel process pool if ``--parallel`` is specified
@@ -143,6 +173,11 @@ class Target(metaclass=ABCMeta):
     @abstractmethod
     def link(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
         """
+        Link the target binaries. Implementing this method is optional, its only
+        use is to skip building object files when running ``build --relink``
+        (useful when only doing link-time passes). If left unimplemented,
+        :func:`build` should do the linking instead.
+
         :param ctx: the configuration context
         :param instance: instance to link
         :param pool: parallel process pool if ``--parallel`` is specified
@@ -152,6 +187,8 @@ class Target(metaclass=ABCMeta):
     @abstractmethod
     def run(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
         """
+        TODO: document this with some hints
+
         :param ctx: the configuration context
         :param instance: instance to run
         :param pool: parallel process pool if ``--parallel`` is specified
@@ -160,18 +197,28 @@ class Target(metaclass=ABCMeta):
 
     def is_clean(self, ctx: Namespace) -> bool:
         """
+        Returns ``True`` if :func:`clean` should be called before cleaning.
+
         :param ctx: the configuration context
         """
         return not os.path.exists(self.path(ctx))
 
     def clean(self, ctx: Namespace):
         """
+        Clean generated files for this target. By default, this removes
+        ``build/targets/<name>``.
+
         :param ctx: the configuration context
         """
         shutil.rmtree(self.path(ctx))
 
     def binary_paths(self, ctx: Namespace, instance: Instance) -> List[str]:
         """
+        If implemented, this should return a list of absolute paths to binaries
+        created by :func:`link` or :func:`build` for the given instance. This is
+        only used if the instance specifies post-build hooks. Each hook is
+        called for each of the returned paths.
+
         :param ctx: the configuration context
         :param instance: instance to get paths for
         :returns: paths to binaries

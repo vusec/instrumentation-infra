@@ -67,6 +67,9 @@ class Setup:
         'cflags':   [],
         'cxxflags': [],
         'ldflags':  [],
+        'hooks':    Namespace({
+            'post_build': []
+        }),
         'args'      argparse.Namespace(...)
     })
 
@@ -84,6 +87,9 @@ class Setup:
     scripts. ``ctx.{c,cxx,ld}flags`` similarly define build flags for targets
     in a list and should be joined into a string using :func:`util.qjoin` when
     being passed as a string to a build script by a target definition.
+
+    ``ctx.hooks.post_build`` defines a list of post-build hooks, which are
+    python functions called with the path to the binary as the only parameter.
 
     ``ctx.args`` is populated with processed command-line arguments, It is
     available to read custom build/run arguments from that are added by
