@@ -4,7 +4,7 @@
 # It has been tested pn Python 3.5 and 3.6.
 
 import inspect
-from typing import Union, _ForwardRef, get_type_hints
+from typing import Union, _ForwardRef, get_type_hints, Any
 from sphinx.ext.autodoc import FunctionDocumenter, MethodDocumenter
 
 
@@ -26,6 +26,9 @@ def typestr(obj):
         #obj = obj._eval_type(globals(), locals())
         return str(obj)[len("_ForwardRef('"):-len("')")]
 
+    if obj is Any:
+        return 'Any'
+
     if inspect.isclass(obj):
         classname = obj.__qualname__
     else:
@@ -44,6 +47,11 @@ def typestr(obj):
             else:
                 a, b = obj.__args__  # Python 3.6
             return typestr(a) + ' or ' + typestr(b)
+
+        if classname == 'Callable':
+            params = ', '.join(typestr(t) for t in obj.__args__[:-1])
+            ret = typestr(obj.__args__[-1])
+            return 'Callable[(%s) -> %s]' % (params, ret)
 
         if classname in ('List', 'Tuple', 'Dict', 'Iterator', 'Iterable'):
             if hasattr(obj, '__tuple_params__'):
