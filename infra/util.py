@@ -15,7 +15,7 @@ class Namespace(dict):
     """
     A dictionary in which keys can be accessed as attributes, i.e., ``ns.key``
     is the same as ``ns['key']``. Used for the context (see
-    :class:`infra.Setup`).
+    :class:`Setup`).
     """
     def __getattr__(self, key):
         return self[key]
@@ -99,11 +99,10 @@ def run(ctx: Namespace, cmd: Union[str, List[str]], allow_error=False,
     errors but does not clobber the setup's progress log.
 
     The run environment is based on :any:`os.environ`, first adding
-    ``ctx.runenv`` (populated by packages/instances, see also
-    :class:`infra.Setup`) and then the ``env`` parameter. The combination of
-    ``ctx.runenv`` and ``env`` is logged to the log file. Any lists of strings
-    in environment values are joined with a ':' separator using
-    :func:`Namespace.join_paths`.
+    ``ctx.runenv`` (populated by packages/instances, see also :class:`Setup`)
+    and then the ``env`` parameter. The combination of ``ctx.runenv`` and
+    ``env`` is logged to the log file. Any lists of strings in environment
+    values are joined with a ':' separator using :func:`Namespace.join_paths`.
 
     If the command exits with a non-zero status code, the corresponding output
     is logged to the command line and the process is killed with

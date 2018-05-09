@@ -17,6 +17,8 @@ from .util import run
 
 
 class Pool(metaclass=ABCMeta):
+    """
+    """
     poll_interval = 0.050  # seconds to wait for blocking actions
 
     @abstractmethod

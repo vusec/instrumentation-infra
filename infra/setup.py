@@ -70,7 +70,7 @@ class Setup:
         'args'      argparse.Namespace(...)
     })
 
-    The :class:`Namespace <util.Namespace>` class is simply a dictionary whose
+    The :class:`util.Namespace` class is simply a dictionary whose
     members can be accessed like attributes.
 
     ``ctx.paths`` are absolute paths to be used (readonly) by build scripts.

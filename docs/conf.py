@@ -171,10 +171,22 @@ import sys
 sys.path.insert(0, '..')
 
 # Make autodoc include all documented module/class members by default
-autodoc_default_flags = ['members']
+autodoc_default_flags = []
 
 # Append __init__ docstring to class docstring
 autoclass_content = 'both'
+
+# Try to see if missing classrefs are in the infra module
+# e.g. :class:`Setup` -> :class:`Setup <infra.Setup>`
+import infra
+def process_missing_reference(app, env, node, contnode):
+    if node['reftype'] == 'class' and hasattr(infra, node['reftarget']):
+        domain = env.domains[node['refdomain']]
+        refdoc = node.get('refdoc', env.docname)
+        target = 'infra.' + node['reftarget']
+        return domain.resolve_xref(env, refdoc, app.builder, node['reftype'],
+                                   target, node, contnode)
+
 
 sys.path.insert(0, '.')
 import sphinx_autodoc_annotation
@@ -188,3 +200,5 @@ def setup(app):
 
     # Use type annotations to generate param/return types in docstrings
     sphinx_autodoc_annotation.setup(app)
+
+    app.connect('missing-reference', process_missing_reference)
