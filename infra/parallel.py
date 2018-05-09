@@ -9,7 +9,8 @@ import subprocess
 import io
 import fcntl
 from abc import ABCMeta, abstractmethod
-from .util import run
+from typing import Union, List, Optional, Callable, Any
+from .util import Namespace, run
 
 
 # TODO: rewrite this to use
@@ -79,8 +80,24 @@ class Pool(metaclass=ABCMeta):
         while len(self.jobs):
             time.sleep(self.poll_interval)
 
-    def run(self, ctx, cmd, jobid, outfile, nnodes,
-            onsuccess=None, onerror=None, **kwargs):
+    def run(self, ctx: Namespace, cmd: Union[str, List[str]],
+            jobid: str, outfile: str, nnodes: int,
+            onsuccess: Optional[Callable[[subprocess.Popen], None]] = None,
+            onerror: Optional[Callable[[subprocess.Popen], None]] = None,
+            **kwargs):
+        """
+        A non-blocking wrapper for :func:`util.run`, to be used when
+        ``--parallel`` is specified.
+
+        :param ctx: the configuration context
+        :param cmd: the command to run
+        :param jobid: a human-readable ID for status reporting
+        :param outfile: full path to target file for command output
+        :param nnodes: number of cores or machines to run the command on
+        :param onsuccess: callback when the job finishes successfully
+        :param onerror: callback when the job exits with (typically I/O) error
+        :param kwargs: passed directly to :func:`util.run`
+        """
         # TODO: generate outfile from jobid
         self._start_poller()
 

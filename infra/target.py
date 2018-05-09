@@ -164,6 +164,16 @@ class Target(metaclass=ABCMeta):
         complex instances may optionally overwrite them to be used by custom
         targets.
 
+        Any custom command-line arguments set by :func:`add_build_args` are
+        available here in ``ctx.args``.
+
+        An implementation of :func:`build` may optionally define a parameter
+        ``pool``. If defined, the target is expected to support parallel builds
+        when ``--parallel`` is passed. In that case, ``pool`` will be an object
+        of type :class:`Pool`, and the method should call :func:`pool.run()
+        <parallel.Pool.run>` instead of :func:`util.run` to invoke build
+        commands.
+
         :param ctx: the configuration context
         :param instance: instance to build
         :param pool: parallel process pool if ``--parallel`` is specified
@@ -178,6 +188,9 @@ class Target(metaclass=ABCMeta):
         (useful when only doing link-time passes). If left unimplemented,
         :func:`build` should do the linking instead.
 
+        Similarly to :func:`build`, the method may specify the ``pool``
+        parameter for parallel linking.
+
         :param ctx: the configuration context
         :param instance: instance to link
         :param pool: parallel process pool if ``--parallel`` is specified
@@ -187,7 +200,18 @@ class Target(metaclass=ABCMeta):
     @abstractmethod
     def run(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
         """
-        TODO: document this with some hints
+        Run the target binaries. This should be done using :func:`util.run` so
+        that ``ctx.runenv`` is used (which can be set by an instance or
+        dependencies). It is recommended to pass ``teeout=True`` to make the
+        output of the process stream to ``stdout``.
+
+        Any custom command-line arguments set by :func:`add_run_args` are
+        available here in ``ctx.args``.
+
+        Similarly to :func:`build`, the method may specify the ``pool``
+        parameter for parallel running of different benchmark program in the
+        target. Of course, resource sharing will occur when using
+        ``--parallel=proc``, which may impact runtime performance.
 
         :param ctx: the configuration context
         :param instance: instance to run
