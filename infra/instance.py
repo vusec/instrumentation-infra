@@ -68,6 +68,9 @@ class Instance(metaclass=ABCMeta):
         recommended to use ``+=`` rather than ``=`` when assigning to lists in
         the context to avoid undoing changes by dependencies.
 
+        Any custom command-line arguments set by :func:`add_build_args` are
+        available here in ``ctx.args``.
+
         :param ctx: the configuration context
         """
         pass
