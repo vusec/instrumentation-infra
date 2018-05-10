@@ -56,6 +56,8 @@ Finally, write any :class:`target <infra.Target>`, :class:`instance
 your project so that you can use them in the commands below.
 
 
+.. _usage-build:
+
 The ``build`` command
 =====================
 
@@ -91,6 +93,8 @@ a maximum of 16 (but you can manually set it to larger values if you think
 enough RAM is available).
 
 
+.. _usage-clean:
+
 The ``clean`` command
 =====================
 
@@ -107,6 +111,8 @@ removes the entire ``build/{targets,packages}/<name>`` directory.
 such as a runtime library with source code embedded in your project, before
 running ``build`` on a target that depends on the runtime library.
 
+
+.. _usage-run:
 
 The ``run`` command
 ===================
@@ -157,6 +163,8 @@ using ``-j 2`` to avoid excessive context switching::
         spec2006 myinst --test --benchmarks all_c all_cpp
 
 
+.. _usage-config:
+
 The ``config`` command
 ======================
 
@@ -170,6 +178,8 @@ The ``config`` command
 registered targets, instances and packages (the union of all registered
 dependencies).
 
+
+.. _usage-pkg-config:
 
 The ``pkg-config`` command
 ==========================

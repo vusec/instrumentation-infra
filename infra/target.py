@@ -19,7 +19,8 @@ class Target(metaclass=ABCMeta):
     registered targets. Each target must also implement a number of methods
     that are called by :class:`Setup` when running commands.
 
-    The ``build`` command follows the following steps for each target:
+    The :ref:`build <usage-build>` command follows the following steps for each
+    target:
 
     #. It calls :func:`add_build_args` to include any custom command-line
        arguments for this target, and then parses the command-line arguments.
@@ -37,7 +38,7 @@ class Target(metaclass=ABCMeta):
        :func:`binary_paths` to get paths to all built binaries. These are then
        passed directly to the build hooks.
 
-    For the ``run`` command:
+    For the :ref:`run <usage-run>` command:
 
     #. It calls :func:`add_run_args` to include any custom command-line
        arguments for this target.
@@ -46,7 +47,7 @@ class Target(metaclass=ABCMeta):
        to :func:`run`.
     #. It calls :func:`run` to run the target binaries.
 
-    For the ``clean`` command:
+    For the :ref:`clean <usage-clean>` command:
 
     #. It calls :func:`is_clean` to see if any build files exist for this target.
     #. If ``is_clean() == False``, it calls :func:`clean`.
@@ -70,10 +71,10 @@ class Target(metaclass=ABCMeta):
 
     def add_build_args(self, parser: ArgumentParser):
         """
-        Extend the command-line arguments for the ``build`` command with
-        custom arguments for this target. These arguments end up in the global
-        namespace, so it is a good idea to prefix them with the target name to
-        avoid collisions with other targets and instances.
+        Extend the command-line arguments for the :ref:`build <usage-build>`
+        command with custom arguments for this target. These arguments end up
+        in the global namespace, so it is a good idea to prefix them with the
+        target name to avoid collisions with other targets and instances.
 
         For example, :class:`SPEC2006 <targets.SPEC2006>` defines
         ``--spec2006-benchmarks`` (rather than ``--benchmarks``).
@@ -84,10 +85,10 @@ class Target(metaclass=ABCMeta):
 
     def add_run_args(self, parser: ArgumentParser):
         """
-        Extend the command-line arguments for the ``run`` command with custom
-        arguments for this target. Since only a single target can be run at a
-        time, prefixing to avoid naming conflicts with other targets is not
-        necessary here.
+        Extend the command-line arguments for the :ref:`run <usage-run>`
+        command with custom arguments for this target. Since only a single
+        target can be run at a time, prefixing to avoid naming conflicts with
+        other targets is not necessary here.
 
         For example, :class:`SPEC2006 <targets.SPEC2006>` defines
         ``--benchmarks`` and ``--test``.
@@ -100,8 +101,6 @@ class Target(metaclass=ABCMeta):
         """
         Specify dependencies that should be built and installed in the run
         environment before building this target.
-
-        :returns: the packages this target depends on
         """
         yield from []
 
@@ -112,7 +111,7 @@ class Target(metaclass=ABCMeta):
 
         :param ctx: the configuration context
         :param args: additional subpath to pass to :func:`os.path.join`
-        :returns: the requested path
+        :returns: ``build/targets/<name>[/<subpath>]``
         """
         return os.path.join(ctx.paths.targets, self.name, *args)
 
@@ -134,7 +133,7 @@ class Target(metaclass=ABCMeta):
     def fetch(self, ctx: Namespace):
         """
         Fetches the source code for this target. This step is separated from
-        :func:`build` because the ``build`` command first fetches all pacakges
+        :func:`build` because the ``build`` command first fetches all packages
         and targets before starting the build process.
 
         :param ctx: the configuration context
@@ -159,10 +158,9 @@ class Target(metaclass=ABCMeta):
 
         The build function should respect variables set in the configuration
         context such as ``ctx.cc`` and ``ctx.cflags``, passing them to the
-        underlying build system as required. The :class:`Setup` docs show
-        default variables in the context that should at least be respected, but
-        complex instances may optionally overwrite them to be used by custom
-        targets.
+        underlying build system as required. :py:attr:`Setup.ctx` shows default
+        variables in the context that should at least be respected, but complex
+        instances may optionally overwrite them to be used by custom targets.
 
         Any custom command-line arguments set by :func:`add_build_args` are
         available here in ``ctx.args``.
@@ -229,7 +227,8 @@ class Target(metaclass=ABCMeta):
 
     def clean(self, ctx: Namespace):
         """
-        Clean generated files for this target. By default, this removes
+        Clean generated files for this target, called by the :ref:`clean
+        <usage-clean>` command. By default, this removes
         ``build/targets/<name>``.
 
         :param ctx: the configuration context

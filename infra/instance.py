@@ -14,9 +14,9 @@ class Instance(metaclass=ABCMeta):
     reference the instance on the command line. The name must be unique among
     all registered instances.
 
-    An instance changes variables in the configuration context (see the
-    :class:`Setup` docs) that are used to apply instrumentation while building a
-    target by :func:`Target.build` and :func:`Target.link`. This is done by
+    An instance changes variables in the :py:attr:`configuration context
+    <Setup.ctx>` that are used to apply instrumentation while building a target
+    by :func:`Target.build` and :func:`Target.link`. This is done by
     :func:`configure`.
 
     Additionally, instances that need runtime support, such as a shared library,
@@ -35,10 +35,10 @@ class Instance(metaclass=ABCMeta):
 
     def add_build_args(self, parser: ArgumentParser):
         """
-        Extend the command-line arguments for the ``build`` command with custom
-        arguments for this instance. These arguments end up in the global
-        namespace, so it is a good idea to prefix them with the instance name to
-        avoid collisions with other instances and targets.
+        Extend the command-line arguments for the :ref:`build <usage-build>`
+        command with custom arguments for this instance. These arguments end up
+        in the global namespace, so it is a good idea to prefix them with the
+        instance name to avoid collisions with other instances and targets.
 
         Use this to enable build flags for your instance on the command line,
         rather than having to create separate instances for every option when
@@ -53,8 +53,6 @@ class Instance(metaclass=ABCMeta):
         Specify dependencies that should be built and installed in the run
         environment before building a target with this instance. Called before
         :func:`configure` and :func:`prepare_run`.
-
-        :returns: the packages this instance depends on
         """
         yield from []
 

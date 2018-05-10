@@ -4,7 +4,7 @@
 # It has been tested pn Python 3.5 and 3.6.
 
 import inspect
-from typing import Union, _ForwardRef, get_type_hints, Any
+from typing import Union, _ForwardRef, Any, NewType, get_type_hints
 from sphinx.ext.autodoc import FunctionDocumenter, MethodDocumenter
 
 
@@ -28,6 +28,12 @@ def typestr(obj):
 
     if obj is Any:
         return 'Any'
+
+    # Don't show NewType typenames, they should only be used for type checking,
+    # just link to the referenced supertype here
+    if obj.__module__ == 'typing' and hasattr(obj, '__qualname__') and \
+            obj.__qualname__.startswith('NewType.'):
+        return typestr(obj.__supertype__)
 
     if inspect.isclass(obj):
         classname = obj.__qualname__

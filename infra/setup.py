@@ -27,55 +27,69 @@ class Setup:
     and :func:`add_instance`, and then call :func:`main` to run the command
     issued in the command-line arguments:
 
-    >>> setup = infra.Setup(__file__)
-    >>> setup.add_instance(MyAwesomeInstance())
-    >>> setup.add_target(MyBeautifulTarget())
-    >>> setup.main()
+    .. _setup-example:
 
-    :func:`main` creates a "context" that it passes to methods of
-    targets/instances/packages. You can see it being used as ``ctx`` by many
-    API methods below. The context contains setup configuration data, such as
-    absolute build paths, and environment variables for build/run commands,
-    such as which compiler and CFLAGS to use to build the current target. Your
-    own targets and instances should read/write to the context.
+    ::
+
+        setup = infra.Setup(__file__)
+        setup.add_instance(MyAwesomeInstance())
+        setup.add_target(MyBeautifulTarget())
+        setup.main()
+
+    :func:`main` creates a :py:attr:`configuration context<ctx>` that it passes
+    to methods of targets/instances/packages. You can see it being used as
+    ``ctx`` by many API methods below. The context contains setup configuration
+    data, such as absolute build paths, and environment variables for build/run
+    commands, such as which compiler and CFLAGS to use to build the current
+    target. Your own targets and instances should read/write to the context.
+
+    **The job of an instance is to manipulate the the context such that a
+    target is built in the desired way.** This manipulation happens in
+    predefined API methods which you must overwrite (see below). Hence, these
+    methods receive the context as a parameter.
+    """
+
+    ctx = None
+    """
+    :class:`util.Namespace` The configuration context.
 
     Consider an example project hosted in directory `/project`, with the
     infrastructure cloned as a submodule in `/project/infra` and a setup script
-    like the one above in `/project/setup.py`. The context will look like this
-    after initialization:
+    like the one :ref:`above <setup-example>` in `/project/setup.py`. The context
+    will look like this after initialization::
 
-    >>> setup.ctx
-    Namespace({
-        'log':      logging.Logger(...),
-        'args':     argparse.Namespace(...),
-        'paths':    Namespace({
-                        'root':         '/project',
-                        'setup':        '/project/setup.py',
-                        'infra':        '/project/infra'
-                        'buildroot':    '/project/build',
-                        'log':          '/project/build/log',
-                        'debuglog':     '/project/build/log/debug.txt',
-                        'runlog':       '/project/build/log/commands.txt',
-                        'packages':     '/project/build/packages',
-                        'targets':      '/project/build/targets',
-                        'pool_results': '/project/results'
-                    }),
-        'runenv':   Namespace({}),
-        'cc':       'cc',
-        'cxx':      'c++',
-        'ar':       'ar',
-        'nm':       'nm',
-        'ranlib':   'ranlib',
-        'cflags':   [],
-        'cxxflags': [],
-        'ldflags':  [],
-        'hooks':    Namespace({
-                        'post_build': []
-                    })
-    })
+        Namespace({
+            'log':      logging.Logger(...),
+            'args':     argparse.Namespace(...),
+            'jobs':     8,
+            'paths':    Namespace({
+                            'root':         '/project',
+                            'setup':        '/project/setup.py',
+                            'infra':        '/project/infra'
+                            'buildroot':    '/project/build',
+                            'log':          '/project/build/log',
+                            'debuglog':     '/project/build/log/debug.txt',
+                            'runlog':       '/project/build/log/commands.txt',
+                            'packages':     '/project/build/packages',
+                            'targets':      '/project/build/targets',
+                            'pool_results': '/project/results'
+                        }),
+            'runenv':   Namespace({}),
+            'cc':       'cc',
+            'cxx':      'c++',
+            'ar':       'ar',
+            'nm':       'nm',
+            'ranlib':   'ranlib',
+            'cflags':   [],
+            'cxxflags': [],
+            'ldflags':  [],
+            'hooks':    Namespace({
+                            'post_build': []
+                        })
+        })
 
-    The :class:`util.Namespace` class is simply a dictionary whose
-    members can be accessed like attributes.
+    The :class:`util.Namespace` class is simply a :class:`dict` whose members
+    can be accessed like attributes.
 
     ``ctx.log`` is a logging object used for status updates. Use this to
     provide useful information about what your implementation is doing.
@@ -84,7 +98,12 @@ class Setup:
     available to read custom build/run arguments from that are added by
     targets/instances.
 
-    ``ctx.paths`` are absolute paths to be used (readonly) by build scripts.
+    ``ctx.jobs`` contains the value of the ``-j`` command-line option,
+    defaulting to the number of CPU cores returned by
+    :func:`multiprocessing.cpu_count`.
+
+    ``ctx.paths`` are absolute paths to be used (readonly) throughout the
+    framework.
 
     ``ctx.runenv`` defines environment variables for :func:`util.run`, which is
     a wrapper for :func:`subprocess.run` that does logging and other useful
@@ -98,11 +117,6 @@ class Setup:
 
     ``ctx.hooks.post_build`` defines a list of post-build hooks, which are
     python functions called with the path to the binary as the only parameter.
-
-    **The job of an instance is to manipulate the the context such that a
-    target is built in the desired way.** This manipulation happens in
-    predefined API methods which you must overwrite (see below). Hence, these
-    methods receive the context as a parameter.
     """
 
     _max_default_jobs = 16
