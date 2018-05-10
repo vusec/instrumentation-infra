@@ -61,11 +61,11 @@ def apply_patch(ctx: Namespace, path: str, strip_count: int) -> bool:
     present, the patch is not applied at all. ``<basename>`` is generated from
     the patch file name: ``path/to/my-patch.patch`` becomes ``my-patch``.
 
-    :param ctx: The current context.
-    :param path: Path to the patch file.
-    :param strip_count: Number of leading elements to strip from patch paths.
+    :param ctx: the configuration context
+    :param path: path to the patch file
+    :param strip_count: number of leading elements to strip from patch paths
     :returns: ``True`` if the patch was applied, ``False`` if it was already
-              applied before.
+              applied before
     """
     path = os.path.abspath(path)
     name = os.path.basename(path).replace('.patch', '')
@@ -108,22 +108,22 @@ def run(ctx: Namespace, cmd: Union[str, List[str]], allow_error=False,
     is logged to the command line and the process is killed with
     ``sys.exit(-1)``.
 
-    :param ctx: The current context.
-    :param cmd: The command to run. Can be a string or a list of strings like in
-                :func:`subprocess.run`.
-    :param allow_error: By default, ``sys.exit(-1)`` is called if the command
-                        returns an error. Set to True to avoid this.
-    :param silent: Disables output logging (only logs the invocation and
-                   environment).
-    :param teeout: Streams command output to ``sys.stdout`` as well as to the
-                   log file.
+    :param ctx: the configuration context
+    :param cmd: command to run, can be a string or a list of strings like in
+                :func:`subprocess.run`
+    :param allow_error: avoids calling ``sys.exit(-1)`` if the command returns
+                        an error
+    :param silent: disables output logging (only logs the invocation and
+                   environment)
+    :param teeout: streams command output to ``sys.stdout`` as well as to the
+                   log file
     :param defer: Do not wait for the command to finish. Similar to
                   ``./program &`` in Bash. Returns a :class:`subprocess.Popen`
                   instance.
-    :param env: Variables to add to the environment.
-    :param kwargs: Passed directly to :func:`subprocess.run` (or
-                   :class:`subprocess.Popen` if ``defer==True``).
-    :returns: A handle to the completed or running process.
+    :param env: variables to add to the environment
+    :param kwargs: passed directly to :func:`subprocess.run` (or
+                   :class:`subprocess.Popen` if ``defer==True``)
+    :returns: a handle to the completed or running process
     """
     cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd]
     cmd_print = qjoin(cmd)
@@ -216,8 +216,7 @@ def qjoin(args: Iterable[str]) -> str:
     to paste in a shell. Basically this adds quotes to each element containing
     spaces (uses :func:`shlex.quote`).
 
-    :param args: Arguments to join.
-    :returns: Joined arguments.
+    :param args: arguments to join
     """
     return ' '.join(shlex.quote(arg) for arg in args)
 
@@ -226,9 +225,9 @@ def download(ctx: Namespace, url: str, outfile: Optional[str] = None):
     """
     Download a file (logs to the debug log).
 
-    :param ctx: The current context.
-    :param url: URL to the file to download.
-    :param outfile: Optional path/filename to download to.
+    :param ctx: the configuration context
+    :param url: URL to the file to download
+    :param outfile: optional path/filename to download to
     """
     if outfile:
         ctx.log.debug('downloading %s to %s' % (url, outfile))
