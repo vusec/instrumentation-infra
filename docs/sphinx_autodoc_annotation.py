@@ -49,9 +49,16 @@ def typestr(obj):
             return typestr(a) + ' or ' + typestr(b)
 
         if classname == 'Callable':
-            params = ', '.join(typestr(t) for t in obj.__args__[:-1])
-            ret = typestr(obj.__args__[-1])
-            return 'Callable[(%s) -> %s]' % (params, ret)
+            if hasattr(obj, '__result__'):
+                # Python 3.5
+                params = obj.__args__
+                ret = obj.__result__
+            else:
+                # Python 3.6
+                params = obj.__args__[:-1]
+                ret = obj.__args__[-1]
+            params = ', '.join(typestr(t) for t in params)
+            return 'Callable[(%s) -> %s]' % (params, typestr(ret))
 
         if classname in ('List', 'Tuple', 'Dict', 'Iterator', 'Iterable'):
             if hasattr(obj, '__tuple_params__'):
