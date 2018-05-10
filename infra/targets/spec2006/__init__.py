@@ -6,6 +6,7 @@ import datetime
 import getpass
 import re
 from contextlib import redirect_stdout
+from typing import List
 from ...util import run, apply_patch, qjoin, FatalError
 from ...target import Target
 from ...packages import Bash, Nothp
@@ -14,20 +15,72 @@ from .benchmark_sets import benchmark_sets
 
 
 class SPEC2006(Target):
+    """
+    The `SPEC-CPU2006 <https://www.spec.org/cpu2006/>`_ benchmarking suite.
+
+    Since SPEC may not be redistributed, you need to provide your own copy in
+    ``source``. We support the following types for ``source_type``:
+
+    - ``mounted``:    mounted/extracted ISO directory
+    - ``installed``:  pre-installed SPEC directory in another project
+    - ``tarfile``:    compressed tarfile with ISO contents
+    - ``git``:        git repo containing extracted ISO
+
+    The ``--spec2006-benchmarks`` command-line argument is added for the
+    :ref:`build <usage-build>` and :ref:`run <usage-run>` commands. It supports
+    full individual benchmark names such as '400.perlbench', and the following
+    benchmark sets defined by SPEC:
+
+    - ``all_c``: C benchmarks
+    - ``all_cpp``: C++ benchmarks
+    - ``all_fortran``: Fortran benchmarks
+    - ``all_mixed``: C/Fortran benchmarks
+    - ``int``: `integer benchmarks <https://spec.org/cpu2006/CINT2006/>`_
+    - ``fp``: `floating-point benchmarks <https://spec.org/cpu2006/CFP2006/>`_
+
+    Mutiple sets and individual benchmarks can be specified, duplicates are
+    removed and the list is sorted automatically. When unspecified, the
+    benchmarks default to ``all_c all_cpp``.
+
+    The following options are added only for the :ref:`run <usage-run>`
+    command:
+
+    - ``--benchmarks``: alias for ``--spec2006-benchmarks``
+    - ``--test``: run the test workload
+    - ``--measuremem``: use an alternative runscript that bypasses ``runspec``
+      to measure memory usage
+    - ``--runspec-args``: passed directly to ``runspec``
+
+    Parallel builds and runs using the ``--parallel`` option are supported.
+    Command output will end up in the ``results/`` directory in that case.
+    Note that even though the parallel job may finish successfully, **you still
+    need to check the output for errors manually**. Here is a useful oneliner
+    for that::
+
+        grep -rh 'Success:\|Error:' results/run-<timestamp>
+
+    The ``--iterations`` option of the :ref:`run <usage-run>` command is
+    translated into the number of nodes per job when ``--parallel`` is
+    specified, and to ``--runspec-args -n <iterations>`` otherwise.
+
+    :name: spec2006
+    """
+
     name = 'spec2006'
 
-    def __init__(self,
-            source=None,      # where to install spec from
-            source_type=None, # see below
-            patches=[],       # patches to apply after installing
-            nothp=True,       # run without transparent huge pages?
-            force_cpu=0       # bind runspec to this cpu core (-1 to disable)
-            ):
-
-        # mounted    mounted/extracted ISO
-        # installed  installed SPEC from other project
-        # tarfile    compressed tarfile to extract
-        # git        git repo containing extracted ISO
+    def __init__(self, source_type: str,
+                       source: str,
+                       patches: List[str] = [],
+                       nothp: bool = True,
+                       force_cpu: int = 0):
+        """
+        :param source_type: see above
+        :param source: where to install spec from
+        :param patches: patches to apply after installing
+        :param nothp: run without transparent huge pages (they tend to
+                      introduce noise in performance measurements)
+        :param force_cpu: bind runspec to this cpu core (-1 to disable)
+        """
         if source_type not in ('mounted', 'installed', 'tarfile', 'git'):
             raise FatalError('invalid source type "%s"' % source_type)
 

@@ -211,6 +211,9 @@ class Target(metaclass=ABCMeta):
         target. Of course, resource sharing will occur when using
         ``--parallel=proc``, which may impact runtime performance.
 
+        Implementations of this method should respect the ``--iterations``
+        option of the run command.
+
         :param ctx: the configuration context
         :param instance: instance to run
         :param pool: parallel process pool if ``--parallel`` is specified

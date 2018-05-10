@@ -2,22 +2,46 @@
 Built-in packages
 =================
 
+LLVM
+====
+
+.. autoclass:: infra.packages.LLVM
+
+Dependencies
+------------
 .. autoclass:: infra.packages.AutoConf
 .. autoclass:: infra.packages.AutoMake
 .. autoclass:: infra.packages.Bash
 .. autoclass:: infra.packages.BinUtils
-.. autoclass:: infra.packages.BuiltinLLVMPasses
 .. autoclass:: infra.packages.CMake
 .. autoclass:: infra.packages.CoreUtils
 .. autoclass:: infra.packages.LibElf
 .. autoclass:: infra.packages.LibTool
-.. autoclass:: infra.packages.LLVM
-.. autoclass:: infra.packages.LLVMPasses
 .. autoclass:: infra.packages.M4
 .. autoclass:: infra.packages.Make
 .. autoclass:: infra.packages.Ninja
-.. autoclass:: infra.packages.Nothp
+
+
+LLVM passes (custom and built-in)
+=================================
+
+.. autoclass:: infra.packages.LLVMPasses
+.. autoclass:: infra.packages.BuiltinLLVMPasses
+
+
+Address space shrinking
+=======================
+
+.. autoclass:: infra.packages.ShrinkAddrSpace
+
+Dependencies
+------------
 .. autoclass:: infra.packages.PatchElf
 .. autoclass:: infra.packages.Prelink
 .. autoclass:: infra.packages.PyElfTools
-.. autoclass:: infra.packages.ShrinkAddrSpace
+
+
+Tools
+=====
+
+.. autoclass:: infra.packages.Nothp

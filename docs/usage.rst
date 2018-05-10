@@ -119,7 +119,7 @@ The ``run`` command
 
 ::
 
-    ./setup.py run [--build] TARGET INSTANCE ... [<target-options>]
+    ./setup.py run [--build] [--iterations=N] TARGET INSTANCE ... [<target-options>]
 
 ``run`` runs one or more instances of a single target program. When ``--build``
 is passed, it first runs the ``build`` command for that target. Valid values for
@@ -131,6 +131,9 @@ SPEC2006 suite, both compiled with Clang but with link-time optimizations
 disabled and disabled respectively::
 
     ./setup.py run --build spec2006 clang clang-LTO --test --benchmarks 401.bzip2
+
+The ``--iterations`` option specifies the number of times to run the target, to
+be able to compute a median and standard deviation for the runtime.
 
 
 Parallel builds and runs
