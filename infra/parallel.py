@@ -5,11 +5,12 @@ import time
 import shlex
 import select
 import re
-import subprocess
 import io
 import fcntl
+import logging
+from subprocess import Popen, STDOUT
 from abc import ABCMeta, abstractmethod
-from typing import Union, List, Optional, Callable, Any
+from typing import Union, List, Optional, Iterator, Callable
 from .util import Namespace, run
 
 
@@ -19,18 +20,39 @@ from .util import Namespace, run
 
 class Pool(metaclass=ABCMeta):
     """
+    A pool is used to run processes in parallel as jobs when ``--parallel`` is
+    specified on the command line. The pool is created automatically by
+    :class:`Setup` and passed to :func:`Target.build`, :func:`Target.link` and
+    :func:`Target.run`. However, the pool is only passed if the method
+    implementation defines a parameter for the pool, i.e.::
+
+        class MyTarget(Target):
+            def build(self, ctx, instance, pool): # receives Pool instance
+               ...
+            def run(self, ctx, instance):         # does not receive it
+               ...
+
+    The maximum number of parallel jobs is controlled by ``--parallelmax``. For
+    ``--parallel=proc`` this is simply the number of parallel processes on the
+    current machine. For ``--parallel=prun`` it is the maximum number of
+    simultaneous jobs in the job queue (pending or running).
     """
     poll_interval = 0.050  # seconds to wait for blocking actions
 
     @abstractmethod
-    def make_jobs(self, ctx, cmd, jobid, outfile, nnodes, **kwargs):
+    def make_jobs(self, ctx: Namespace, cmd: Union[str, List[str]], jobid: str,
+                  outfile: str, nnodes: int, **kwargs) -> Iterator[Popen]:
         pass
 
     @abstractmethod
-    def process_job_output(self, job):
+    def process_job_output(self, job: Popen):
         pass
 
-    def __init__(self, logger, parallelmax):
+    def __init__(self, logger: logging.getLoggerClass(), parallelmax: int):
+        """
+        :param logger: logging object for status updates (set to ``ctx.log``)
+        :param parallelmax: value of ``--parallelmax``
+        """
         self.log = logger
         self.parallelmax = parallelmax
         self.jobs = {}
@@ -77,14 +99,19 @@ class Pool(metaclass=ABCMeta):
                 time.sleep(self.poll_interval)
 
     def wait_all(self):
+        """
+        Block (busy-wait) until all jobs in the queue have been completed.
+        Called automatically by :class:`Setup` after the ``build`` and ``run``
+        commands.
+        """
         while len(self.jobs):
             time.sleep(self.poll_interval)
 
     def run(self, ctx: Namespace, cmd: Union[str, List[str]],
             jobid: str, outfile: str, nnodes: int,
-            onsuccess: Optional[Callable[[subprocess.Popen], None]] = None,
-            onerror: Optional[Callable[[subprocess.Popen], None]] = None,
-            **kwargs):
+            onsuccess: Optional[Callable[[Popen], None]] = None,
+            onerror: Optional[Callable[[Popen], None]] = None,
+            **kwargs) -> List[Popen]:
         """
         A non-blocking wrapper for :func:`util.run`, to be used when
         ``--parallel`` is specified.
@@ -97,6 +124,7 @@ class Pool(metaclass=ABCMeta):
         :param onsuccess: callback when the job finishes successfully
         :param onerror: callback when the job exits with (typically I/O) error
         :param kwargs: passed directly to :func:`util.run`
+        :returns: handles to created job processes
         """
         # TODO: generate outfile from jobid
         self._start_poller()
@@ -104,7 +132,9 @@ class Pool(metaclass=ABCMeta):
         if isinstance(cmd, str):
             cmd = shlex.split(cmd)
 
-        for job in self.make_jobs(ctx, cmd, jobid, outfile, nnodes, **kwargs):
+        jobs = list(self.make_jobs(ctx, cmd, jobid, outfile, nnodes, **kwargs))
+
+        for job in jobs:
             assert hasattr(job, 'jobid')
             assert hasattr(job, 'nnodes')
             assert hasattr(job, 'stdout')
@@ -114,6 +144,8 @@ class Pool(metaclass=ABCMeta):
             self.jobs[job.stdout.fileno()] = job
             self.poller.register(job.stdout, select.EPOLLIN | select.EPOLLPRI |
                                              select.EPOLLERR | select.EPOLLHUP)
+
+        return jobs
 
     def onsuccess(self, job):
         # don't log if onsuccess() returns False
@@ -148,7 +180,7 @@ class ProcessPool(Pool):
             self._wait_for_queue_space(1)
             ctx.log.info('running ' + jobid)
 
-            job = run(ctx, cmd, defer=True, stderr=subprocess.STDOUT,
+            job = run(ctx, cmd, defer=True, stderr=STDOUT,
                       bufsize=io.DEFAULT_BUFFER_SIZE,
                       universal_newlines=False, **kwargs)
             _set_non_blocking(job.stdout)
@@ -188,7 +220,7 @@ class PrunPool(Pool):
         ctx.log.info('scheduling ' + jobid)
         cmd = ['prun', '-v', '-np', '%d' % nnodes, '-1',
                '-o', outfile, *self.prun_opts, *cmd]
-        job = run(ctx, cmd, defer=True, stderr=subprocess.STDOUT, bufsize=0,
+        job = run(ctx, cmd, defer=True, stderr=STDOUT, bufsize=0,
                   universal_newlines=False, **kwargs)
         _set_non_blocking(job.stdout)
         job.jobid = jobid

@@ -46,18 +46,20 @@ class Setup:
 
     >>> setup.ctx
     Namespace({
-        'paths': Namespace({
-            'root':         '/project',
-            'setup':        '/project/setup.py',
-            'infra':        '/project/infra'
-            'buildroot':    '/project/build',
-            'log':          '/project/build/log',
-            'debuglog':     '/project/build/log/debug.txt',
-            'runlog':       '/project/build/log/commands.txt',
-            'packages':     '/project/build/packages',
-            'targets':      '/project/build/targets',
-            'pool_results': '/project/results'
-        }),
+        'log':      logging.Logger(...),
+        'args':     argparse.Namespace(...),
+        'paths':    Namespace({
+                        'root':         '/project',
+                        'setup':        '/project/setup.py',
+                        'infra':        '/project/infra'
+                        'buildroot':    '/project/build',
+                        'log':          '/project/build/log',
+                        'debuglog':     '/project/build/log/debug.txt',
+                        'runlog':       '/project/build/log/commands.txt',
+                        'packages':     '/project/build/packages',
+                        'targets':      '/project/build/targets',
+                        'pool_results': '/project/results'
+                    }),
         'runenv':   Namespace({}),
         'cc':       'cc',
         'cxx':      'c++',
@@ -68,13 +70,19 @@ class Setup:
         'cxxflags': [],
         'ldflags':  [],
         'hooks':    Namespace({
-            'post_build': []
-        }),
-        'args'      argparse.Namespace(...)
+                        'post_build': []
+                    })
     })
 
     The :class:`util.Namespace` class is simply a dictionary whose
     members can be accessed like attributes.
+
+    ``ctx.log`` is a logging object used for status updates. Use this to
+    provide useful information about what your implementation is doing.
+
+    ``ctx.args`` is populated with processed command-line arguments, It is
+    available to read custom build/run arguments from that are added by
+    targets/instances.
 
     ``ctx.paths`` are absolute paths to be used (readonly) by build scripts.
 
@@ -90,10 +98,6 @@ class Setup:
 
     ``ctx.hooks.post_build`` defines a list of post-build hooks, which are
     python functions called with the path to the binary as the only parameter.
-
-    ``ctx.args`` is populated with processed command-line arguments, It is
-    available to read custom build/run arguments from that are added by
-    targets/instances.
 
     **The job of an instance is to manipulate the the context such that a
     target is built in the desired way.** This manipulation happens in
