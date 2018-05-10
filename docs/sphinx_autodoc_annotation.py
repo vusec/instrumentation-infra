@@ -58,15 +58,16 @@ def typestr(obj):
                 params = obj.__args__[:-1]
                 ret = obj.__args__[-1]
             params = ', '.join(typestr(t) for t in params)
-            return 'Callable[(%s) -> %s]' % (params, typestr(ret))
+            return 'callable[(%s) -> %s]' % (params, typestr(ret))
 
         if classname in ('List', 'Tuple', 'Dict', 'Iterator', 'Iterable'):
             if hasattr(obj, '__tuple_params__'):
                 args = obj.__tuple_params__  # Python 3.5
             else:
                 args = obj.__args__  # Python 3.6
+
             args = ', '.join(typestr(t) for t in args)
-            return '%s[%s]' % (classname, args)
+            return '%s[%s]' % (classname.lower(), args)
 
         return str(obj)
 
