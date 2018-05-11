@@ -180,12 +180,15 @@ autoclass_content = 'both'
 # e.g. :class:`Setup` -> :class:`Setup <infra.Setup>`
 import infra
 def process_missing_reference(app, env, node, contnode):
-    if node['reftype'] == 'class' and hasattr(infra, node['reftarget']):
-        domain = env.domains[node['refdomain']]
-        refdoc = node.get('refdoc', env.docname)
-        target = 'infra.' + node['reftarget']
-        return domain.resolve_xref(env, refdoc, app.builder, node['reftype'],
-                                   target, node, contnode)
+    if node['reftype'] == 'class':
+        for mod in (infra, infra.packages, infra.instances, infra.targets):
+            if hasattr(mod, node['reftarget']):
+                domain = env.domains[node['refdomain']]
+                refdoc = node.get('refdoc', env.docname)
+                target = '%s.%s' % (mod.__name__, node['reftarget'])
+                return domain.resolve_xref(env, refdoc, app.builder,
+                                           node['reftype'], target, node,
+                                           contnode)
 
 
 sys.path.insert(0, '.')

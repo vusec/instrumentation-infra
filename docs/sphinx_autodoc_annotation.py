@@ -4,6 +4,7 @@
 # It has been tested pn Python 3.5 and 3.6.
 
 import inspect
+from importlib import import_module
 from typing import Union, _ForwardRef, Any, NewType, get_type_hints
 from sphinx.ext.autodoc import FunctionDocumenter, MethodDocumenter
 
@@ -79,11 +80,11 @@ def typestr(obj):
 
     mod = obj.__module__
 
-    # Strip nested modules if the class is exported at the toplevel
+    # Strip nested module names if the class is exported in __init__.py
     while '.' in mod:
         basemod, nestedmod = mod.rsplit('.', 1)
         try:
-            imported_class = getattr(__import__(basemod), classname)
+            imported_class = getattr(import_module(basemod), classname)
             assert imported_class is obj
             mod = basemod
         except AttributeError:
@@ -109,8 +110,8 @@ def get_param_type(param):
 
 
 def get_classvar_annotation(fullname, existing_contents):
-    modname, classname, attrname = fullname.split('.', 2)
-    mod = __import__(modname)
+    modname, classname, attrname = fullname.rsplit('.', 2)
+    mod = import_module(modname)
     cls = getattr(mod, classname)
     if hasattr(cls, '__annotations__') and attrname in cls.__annotations__:
         ty = cls.__annotations__[attrname]
