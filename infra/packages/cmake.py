@@ -5,10 +5,15 @@ from ..util import run, download
 
 
 class CMake(Package):
+    """
+    :identifier: cmake-<version>
+    :param version: version to download
+    """
+
     url = 'https://cmake.org/files/v{s.major}.{s.minor}/' \
           'cmake-{s.major}.{s.minor}.{s.revision}.tar.gz'
 
-    def __init__(self, version):
+    def __init__(self, version: str):
         self.version = version
 
         version_parts = tuple(map(int, version.split('.')))

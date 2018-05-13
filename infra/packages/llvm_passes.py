@@ -1,13 +1,31 @@
 import os
+from typing import Optional
 from ..package import Package
 from ..util import run, FatalError
+from .llvm import LLVM
 
 
 class LLVMPasses(Package):
-    def __init__(self, llvm, custom_srcdir, build_suffix, use_builtins):
+    """
+    LLVM passes dependency. Use this to add your own passes as a dependency to
+    your own instances.
+
+    TODO: finish docs here
+
+    :identifier: llvm-passes-<build_suffix>
+    :param llvm: LLVM package to link against
+    :param srcdir: source directory containing your own LLVM passes
+    :param build_suffix: identifier for this set of passes
+    :param use_builtins: whether to include
+    :class:`built-in llvm passes <BuiltinLLVMPasses>` in the shared object
+    """
+
+    def __init__(self, llvm: LLVM,
+                       srcdir: Optional[str],
+                       build_suffix: str,
+                       use_builtins: bool):
         self.llvm = llvm
-        self.custom_srcdir = os.path.abspath(custom_srcdir) \
-                             if custom_srcdir else None
+        self.custom_srcdir = os.path.abspath(srcdir)
         self.build_suffix = build_suffix
         self.builtin_passes = BuiltinLLVMPasses(llvm) if use_builtins else None
 
@@ -77,7 +95,8 @@ class LLVMPasses(Package):
 
 class BuiltinLLVMPasses(LLVMPasses):
     def __init__(self, llvm):
-        LLVMPasses.__init__(self, llvm, None, 'builtin-' + llvm.version, False)
+        super().__init__(llvm, '.', 'builtin-' + llvm.version, False)
+        self.custom_srcdir = None
 
     def _srcdir(self, ctx, *subdirs):
         return os.path.join(ctx.paths.infra, 'llvm-passes',

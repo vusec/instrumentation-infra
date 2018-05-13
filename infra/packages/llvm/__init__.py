@@ -1,5 +1,6 @@
 import os
 import shutil
+from typing import List
 from ...package import Package
 from ...util import run, apply_patch, download, FatalError
 from ..gnu import Bash, CoreUtils, BinUtils, Make, \
@@ -9,13 +10,42 @@ from ..ninja import Ninja
 
 
 class LLVM(Package):
-    supported_versions = ('3.8.0', '4.0.0', '5.0.0')
+    """
+    LLVM dependency package. Includes the Clang compiler and optionally
+    `compiler-rt <https://compiler-rt.llvm.org>`_ (which contains runtime
+    support for ASAn).
+
+    Supports a number of patches to be passed as arguments, which are
+    :func:`applied <util.apply_patch>` (with ``patch -p1``) before building. A
+    patch in the list can either be a full path to a patch file, or the name of
+    a built-in patch. Available built-in patches are:
+
+    - **gold-plugins** (for 3.8.0/3.9.1/5.0.0): adds a ``-load`` option to load
+      passes from a shared object file during link-time optimizations, best
+      used in combination with :class:`LLVMPasses`
+    - **statsfilter** (for 3.8.0/3.9.1/5.0.0): adds ``-stats-only`` option,
+      which relates to ``-stats`` like ``-debug-only`` relates to ``-debug``
+    - **safestack** (for 3.8.0): adds ``-fsanitize=safestack`` for old LLVM
+
+    :identifier: llvm-<version>
+    :param version: the full LLVM version to download, like X.Y.Z
+    :param compiler_rt: whether to enable compiler-rt
+    :param patches: optional patches to apply before building
+    :param build_flags: additional `build flags
+                        <https://www.llvm.org/docs/CMake.html#options-and-variables>`_
+                        to pass to cmake
+    """
+
+    #supported_versions = ('3.8.0', '3.9.1', '4.0.0', '5.0.0')
     binutils = BinUtils('2.26.1', gold=True)
 
-    def __init__(self, version, compiler_rt, patches, build_flags=[]):
-        if version not in self.supported_versions:
-            raise FatalError('LLVM version must be one of %s' %
-                    '/'.join(self.supported_versions))
+    def __init__(self, version: str,
+                       compiler_rt: bool,
+                       patches: List[str] = [],
+                       build_flags: List[str] = []):
+        #if version not in self.supported_versions:
+        #    raise FatalError('LLVM version must be one of %s' %
+        #            '/'.join(self.supported_versions))
 
         self.version = version
         self.compiler_rt = compiler_rt

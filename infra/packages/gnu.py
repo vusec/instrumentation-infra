@@ -62,6 +62,10 @@ class GNUTarPackage(Package, metaclass=ABCMeta):
 
 
 class Bash(GNUTarPackage):
+    """
+    :identifier: bash-<version>
+    :param str version: version to download
+    """
     name = 'bash'
     built_path = 'bash'
     installed_path = 'bin/bash'
@@ -76,6 +80,10 @@ class Bash(GNUTarPackage):
 
 
 class Make(GNUTarPackage):
+    """
+    :identifier: make-<version>
+    :param str version: version to download
+    """
     name = 'make'
     built_path = 'make'
     installed_path = 'bin/make'
@@ -90,6 +98,10 @@ class Make(GNUTarPackage):
 
 
 class CoreUtils(GNUTarPackage):
+    """
+    :identifier: coreutils-<version>
+    :param str version: version to download
+    """
     name = 'coreutils'
     built_path = 'src/yes'
     installed_path = 'bin/yes'
@@ -97,6 +109,10 @@ class CoreUtils(GNUTarPackage):
 
 
 class M4(GNUTarPackage):
+    """
+    :identifier: m4-<version>
+    :param str version: version to download
+    """
     name = 'm4'
     built_path = 'src/m4'
     installed_path = 'bin/m4'
@@ -104,6 +120,10 @@ class M4(GNUTarPackage):
 
 
 class AutoConf(GNUTarPackage):
+    """
+    :identifier: autoconf-<version>
+    :param str version: version to download
+    """
     name = 'autoconf'
     built_path = 'bin/autoconf'
     installed_path = 'bin/autoconf'
@@ -111,6 +131,10 @@ class AutoConf(GNUTarPackage):
 
 
 class AutoMake(GNUTarPackage):
+    """
+    :identifier: automake-<version>
+    :param str version: version to download
+    """
     name = 'automake'
     built_path = 'bin/automake'
     installed_path = 'bin/automake'
@@ -118,6 +142,10 @@ class AutoMake(GNUTarPackage):
 
 
 class LibTool(GNUTarPackage):
+    """
+    :identifier: libtool-<version>
+    :param str version: version to download
+    """
     name = 'libtool'
     built_path = 'libtool'
     installed_path = 'bin/libtool'
@@ -125,7 +153,12 @@ class LibTool(GNUTarPackage):
 
 
 class BinUtils(Package):
-    def __init__(self, version, gold=True):
+    """
+    :identifier: binutils-<version>[-gold]
+    :param version: version to download
+    :param gold: whether to use the gold linker
+    """
+    def __init__(self, version: str, gold=True):
         self.version = version
         self.gold = gold
 
