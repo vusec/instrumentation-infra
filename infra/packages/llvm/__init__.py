@@ -148,7 +148,13 @@ class LLVM(Package):
 
         return os.path.exists('install/bin/llvm-config')
 
-    def configure(self, ctx):
+    def configure(self, ctx: Namespace):
+        """
+        Set LLVM toolchain programs in **ctx**. Should be called from the
+        ``configure`` method of an instance.
+
+        :param ctx: the configuration context
+        """
         ctx.cc = 'clang'
         ctx.cxx = 'clang++'
         ctx.ar = 'llvm-ar'

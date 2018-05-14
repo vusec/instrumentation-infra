@@ -6,7 +6,7 @@ LLVM
 ====
 
 .. autoclass:: infra.packages.LLVM
-   :members: add_plugin_flags
+   :members: configure, add_plugin_flags
 
 Dependencies
 ------------
@@ -27,14 +27,15 @@ LLVM passes
 ===========
 
 .. autoclass:: infra.packages.LLVMPasses
-   :members: runtime_cflags
+   :members: configure, runtime_cflags
 .. autoclass:: infra.packages.BuiltinLLVMPasses
 
 
 Address space shrinking
 =======================
 
-.. autoclass:: infra.packages.ShrinkAddrSpace
+.. autoclass:: infra.packages.LibShrink
+   :members: configure, run_wrapper
 
 Dependencies
 ------------

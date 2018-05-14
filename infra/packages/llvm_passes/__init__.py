@@ -113,6 +113,12 @@ class LLVMPasses(Package):
         yield from super().pkg_config_options(ctx)
 
     def configure(self, ctx):
+        """
+        Set build/link flags in **ctx**. Should be called from the
+        ``configure`` method of an instance.
+
+        :param ctx: the configuration context
+        """
         libpath = self.path(ctx, 'install/libpasses-gold.so')
         ctx.cflags += ['-flto']
         ctx.cxxflags += ['-flto']
