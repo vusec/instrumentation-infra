@@ -78,7 +78,8 @@ class SPEC2006(Target):
         :param source: where to install spec from
         :param patches: patches to apply after installing
         :param nothp: run without transparent huge pages (they tend to
-                      introduce noise in performance measurements)
+                      introduce noise in performance measurements), implies
+                      :class:`Nothp` dependency if ``True``
         :param force_cpu: bind runspec to this cpu core (-1 to disable)
         """
         if source_type not in ('mounted', 'installed', 'tarfile', 'git'):

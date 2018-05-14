@@ -5,7 +5,12 @@ from ..util import run, download
 
 
 class PatchElf(Package):
-    def __init__(self, version):
+    """
+    :identifier: patchelf-<version>
+    :param version: version to download
+    """
+
+    def __init__(self, version: str):
         self.version = version
 
     def ident(self):

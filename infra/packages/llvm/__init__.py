@@ -158,10 +158,11 @@ class LLVM(Package):
         ctx.cxxflags = []
         ctx.ldflags = []
 
+    @staticmethod
     def add_plugin_flags(ctx: Namespace, *flags: Iterable[str]):
         """
         Helper to pass link-time flags to the LLVM gold plugin. Simply prefixes
-        all **flags** with ``'-Wl,-plugin-opt='`` before adding them to
+        all **flags** with ``-Wl,-plugin-opt=`` before adding them to
         ``ctx.ldflags``.
 
         :param ctx: the configuration context

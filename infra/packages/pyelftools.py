@@ -5,7 +5,13 @@ from .python import Python
 
 
 class PyElfTools(Package):
-    def __init__(self, version, python_version):
+    """
+    :identifier: pyelftools-<version>
+    :param version: version to download
+    :param python_version: which Python version to install the package for
+    """
+
+    def __init__(self, version: str, python_version: str):
         self.version = version
         self.python = Python(python_version)
 

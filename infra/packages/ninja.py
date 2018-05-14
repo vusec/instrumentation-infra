@@ -5,7 +5,12 @@ from ..util import run, download
 
 
 class Ninja(Package):
-    def __init__(self, version):
+    """
+    :identifier: ninja-<version>
+    :param version: version to download
+    """
+
+    def __init__(self, version: str):
         self.version = version
 
     def ident(self):

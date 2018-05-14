@@ -1,6 +1,7 @@
 import os
+from typing import List
 from ...package import Package
-from ...util import FatalError, run
+from ...util import Namespace, FatalError, run
 from ..llvm import LLVM
 
 
@@ -24,6 +25,7 @@ class LLVMPasses(Package):
     ``build/packages/llvm-passes-<build_suffix>/install``:
 
     - ``libpasses-gold.so``: used to load the passes at link time in Clang.
+      This is the default usage.
 
     - ``libpasses-opt.so``: used to run the passes with LLVM's ``opt`` utility.
       Can be used in a customized build system or for debugging.
@@ -40,12 +42,15 @@ class LLVMPasses(Package):
     <https://github.com/vusec/instrumentation-skeleton/blob/master/setup.py>`_
     for an example.
 
+    For the :ref:`pkg-config <usage-pkg-config>` command of this package, the
+    ``--objdir`` option points to the build directory.
+
     :identifier: llvm-passes-<build_suffix>
     :param llvm: LLVM package to link against
     :param srcdir: source directory containing your LLVM passes
     :param build_suffix: identifier for this set of passes
-    :param use_builtins: whether to include :ref:`built-in LLVM passes
-                         <builtin-passes>` in the shared object
+    :param use_builtins: whether to include :doc:`built-in LLVM passes
+                         <passes>` in the shared object
     :todo: extend this to support compile-time plugins
     """
 
@@ -113,8 +118,13 @@ class LLVMPasses(Package):
         ctx.cxxflags += ['-flto']
         ctx.ldflags += ['-flto', '-Wl,-plugin-opt=-load=' + libpath]
 
-    def runtime_cflags(self, ctx):
+    def runtime_cflags(self, ctx: Namespace) -> List[str]:
         """
+        Returns a list of CFLAGS to pass to a runtime library that depends on
+        features from passes. These set include directories for header includes
+        of built-in pass functionalities such as the ``NOINSTRUMENT`` macro.
+
+        :param ctx: the configuration context
         """
         if self.builtin_passes:
             return self.builtin_passes.runtime_cflags(ctx)
@@ -123,6 +133,32 @@ class LLVMPasses(Package):
 
 class BuiltinLLVMPasses(LLVMPasses):
     """
+    Subclass of :class:`LLVMPasses` for :doc:`built-in passes <passes>`. Use
+    this if you don't have any custom passes and just want to use the built-in
+    passes. Configuration happens in the same way as described above: by
+    calling the :func:`configure` method.
+
+    In addition to the shared objects listed above, this package also produces
+    a static library called ``libpasses-builtin.a`` which is used by the
+    :class:`LLVMPasses` to include built-in passes when ``use_builtins`` is
+    ``True``.
+
+    For the :ref:`pkg-config <usage-pkg-config>` command of this package, the
+    following options are added in addition to
+    ``--root``/``--prefix``/``--objdir``:
+
+    - ``--cxxflags`` lists compilation flags for custom passes that depend on
+      built-in analysis passes (sets include path for headers).
+
+    - ``--runtime-cflags`` prints the value of
+      :func:`LLVMPasses.runtime_cflags`.
+
+    - ``--target-cflags`` lists compilation flags for targets that use source
+      patches to make them compatible with built-in passes, and need to include
+      some header files accordingly.
+
+    :identifier: llvm-passes-builtin-<llvm.version>
+    :param llvm: LLVM package to link against
     """
 
     def __init__(self, llvm: LLVM):
@@ -154,6 +190,4 @@ class BuiltinLLVMPasses(LLVMPasses):
         yield from super().pkg_config_options(ctx)
 
     def runtime_cflags(self, ctx):
-        """
-        """
         return ['-I', self._srcdir(ctx, 'include')]

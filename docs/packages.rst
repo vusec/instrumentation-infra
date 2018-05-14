@@ -23,11 +23,11 @@ Dependencies
 .. autoclass:: infra.packages.Ninja
 
 
-LLVM passes (custom and built-in)
-=================================
+LLVM passes
+===========
 
 .. autoclass:: infra.packages.LLVMPasses
-.. _builtin-passes:
+   :members: runtime_cflags
 .. autoclass:: infra.packages.BuiltinLLVMPasses
 
 

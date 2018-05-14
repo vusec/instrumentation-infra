@@ -5,7 +5,12 @@ from ...util import run, download, apply_patch
 
 
 class LibElf(Package):
-    def __init__(self, version):
+    """
+    :identifier: libelf-<version>
+    :param str version: version to download
+    """
+
+    def __init__(self, version: str):
         self.version = version
 
     def ident(self):
@@ -48,6 +53,11 @@ class LibElf(Package):
 
 
 class Prelink(Package):
+    """
+    :identifier: prelink-<version>
+    :param str version: version to download
+    """
+
     def __init__(self, version):
         self.version = version
         #assert version == '209'

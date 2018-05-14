@@ -59,3 +59,4 @@ and for examples of how to invoke build and run commands.
    targets
    instances
    packages
+   passes
