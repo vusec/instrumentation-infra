@@ -7,6 +7,9 @@ endif
 ifndef SETUP_SCRIPT
     $(error SETUP_SCRIPT is undefined)
 endif
+ifndef USE_BUILTINS
+    $(error USE_BUILTINS is undefined)
+endif
 
 CXX           ?= g++
 OBJDIR        ?= $(shell $(PKG_CONFIG) llvm-passes-$(BUILD_SUFFIX) --objdir)
@@ -23,10 +26,10 @@ CFLAGS         = -Werror -Wall -std=c++0x -g -O2 -I. \
 OLD_LDFLAGS   := $(LDFLAGS)
 LDFLAGS        = -g -shared $(OLD_LDFLAGS)
 LDFLAGSGOLD    = -Wl,--no-undefined -L$(LLVM_PREFIX)/lib -l:LLVMgold.so -Wl,--rpath=$(LLVM_PREFIX)/lib
-ifeq($(USE_BUILTINS),true)
+ifeq ($(USE_BUILTINS),true)
     BUILTIN_PREFIX  = $(shell $(PKG_CONFIG) llvm-passes-builtin-$(LLVM_VERSION) --prefix)
     CFLAGS         += $(shell $(PKG_CONFIG) llvm-passes-builtin-$(LLVM_VERSION) --cxxflags)
-    LDGLAGS        += -L$(BUILTIN_PREFIX) -Wl,-whole-archive -lpasses-builtin -Wl,-no-whole-archive
+    LDFLAGS        += -L$(BUILTIN_PREFIX) -Wl,-whole-archive -lpasses-builtin -Wl,-no-whole-archive
     BUILTIN_DEP     = $(BUILTIN_PREFIX)/libpasses-builtin.a
 else
     BUILTIN_DEP     =

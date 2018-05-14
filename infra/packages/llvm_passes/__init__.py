@@ -17,7 +17,7 @@ class LLVMPasses(Package):
         LLVM_VERSION = <llvm_version>
         SETUP_SCRIPT = <path_to_setup.py>
         SUBDIRS      = <optional list of subdir names containing passes>
-        include <path_to_infra>/packages/llvm-passes/Makefile
+        include <path_to_infra>/infra/packages/llvm_passes/Makefile
 
     The makefile can be run as-is using ``make`` in your passes directory
     during development, without invoking the setup script directly. It creates
