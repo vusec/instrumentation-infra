@@ -173,6 +173,9 @@ sys.path.insert(0, '..')
 # Make autodoc include all documented module/class members by default
 autodoc_default_flags = []
 
+# Order class members by source occurrence rather than alphabetical
+autodoc_member_order = 'bysource'
+
 # Append __init__ docstring to class docstring
 autoclass_content = 'both'
 

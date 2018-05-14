@@ -131,21 +131,6 @@ class Setup:
         self.instances = OrderedDict()
         self.targets = OrderedDict()
 
-    def main(self):
-        """
-        Run the configured setup:
-
-        #. Parse command-line arguments.
-        #. Create build directories and log files.
-        #. Run the issued command.
-        """
-        self.ctx = Namespace()
-        self._init_context()
-        self._parse_argv()
-        self._create_dirs()
-        self._initialize_logger()
-        self._run_command()
-
     def _parse_argv(self):
         parser = argparse.ArgumentParser(
                 description='Frontend for building/running instrumented benchmarks.')
@@ -759,3 +744,18 @@ class Setup:
             self.ctx.log.warning('exiting because of keyboard interrupt')
         except Exception as e:
             self.ctx.log.critical('unkown error\n' + traceback.format_exc().rstrip())
+
+    def main(self):
+        """
+        Run the configured setup:
+
+        #. Parse command-line arguments.
+        #. Create build directories and log files.
+        #. Run the issued command.
+        """
+        self.ctx = Namespace()
+        self._init_context()
+        self._parse_argv()
+        self._create_dirs()
+        self._initialize_logger()
+        self._run_command()
