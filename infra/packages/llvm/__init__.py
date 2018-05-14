@@ -1,8 +1,8 @@
 import os
 import shutil
-from typing import List
+from typing import List, Iterable
 from ...package import Package
-from ...util import run, apply_patch, download, FatalError
+from ...util import Namespace, FatalError, run, apply_patch, download
 from ..gnu import Bash, CoreUtils, BinUtils, Make, \
         M4, AutoConf, AutoMake, LibTool
 from ..cmake import CMake
@@ -13,7 +13,7 @@ class LLVM(Package):
     """
     LLVM dependency package. Includes the Clang compiler and optionally
     `compiler-rt <https://compiler-rt.llvm.org>`_ (which contains runtime
-    support for ASAn).
+    support for ASan).
 
     Supports a number of patches to be passed as arguments, which are
     :func:`applied <util.apply_patch>` (with ``patch -p1``) before building. A
@@ -157,3 +157,15 @@ class LLVM(Package):
         ctx.cflags = []
         ctx.cxxflags = []
         ctx.ldflags = []
+
+    def add_plugin_flags(ctx: Namespace, *flags: Iterable[str]):
+        """
+        Helper to pass link-time flags to the LLVM gold plugin. Simply prefixes
+        all **flags** with ``'-Wl,-plugin-opt='`` before adding them to
+        ``ctx.ldflags``.
+
+        :param ctx: the configuration context
+        :param flags: flags to pass to the gold plugin
+        """
+        for flag in flags:
+            ctx.ldflags.append('-Wl,-plugin-opt=' + str(flag))

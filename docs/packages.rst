@@ -6,6 +6,7 @@ LLVM
 ====
 
 .. autoclass:: infra.packages.LLVM
+   :members: add_plugin_flags
 
 Dependencies
 ------------
@@ -26,6 +27,7 @@ LLVM passes (custom and built-in)
 =================================
 
 .. autoclass:: infra.packages.LLVMPasses
+.. _builtin-passes:
 .. autoclass:: infra.packages.BuiltinLLVMPasses
 
 
