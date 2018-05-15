@@ -17,7 +17,7 @@ SRCS      := $(wildcard *.cpp) $(foreach d,$(SUBDIRS),$(wildcard $d/*.cpp))
 OBJNAMES  := $(patsubst %.cpp,%.o,$(SRCS))
 OBJS      := $(addprefix $(OBJDIR)/,$(OBJNAMES))
 DEPS      := $(OBJS:.o=.d)
-LIBGOLD   := libpasses.so
+LIBGOLD   := libpasses-gold.so
 LIBOPT    := libpasses-opt.so
 LIBSTATIC := libpasses-builtin.a
 
