@@ -20,9 +20,9 @@ class LLVM(Package):
     patch in the list can either be a full path to a patch file, or the name of
     a built-in patch. Available built-in patches are:
 
-    - **gold-plugins** (for 3.8.0/3.9.1/5.0.0): adds a ``-load`` option to load
-      passes from a shared object file during link-time optimizations, best
-      used in combination with :class:`LLVMPasses`
+    - **gold-plugins** (for 3.8.0/3.9.1/4.0.0/5.0.0): adds a ``-load`` option
+      to load passes from a shared object file during link-time optimizations,
+      best used in combination with :class:`LLVMPasses`
     - **statsfilter** (for 3.8.0/3.9.1/5.0.0): adds ``-stats-only`` option,
       which relates to ``-stats`` like ``-debug-only`` relates to ``-debug``
     - **safestack** (for 3.8.0): adds ``-fsanitize=safestack`` for old LLVM
