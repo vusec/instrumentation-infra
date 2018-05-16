@@ -159,10 +159,6 @@ class BuiltinLLVMPasses(LLVMPasses):
     - ``--runtime-cflags`` prints the value of
       :func:`LLVMPasses.runtime_cflags`.
 
-    - ``--target-cflags`` lists compilation flags for targets that use source
-      patches to make them compatible with built-in passes, and need to include
-      some header files accordingly.
-
     :identifier: llvm-passes-builtin-<llvm.version>
     :param llvm: LLVM package to link against
     """
@@ -190,9 +186,6 @@ class BuiltinLLVMPasses(LLVMPasses):
         yield ('--runtime-cflags',
                'runtime compile flags',
                self.runtime_cflags(ctx))
-        yield ('--target-cflags',
-               'target compile flags for instrumentation helpers',
-               ['-I', self._srcdir(ctx, 'include/runtime')])
         yield from super().pkg_config_options(ctx)
 
     def runtime_cflags(self, ctx):
