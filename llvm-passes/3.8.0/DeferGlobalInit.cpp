@@ -2,7 +2,7 @@
 
 #define DEBUG_TYPE "defer-global-init"
 
-#include "utils/Common.h"
+#include "Common.h"
 
 using namespace llvm;
 

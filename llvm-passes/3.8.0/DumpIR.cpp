@@ -8,7 +8,7 @@
 
 #define DEBUG_TYPE "dump-ir"
 
-#include "utils/Common.h"
+#include "Common.h"
 
 #include <cstdlib>
 #include <climits>

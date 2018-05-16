@@ -196,4 +196,4 @@ class BuiltinLLVMPasses(LLVMPasses):
         yield from super().pkg_config_options(ctx)
 
     def runtime_cflags(self, ctx):
-        return ['-I', self._srcdir(ctx, 'include')]
+        return ['-I', self._srcdir(ctx, 'include/runtime')]

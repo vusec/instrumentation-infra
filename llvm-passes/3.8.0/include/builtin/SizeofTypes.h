@@ -1,5 +1,5 @@
-#ifndef SIZE_OF_TYPES_H
-#define SIZE_OF_TYPES_H
+#ifndef SIZEOF_TYPES_H
+#define SIZEOF_TYPES_H
 
 #include "llvm/Pass.h"
 #include "llvm/ADT/DenseMap.h"
@@ -20,4 +20,4 @@ private:
     DenseMap<Instruction*, Type*> mallocTypes;
 };
 
-#endif  /* SIZE_OF_TYPES_H */
+#endif  /* SIZEOF_TYPES_H */

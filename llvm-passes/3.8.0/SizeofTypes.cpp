@@ -1,6 +1,6 @@
 #define DEBUG_TYPE "sizeof-types"
 
-#include "utils/Common.h"
+#include "Common.h"
 #include "SizeofTypes.h"
 
 using namespace llvm;

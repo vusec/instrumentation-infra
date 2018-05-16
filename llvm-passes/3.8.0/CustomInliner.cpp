@@ -8,7 +8,7 @@
 #include <llvm/Transforms/IPO/InlinerPass.h>
 #include <llvm/Analysis/InlineCost.h>
 
-#include "utils/Common.h"
+#include "Common.h"
 
 using namespace llvm;
 

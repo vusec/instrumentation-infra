@@ -1,5 +1,5 @@
-#include "utils/Common.h"
-#include "utils/CustomFunctionPass.h"
+#include "Common.h"
+#include "CustomFunctionPass.h"
 
 #define DEBUG_TYPE "bbtrace"
 

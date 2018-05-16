@@ -3,7 +3,7 @@
 
 #define DEBUG_TYPE "expand-const-global-users"
 
-#include "utils/Common.h"
+#include "Common.h"
 
 using namespace llvm;
 
