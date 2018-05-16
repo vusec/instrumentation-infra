@@ -1,7 +1,7 @@
 #ifndef CUSTOM_FUNCTION_PASS_H
 #define CUSTOM_FUNCTION_PASS_H
 
-#include "utils/Common.h"
+#include "Common.h"
 
 using namespace llvm;
 

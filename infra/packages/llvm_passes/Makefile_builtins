@@ -7,7 +7,7 @@ endif
 
 CXX         ?= g++
 CXXFLAGS    ?=
-CXXFLAGS    += -I. -Iinclude/builtin-passes -Werror -Wall -std=c++0x -g -O2 \
+CXXFLAGS    += -I. -Iinclude/builtin -Werror -Wall -std=c++0x -g -O2 \
               `llvm-config --cxxflags`
 LDFLAGS     ?=
 LDFLAGS     += -g -shared
