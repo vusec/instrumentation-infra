@@ -178,7 +178,6 @@ class Target(metaclass=ABCMeta):
         """
         pass
 
-    @abstractmethod
     def link(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
         """
         Link the target binaries. Implementing this method is optional, its only
