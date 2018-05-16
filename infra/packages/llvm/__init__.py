@@ -63,10 +63,7 @@ class LLVM(Package):
         yield CoreUtils('8.22')
         yield self.binutils
         yield Make('4.1')
-        yield M4('1.4.18')
-        yield AutoConf('2.69')
-        yield AutoMake('1.15.1')
-        yield LibTool('2.4.6')
+        yield AutoMake.default()
         yield CMake('3.8.2')
         yield Ninja('1.8.2')
 

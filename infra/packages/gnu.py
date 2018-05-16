@@ -1,6 +1,8 @@
 import os
 import shutil
+from glob import glob
 from abc import ABCMeta, abstractmethod
+from typing import Optional
 from ..package import Package
 from ..util import run, download, FatalError
 
@@ -122,23 +124,21 @@ class M4(GNUTarPackage):
 class AutoConf(GNUTarPackage):
     """
     :identifier: autoconf-<version>
-    :param str version: version to download
+    :param version: version to download
+    :param m4: M4 package
     """
     name = 'autoconf'
     built_path = 'bin/autoconf'
     installed_path = 'bin/autoconf'
     tar_compression = 'gz'
 
+    def __init__(self, version: str, m4: M4):
+        self.version = version
+        self.m4 = m4
 
-class AutoMake(GNUTarPackage):
-    """
-    :identifier: automake-<version>
-    :param str version: version to download
-    """
-    name = 'automake'
-    built_path = 'bin/automake'
-    installed_path = 'bin/automake'
-    tar_compression = 'gz'
+    def dependencies(self):
+        yield from super().dependencies()
+        yield self.m4
 
 
 class LibTool(GNUTarPackage):
@@ -150,6 +150,58 @@ class LibTool(GNUTarPackage):
     built_path = 'libtool'
     installed_path = 'bin/libtool'
     tar_compression = 'gz'
+
+
+class AutoMake(GNUTarPackage):
+    """
+    :identifier: automake-<version>
+    :param version: version to download
+    :param autoconf: autoconf package
+    :param libtool: optional libtool package to install .m4 files from
+    """
+    name = 'automake'
+    built_path = 'bin/automake'
+    installed_path = 'bin/automake'
+    tar_compression = 'gz'
+
+    def __init__(self, version: str, autoconf: AutoConf,
+                       libtool: Optional[LibTool]):
+        self.version = version
+        self.autoconf = autoconf
+        self.libtool = libtool
+
+    def dependencies(self):
+        yield from super().dependencies()
+        yield self.autoconf
+        if self.libtool:
+            yield self.libtool
+
+    def install(self, ctx):
+        super().install(ctx)
+
+        # copy over .m4 files from libtool
+        if self.libtool:
+            pre = 'install/share/aclocal/'
+            for f in glob(self.libtool.path(ctx, pre + '*.m4')):
+                os.symlink(f, self.path(ctx, pre + os.path.basename(f)))
+
+    @classmethod
+    def default(cls, automake_version = '1.15.1',
+                     autoconf_version = '2.69',
+                     m4_version = '1.4.18',
+                     libtool_version: Optional[str] = '2.4.6') -> 'AutoMake':
+        """
+        Create a package with default versions for all autotools.
+
+        :param automake_version: automake version
+        :param autoconf_version: autoconf version
+        :param m4_version: m4 version
+        :param libtool_version: optional libtool version
+        """
+        m4 = M4(m4_version)
+        autoconf = AutoConf(autoconf_version, m4)
+        libtool = LibTool(libtool_version) if libtool_version else None
+        return cls(automake_version, autoconf, libtool)
 
 
 class BinUtils(Package):

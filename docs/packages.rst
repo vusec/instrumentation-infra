@@ -12,6 +12,7 @@ Dependencies
 ------------
 .. autoclass:: infra.packages.AutoConf
 .. autoclass:: infra.packages.AutoMake
+   :members: default
 .. autoclass:: infra.packages.Bash
 .. autoclass:: infra.packages.BinUtils
 .. autoclass:: infra.packages.CMake
