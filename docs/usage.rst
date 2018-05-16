@@ -42,8 +42,8 @@ Cloning the framework in your project
 First add the infrastructure as a git submodule. This creates a ``.gitmodules``
 file that you should commit::
 
-    git submodule add infra git@github.com:vusec/instrumentation-infra.git
-    git add instrumentation-infra .gitmodules  # implicit on recent git versions
+    git submodule add -b master git@github.com:vusec/instrumentation-infra.git infra
+    git add infra .gitmodule
     git commit -m "Clone instrumentation infrastructure"
 
 Next, create a setup script (recommended name ``setup.py``) in your project root
