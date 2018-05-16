@@ -1,7 +1,7 @@
 Index: lib/LTO/LTOBackend.cpp
 ===================================================================
---- lib/LTO/LTOBackend.cpp	(revision 304942)
-+++ lib/LTO/LTOBackend.cpp	(working copy)
+--- a/lib/LTO/LTOBackend.cpp	(revision 304942)
++++ b/lib/LTO/LTOBackend.cpp	(working copy)
 @@ -21,7 +21,9 @@
  #include "llvm/Analysis/TargetTransformInfo.h"
  #include "llvm/Bitcode/BitcodeReader.h"
@@ -119,8 +119,8 @@ Index: lib/LTO/LTOBackend.cpp
  bool opt(Config &Conf, TargetMachine *TM, unsigned Task, Module &Mod,
 Index: lib/LTO/LTOCodeGenerator.cpp
 ===================================================================
---- lib/LTO/LTOCodeGenerator.cpp	(revision 304942)
-+++ lib/LTO/LTOCodeGenerator.cpp	(working copy)
+--- a/lib/LTO/LTOCodeGenerator.cpp	(revision 304942)
++++ b/lib/LTO/LTOCodeGenerator.cpp	(working copy)
 @@ -537,6 +537,7 @@
  bool LTOCodeGenerator::optimize(bool DisableVerify, bool DisableInline,
                                  bool DisableGVNLoadPRE,
@@ -131,8 +131,8 @@ Index: lib/LTO/LTOCodeGenerator.cpp
  
 Index: tools/gold/CMakeLists.txt
 ===================================================================
---- tools/gold/CMakeLists.txt	(revision 304942)
-+++ tools/gold/CMakeLists.txt	(working copy)
+--- a/tools/gold/CMakeLists.txt	(revision 304942)
++++ b/tools/gold/CMakeLists.txt	(working copy)
 @@ -1,4 +1,4 @@
 -set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/gold.exports)
 +#set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/gold.exports)
