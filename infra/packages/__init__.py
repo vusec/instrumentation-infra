@@ -10,3 +10,4 @@ from .llvm_passes import BuiltinLLVMPasses, LLVMPasses
 from .perl import Perl, SPECPerl, Perlbrew
 from .tools import Nothp
 from .ninja import Ninja
+from .gperftools import Gperftools, LibUnwind

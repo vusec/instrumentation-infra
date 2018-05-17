@@ -45,6 +45,17 @@ Dependencies
 .. autoclass:: infra.packages.PyElfTools
 
 
+TCmalloc
+========
+
+.. autoclass:: infra.packages.Gperftools
+   :members: configure
+
+Dependencies
+------------
+.. autoclass:: infra.packages.LibUnwind
+
+
 Tools
 =====
 
