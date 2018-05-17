@@ -112,7 +112,7 @@ class LLVMPasses(Package):
                self.path(ctx, 'obj'))
         yield from super().pkg_config_options(ctx)
 
-    def configure(self, ctx):
+    def configure(self, ctx: Namespace):
         """
         Set build/link flags in **ctx**. Should be called from the
         ``configure`` method of an instance.
