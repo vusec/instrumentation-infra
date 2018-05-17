@@ -470,6 +470,11 @@ class Setup:
 
         package.goto_rootdir(self.ctx)
 
+    def _load_deps(self, obj):
+        for package in self._get_deps([obj]):
+            self.ctx.log.debug('install %s into env' % package.ident())
+            package.install_env(self.ctx)
+
     def _clean_package(self, package):
         if package.is_clean(self.ctx):
             self.ctx.log.debug('package %s is already cleaned' % package.ident())
@@ -626,9 +631,8 @@ class Setup:
         assert hooktype in self.ctx.hooks
 
         # don't build packages (should have been done already since this
-        # command should only be called recursively)
-        for package in self._get_deps([instance]):
-            package.install_env(self.ctx)
+        # command should only be called recursively), just load them
+        self._load_deps(instance)
 
         # populate self.ctx.hooks[hooktype]
         instance.configure(self.ctx)
@@ -667,13 +671,13 @@ class Setup:
             self.ctx.jobs = min(cpu_count(), self._max_default_jobs)
             self._run_build()
 
-        for package in self._get_deps([target]):
-            package.install_env(self.ctx)
+        self._load_deps(target)
 
         for instance in instances:
             oldctx = self.ctx.copy()
             self.ctx.log.info('running %s-%s' % (target.name, instance.name))
 
+            self._load_deps(instance)
             instance.prepare_run(self.ctx)
             target.goto_rootdir(self.ctx)
 

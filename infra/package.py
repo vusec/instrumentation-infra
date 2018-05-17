@@ -178,6 +178,7 @@ class Package(metaclass=ABCMeta):
 
         :param ctx: the configuration context
         """
+        # XXX rename 'install_env' to 'load'?
         prevbinpath = os.getenv('PATH', '').split(':')
         binpath = self.path(ctx, 'install/bin')
         if os.path.exists(binpath):
