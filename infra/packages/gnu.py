@@ -182,8 +182,12 @@ class AutoMake(GNUTarPackage):
         # copy over .m4 files from libtool
         if self.libtool:
             pre = 'install/share/aclocal/'
-            for f in glob(self.libtool.path(ctx, pre + '*.m4')):
-                os.symlink(f, self.path(ctx, pre + os.path.basename(f)))
+            for target in glob(self.libtool.path(ctx, pre + '*.m4')):
+                link = self.path(ctx, pre + os.path.basename(target))
+                if os.path.exists(link):
+                    assert os.readlink(link) == target
+                else:
+                    os.symlink(target, link)
 
     @classmethod
     def default(cls, automake_version = '1.15.1',
