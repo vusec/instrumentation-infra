@@ -67,17 +67,17 @@ class SPEC2006(Target):
     paths to .patch files that will be applied with ``patch -p1``, or choices
     from the following built-in patches:
 
-    - ``dealII-stddef`` Fixes error in dealII compilation on recent compilers
+    - **dealII-stddef** Fixes error in dealII compilation on recent compilers
       when ``ptrdiff_t`` is used without including ``stddef.h``. (you basically
       always want this)
 
-    - ``asan`` applies the AddressSanitizer patch, needed to make
+    - **asan** applies the AddressSanitizer patch, needed to make
       ``-fsanitize=address`` work on LLVM.
 
-    - ``gcc-init-ptr`` zero-initializes a pointer on the stack so that type
+    - **gcc-init-ptr** zero-initializes a pointer on the stack so that type
       analysis at LTO time does not get confused.
 
-    - ``omnetpp-invalid-ptrcheck`` fixes a code copy-paste bug in an edge case
+    - **omnetpp-invalid-ptrcheck** fixes a code copy-paste bug in an edge case
       of a switch statement, where a pointer from a union is used while it is
       initialized as an int.
 
