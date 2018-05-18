@@ -63,7 +63,32 @@ class SPEC2006(Target):
     translated into the number of nodes per job when ``--parallel`` is
     specified, and to ``--runspec-args -n <iterations>`` otherwise.
 
+    You may specify a list of patches to apply before building. These may be
+    paths to .patch files that will be applied with ``patch -p1``, or choices
+    from the following built-in patches:
+
+    ``dealII-stddef`` Fixes error in dealII compilation on recent compilers when
+    ``ptrdiff_t`` is used without including ``stddef.h``. (you basically always
+    want this)
+
+    ``asan`` applies the AddressSanitizer patch, needed to make
+    ``-fsanitize=address`` work on LLVM.
+
+    ``gcc-init-ptr`` zero-initializes a pointer on the stack so that type
+    analysis at LTO time does not get confused.
+
+    ``omnetpp-invalid-ptrcheck`` fixes a code copy-paste bug in an edge case of
+    a switch statement, where a pointer from a union is used while it is
+    initialized as an int.
+
     :name: spec2006
+    :param source_type: see above
+    :param source: where to install spec from
+    :param patches: patches to apply after installing
+    :param nothp: run without transparent huge pages (they tend to introduce
+                  noise in performance measurements), implies :class:`Nothp`
+                  dependency if ``True``
+    :param force_cpu: bind runspec to this cpu core (-1 to disable)
     """
 
     name = 'spec2006'
@@ -73,15 +98,6 @@ class SPEC2006(Target):
                        patches: List[str] = [],
                        nothp: bool = True,
                        force_cpu: int = 0):
-        """
-        :param source_type: see above
-        :param source: where to install spec from
-        :param patches: patches to apply after installing
-        :param nothp: run without transparent huge pages (they tend to
-                      introduce noise in performance measurements), implies
-                      :class:`Nothp` dependency if ``True``
-        :param force_cpu: bind runspec to this cpu core (-1 to disable)
-        """
         if source_type not in ('mounted', 'installed', 'tarfile', 'git'):
             raise FatalError('invalid source type "%s"' % source_type)
 
