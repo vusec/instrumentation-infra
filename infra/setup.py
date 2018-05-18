@@ -3,6 +3,7 @@ import argparse
 import logging
 import sys
 import traceback
+import shlex
 from inspect import signature
 from collections import OrderedDict
 from multiprocessing import cpu_count
@@ -184,7 +185,7 @@ class Setup:
         pbuild.add_argument('--parallelmax', metavar='PROCESSES_OR_NODES', type=int,
                 help='limit simultaneous node reservations (default: %d for proc, %d for prun)' %
                      (proc_default_parallelmax, prun_default_parallelmax))
-        pbuild.add_argument('--prun-opts', nargs='+', default=[],
+        pbuild.add_argument('--prun-opts', default='',
                 help='additional options for prun (for --parallel=prun)')
 
         # command: exec-hook
@@ -225,7 +226,7 @@ class Setup:
         prun.add_argument('--parallelmax', metavar='PROCESSES_OR_NODES', type=int,
                 help='limit simultaneous node reservations (default: %d for proc, %d for prun)' %
                      (proc_default_parallelmax, prun_default_parallelmax))
-        prun.add_argument('--prun-opts', nargs='+', default=[],
+        prun.add_argument('--prun-opts', default='',
                 help='additional options for prun (for --parallel=prun)')
         ptargets = prun.add_subparsers(
                 title='target', metavar='TARGET', dest='target',
@@ -292,6 +293,9 @@ class Setup:
 
         if 'jobs' in self.args:
             self.ctx.jobs = self.args.jobs
+
+        if 'prun_opts' in self.args:
+            self.args.prun_opts = shlex.split(self.args.prun_opts)
 
         if 'parallelmax' in self.args and self.args.parallelmax is None:
             if self.args.parallel == 'proc':
