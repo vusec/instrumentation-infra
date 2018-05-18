@@ -235,8 +235,13 @@ class SPEC2006(Target):
         else:
             output_root = specdir
 
+        # apply wrapper in macro for monitor_wrapper in config
         if 'target_run_wrapper' in ctx:
             runargs += ['--define', 'run_wrapper=' + ctx.target_run_wrapper]
+
+        # don't stop running if one benchmark from the list crashes
+        if not pool:
+            runargs += ['--ignore_errors']
 
         runargs += ctx.args.runspec_args
         runargs = qjoin(runargs)
