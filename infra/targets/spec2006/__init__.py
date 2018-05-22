@@ -2,7 +2,6 @@ import os
 import shutil
 import logging
 import argparse
-import datetime
 import getpass
 import re
 from contextlib import redirect_stdout
@@ -11,6 +10,7 @@ from ...util import run, apply_patch, qjoin, FatalError
 from ...target import Target
 from ...packages import Bash, Nothp
 from ...parallel import PrunPool
+from ...report import BenchmarkRunner
 from .benchmark_sets import benchmark_sets
 
 
@@ -139,6 +139,7 @@ class SPEC2006(Target):
         yield Bash('4.3')
         if self.nothp:
             yield Nothp()
+        yield from BenchmarkRunner.dependencies()
 
     def is_fetched(self, ctx):
         return self.source_type == 'installed' or os.path.exists('install/shrc')
@@ -158,7 +159,7 @@ class SPEC2006(Target):
         else:
             assert False
 
-        install_path = self.path(ctx, 'install')
+        install_path = self._install_path(ctx)
         ctx.log.debug('installing SPEC-CPU2006 into ' + install_path)
         run(ctx, ['./install.sh', '-f', '-d', install_path],
             env={'PERL_TEST_NUMCONVERTS': 1})
@@ -167,8 +168,13 @@ class SPEC2006(Target):
             ctx.log.debug('removing SPEC-CPU2006 source files to save disk space')
             shutil.rmtree(self.path(ctx, 'src'))
 
+    def _install_path(self, ctx, *args):
+        if self.source_type == 'installed':
+            return os.path.join(self.source, *args)
+        return self.path(ctx, 'install', *args)
+
     def _apply_patches(self, ctx):
-        os.chdir(self.path(ctx, 'install'))
+        os.chdir(self._install_path(ctx))
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
             if '/' not in path:
@@ -182,6 +188,9 @@ class SPEC2006(Target):
         # patches during instance development, and is needed to apply patches
         # when self.source_type == 'installed')
         self._apply_patches(ctx)
+
+        # add flags to compile with runtime support for benchmark runner
+        BenchmarkRunner.configure(ctx)
 
         os.chdir(self.path(ctx))
         config = self._make_spec_config(ctx, instance)
@@ -207,7 +216,7 @@ class SPEC2006(Target):
         config = 'infra-' + instance.name
         config_root = os.path.dirname(os.path.abspath(__file__))
 
-        if not os.path.exists(self.path(ctx, 'install/config/%s.cfg' % config)):
+        if not os.path.exists(self._install_path(ctx, 'config', config + '.cfg')):
             raise FatalError('%s-%s has not been built yet!' %
                              (self.name, instance.name))
 
@@ -222,7 +231,7 @@ class SPEC2006(Target):
 
         # set output root to local disk when using prun to avoid noise due to
         # network lag when writing output files
-        specdir = self.path(ctx, 'install')
+        specdir = self._install_path(ctx)
         if isinstance(pool, PrunPool):
             output_root = '/local/%s/cpu2006-output-root' % getpass.getuser()
             runargs += ['--define', 'output_root=' + output_root]
@@ -257,8 +266,6 @@ class SPEC2006(Target):
         benchmarks = self._get_benchmarks(ctx, instance)
 
         if pool:
-            timestamp = datetime.datetime.now().strftime('run-%Y-%m-%d.%H:%M:%S')
-
             if isinstance(pool, PrunPool):
                 # prepare output dir on local disk before running,
                 # and move output files to network disk after completion
@@ -279,34 +286,41 @@ class SPEC2006(Target):
 
             for bench in benchmarks:
                 jobid = 'run-%s-%s' % (instance.name, bench)
-                outdir = os.path.join(ctx.paths.pool_results, timestamp,
-                                      self.name, instance.name)
-                os.makedirs(outdir, exist_ok=True)
-                outfile = os.path.join(outdir, bench)
-                self._run_bash(ctx, cmd.format(bench=bench), pool,
-                              jobid=jobid, outfile=outfile,
-                              nnodes=ctx.args.iterations)
-        else:
-            self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)), teeout=True)
+                benchcmd = self._bash_command(ctx, cmd.format(bench=bench))
+                runner = BenchmarkRunner(ctx, self, instance, bench)
+                runner.run(benchcmd, pool=pool, jobid=jobid,
+                           nnodes=ctx.args.iterations)
 
-    def _run_bash(self, ctx, commands, pool=None, **kwargs):
+                #jobid = 'run-%s-%s' % (instance.name, bench)
+                #outfile = os.path.join(runner.rundir, bench)
+                #self._run_bash(ctx, cmd.format(bench=bench), pool=pool,
+                #               outfile=runner.outfile_path(),
+                #               onsuccess=self._report_output,
+                #               nnodes=ctx.args.iterations)
+                #               #nnodes=ctx.args.iterations, **runner.runargs())
+        else:
+            self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)),
+                           teeout=True)
+
+    def _bash_command(self, ctx, command):
         config_root = os.path.dirname(os.path.abspath(__file__))
-        cmd = [
+        return [
             'bash', '-c',
             '\n' + _unindent('''
-            cd %s/install
+            cd %s
             source shrc
             source "%s/scripts/kill-tree-on-interrupt.inc"
             %s
-            ''' % (self.path(ctx), config_root, commands))
+            ''' % (self._install_path(ctx), config_root, command))
         ]
-        if pool:
-            return pool.run(ctx, cmd, **kwargs)
-        return run(ctx, cmd, **kwargs)
+
+    def _run_bash(self, ctx, command, pool=None, **kwargs):
+        runfn = pool.run if pool else run
+        return runfn(ctx, self._bash_command(ctx, command), **kwargs)
 
     def _make_spec_config(self, ctx, instance):
         config_name = 'infra-' + instance.name
-        config_path = self.path(ctx, 'install/config/%s.cfg' % config_name)
+        config_path = self._install_path(ctx, 'config/%s.cfg' % config_name)
         ctx.log.debug('writing SPEC2006 config to ' + config_path)
 
         with open(config_path, 'w') as f:
@@ -396,6 +410,64 @@ class SPEC2006(Target):
 
     # define benchmark sets, generated using scripts/parse-benchmarks-sets.py
     benchmarks = benchmark_sets
+
+    def report_output(self, ctx, job, instance, runner):
+        spec_root = self._install_path(ctx)
+
+        def fix_logpath(logpath):
+            if not os.path.exists(logpath):
+                base = os.path.basename(logpath)
+                logpath = os.path.join(spec_root, 'results', base)
+            assert os.path.exists(logpath)
+            return logpath
+
+        def get_logpaths(filepath):
+            with open(filepath) as f:
+                contents = f.read()
+            matches = re.findall(r'The log for this run is in (.*)$', contents, re.M)
+            assert matches
+            for match in matches:
+                logpath = match.replace('The log for this run is in ', '')
+                yield fix_logpath(logpath)
+
+        def parse_logfile(logpath):
+            ctx.log.debug('parsing log file ' + logpath)
+
+            with open(logpath) as f:
+                logcontents = f.read()
+
+            m = re.search(r'^Benchmarks selected: (.+)$', logcontents, re.M)
+            assert m
+            expected_benchmarks = set(m.group(1).split(', '))
+            found_benchmarks = set()
+
+            pat = re.compile(r'([^ ]+) ([^ ]+) base (\w+) ratio=(-?[0-9.]+), runtime=([0-9.]+).*', re.M)
+            m = pat.search(logcontents)
+            while m:
+                status, benchmark, workload, ratio, runtime = m.groups()
+                runner.report('benchmark', benchmark)
+                runner.report('success', status == 'Success')
+                runner.report('workload', workload)
+                runner.report('runtime', float(runtime))
+                runner.report_next()
+                found_benchmarks.add(benchmark)
+                m = pat.search(logcontents, m.end())
+
+            m = re.search(r'^Error:( [0-9]+x(.+))+$', logcontents, re.M)
+            if m:
+                for name in m.group(1).split():
+                    benchmark = name.split('x', 1)[1]
+                    runner.report('benchmark', benchmark)
+                    runner.report('success', False)
+                    runner.report_next()
+                    found_benchmarks.add(benchmark)
+
+            if found_benchmarks != expected_benchmarks:
+                ctx.log.error('could not find results for all selected '
+                              'benchmarks in ' + logpath)
+
+        for logpath in get_logpaths(job.outfile):
+            parse_logfile(logpath)
 
 
 def _unindent(cmd):

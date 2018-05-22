@@ -4,6 +4,7 @@ import logging
 import sys
 import traceback
 import shlex
+import datetime
 from inspect import signature
 from collections import OrderedDict
 from multiprocessing import cpu_count
@@ -11,6 +12,7 @@ from .util import FatalError, Namespace, qjoin
 from .instance import Instance
 from .target import Target
 from .parallel import ProcessPool, PrunPool
+from .report import BenchmarkReporter
 
 
 # disable .pyc file generation
@@ -86,7 +88,8 @@ class Setup:
             'ldflags':  [],
             'hooks':    Namespace({
                             'post_build': []
-                        })
+                        }),
+            'datetime': datetime.datetime
         })
 
     The :class:`util.Namespace` class is simply a :class:`dict` whose members
@@ -118,6 +121,8 @@ class Setup:
 
     ``ctx.hooks.post_build`` defines a list of post-build hooks, which are
     python functions called with the path to the binary as the only parameter.
+
+    ``ctx.timestamp`` is set to ``datetime.datetime.now()``.
     """
 
     _max_default_jobs = 16
@@ -233,6 +238,24 @@ class Setup:
                 help=targets_help)
         ptargets.required = True
 
+        # command: report
+        rdir = self.ctx.paths.pool_results
+        preport = self.subparsers.add_parser('report',
+                help='report results from the %s/ dir' % rdir)
+        preport.add_argument('--mode', choices=('brief', 'full', 'csv'),
+                default='brief',
+                help='reporting mode (default: brief)')
+        preport.add_argument('-i', '--instances', nargs='+', metavar='INSTANCE',
+                default=[], choices=self.instances,
+                help=instances_help)
+        preport.add_argument('-o', '--outfile', type=argparse.FileType('w'),
+                default=sys.stdout,
+                help='outfile (default: stdout)')
+        preport.add_argument('target', metavar='TARGET', choices=self.targets,
+                help=targets_help)
+        preport.add_argument('rundirs', nargs='+', metavar='RUNDIR', default=[],
+                help='run directories to parse (%s/run-XXX)' % rdir)
+
         # command: config
         pconfig = self.subparsers.add_parser('config',
                 help='print information about command line arguments and build flags')
@@ -326,7 +349,6 @@ class Setup:
         paths.targets = os.path.join(paths.buildroot, 'targets')
         paths.pool_results = os.path.join(paths.root, 'results')
 
-        # FIXME move to package?
         self.ctx.runenv = Namespace()
         self.ctx.cc = 'cc'
         self.ctx.cxx = 'c++'
@@ -336,6 +358,8 @@ class Setup:
         self.ctx.cflags = []
         self.ctx.cxxflags = []
         self.ctx.ldflags = []
+
+        self.ctx.timestamp = datetime.datetime.now()
 
     def _create_dirs(self):
         os.makedirs(self.ctx.paths.log, exist_ok=True)
@@ -694,6 +718,20 @@ class Setup:
         if pool:
             pool.wait_all()
 
+    def _run_report(self):
+        target = self._get_target(self.args.target)
+        instances = [self._get_instance(name) for name in self.args.instances]
+
+        rundirs = []
+        for d in self.args.rundirs:
+            if not os.path.exists(d):
+                raise FatalError('rundir %s does not exist' % d)
+            rundirs.append(os.path.abspath(d))
+
+        reporter = BenchmarkReporter(self.ctx, target, instances, self.args.outfile)
+        reporter.parse_rundirs(rundirs)
+        reporter.report(self.args.mode)
+
     def _run_config(self):
         if self.args.list_instances:
             for name in self.instances.keys():
@@ -740,6 +778,8 @@ class Setup:
                 self._run_clean()
             elif self.args.command == 'run':
                 self._run_run()
+            elif self.args.command == 'report':
+                self._run_report()
             elif self.args.command == 'config':
                 self._run_config()
             elif self.args.command == 'pkg-config':

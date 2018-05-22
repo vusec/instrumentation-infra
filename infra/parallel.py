@@ -189,7 +189,8 @@ class ProcessPool(Pool):
             job.nnodes = 1
 
             os.makedirs(os.path.dirname(outfile), exist_ok=True)
-            job.outfile = open(outfile, 'wb')
+            job.outfile = outfile
+            job.outfile_handle = open(outfile, 'wb')
 
             yield job
 
@@ -197,15 +198,15 @@ class ProcessPool(Pool):
         buf = job.stdout.read(io.DEFAULT_BUFFER_SIZE)
         if buf is not None:
             job.output += buf.decode('ascii')
-            job.outfile.write(buf)
+            job.outfile_handle.write(buf)
 
     def onsuccess(self, job):
+        job.outfile_handle.close()
         super().onsuccess(job)
-        job.outfile.close()
 
     def onerror(self, job):
+        job.outfile_handle.close()
         super().onerror(job)
-        job.outfile.close()
 
 
 class PrunPool(Pool):
@@ -225,6 +226,7 @@ class PrunPool(Pool):
         _set_non_blocking(job.stdout)
         job.jobid = jobid
         job.nnodes = nnodes
+        job.outfile = outfile
         yield job
 
     def process_job_output(self, job):
