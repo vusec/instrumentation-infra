@@ -1,9 +1,8 @@
-import sys
 import os.path
 import re
 from contextlib import redirect_stdout
 from subprocess import Popen
-from typing import Iterable, List, Union, Optional, Callable, Any
+from typing import Iterable, List, Dict, Union, Optional, Callable, Any
 from pprint import pprint
 from .target import Target
 from .package import Package
@@ -14,10 +13,16 @@ from .util import Namespace, FatalError, run
 
 
 prefix = '[setup-report]'
-special_prefix = '[setup-report-%s]'
 
 
 class BenchmarkRunner:
+    """
+    :param ctx: the configuration context
+    :param target:
+    :param instance:
+    :param filename:
+    """
+
     def __init__(self, ctx: Namespace, target: Target,
                  instance: Instance, filename: str):
         self.ctx = ctx
@@ -27,11 +32,16 @@ class BenchmarkRunner:
 
     @staticmethod
     def dependencies() -> Iterable[Package]:
+        """
+        """
         yield from []
         #yield BenchmarkUtils()
 
     @staticmethod
     def configure(ctx: Namespace):
+        """
+        :param ctx: the configuration context
+        """
         pass
         #BenchmarkUtils().configure(ctx)
 
@@ -46,6 +56,9 @@ class BenchmarkRunner:
             pool: Optional[Pool] = None,
             onsuccess: Optional[Callable[[Popen], None]] = None,
             **kwargs):
+        """
+        :param job:
+        """
         env = {'SETUP_REPORT': '1'}
 
         if pool:
@@ -64,25 +77,26 @@ class BenchmarkRunner:
             job.runner = self
             self._print_footer(job)
 
-    def _report_default_output(self, job):
-        self.report('target', self.target.name)
-        self.report('instance', self.instance.name)
-
     def _print_footer(self, job):
         self.ctx.log.debug('appending metadata to ' + job.outfile)
         with open(job.outfile, 'a') as outfile:
             with redirect_stdout(outfile):
-                print(special_prefix % 'begin')
-                self._report_default_output(job)
                 self.target.report_output(self.ctx, job, self.instance, self)
-                print(special_prefix % 'end')
 
-    def report(self, name: str, value: Any):
-        assert ' ' not in name
-        print(prefix, '%s=%s' % (name, value))
+    def report(self, job, data: Dict[str, Any]):
+        """
+        :param job:
+        :param data:
+        """
+        print(prefix, 'begin')
+        print(prefix, 'target:', self.target.name)
+        print(prefix, 'instance:', self.instance.name)
+        #print(prefix, 'command:', job.cmd_print)
 
-    def report_next(self):
-        print(special_prefix % 'next')
+        for key, value in data.items():
+            print(prefix, key + ':', str(value))
+
+        print(prefix, 'end')
 
     #def wrap_command(self, ctx: Namespace, cmd: Union[str, List[str]]) -> List[str]:
     #    if isinstance(cmd, list):
@@ -145,6 +159,7 @@ class BenchmarkReporter:
 
         with open(path) as f:
             for line in f:
+                line = line.rstrip()
                 if line.startswith(prefix):
                     #ty, name, value = line.split(' ', 3)[1:]
 
@@ -155,7 +170,7 @@ class BenchmarkReporter:
                     #else:
                     #    assert ty == 's'
 
-                    name, value = line[len(prefix) + 1:].rstrip().split('=', 1)
+                    name, value = line[len(prefix) + 1:].split(': ', 1)
 
                     if name in meta:
                         self.ctx.log.warning('duplicate metadata entry for '

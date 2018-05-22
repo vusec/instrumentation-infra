@@ -290,15 +290,11 @@ class SPEC2006(Target):
                 runner = BenchmarkRunner(ctx, self, instance, bench)
                 runner.run(benchcmd, pool=pool, jobid=jobid,
                            nnodes=ctx.args.iterations)
-
-                #jobid = 'run-%s-%s' % (instance.name, bench)
-                #outfile = os.path.join(runner.rundir, bench)
-                #self._run_bash(ctx, cmd.format(bench=bench), pool=pool,
-                #               outfile=runner.outfile_path(),
-                #               onsuccess=self._report_output,
-                #               nnodes=ctx.args.iterations)
-                #               #nnodes=ctx.args.iterations, **runner.runargs())
         else:
+            # FIXME
+            #benchcmd = self._bash_command(ctx, cmd.format(bench=qjoin(benchmarks)))
+            #runner = BenchmarkRunner(ctx, self, instance, bench)
+            #runner.run(benchcmd, teeout=True)
             self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)),
                            teeout=True)
 
@@ -436,35 +432,36 @@ class SPEC2006(Target):
             with open(logpath) as f:
                 logcontents = f.read()
 
+            m = re.match(r'^runspec .+ started at .+ on "(.*)"', logcontents)
+            assert m, 'could not find hostname'
+            hostname = m.group(1)
+
             m = re.search(r'^Benchmarks selected: (.+)$', logcontents, re.M)
-            assert m
-            expected_benchmarks = set(m.group(1).split(', '))
-            found_benchmarks = set()
+            assert m, 'could not find benchmark list'
+            error_benchmarks = set(m.group(1).split(', '))
 
             pat = re.compile(r'([^ ]+) ([^ ]+) base (\w+) ratio=(-?[0-9.]+), runtime=([0-9.]+).*', re.M)
             m = pat.search(logcontents)
             while m:
                 status, benchmark, workload, ratio, runtime = m.groups()
-                runner.report('benchmark', benchmark)
-                runner.report('success', status == 'Success')
-                runner.report('workload', workload)
-                runner.report('runtime', float(runtime))
-                runner.report_next()
-                found_benchmarks.add(benchmark)
+                runner.report(job, {
+                    'benchmark': benchmark,
+                    'success': status == 'Success',
+                    'workload': workload,
+                    'runtime': float(runtime),
+                    'hostname': hostname
+                })
+                error_benchmarks.remove(benchmark)
                 m = pat.search(logcontents, m.end())
 
-            m = re.search(r'^Error:( [0-9]+x(.+))+$', logcontents, re.M)
-            if m:
-                for name in m.group(1).split():
-                    benchmark = name.split('x', 1)[1]
-                    runner.report('benchmark', benchmark)
-                    runner.report('success', False)
-                    runner.report_next()
-                    found_benchmarks.add(benchmark)
+            for benchmark in error_benchmarks:
+                runner.report(job, {
+                    'benchmark': benchmark,
+                    'success': False,
+                    'hostname': hostname
+                })
 
-            if found_benchmarks != expected_benchmarks:
-                ctx.log.error('could not find results for all selected '
-                              'benchmarks in ' + logpath)
+            ctx.log.debug('done parsing')
 
         for logpath in get_logpaths(job.outfile):
             parse_logfile(logpath)
