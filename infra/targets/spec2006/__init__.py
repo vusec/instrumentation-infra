@@ -177,9 +177,6 @@ class SPEC2006(Target):
                 ctx.log.warning('applied patch %s to external SPEC-CPU2006 '
                                 'directory' % path)
 
-    def build_parallel(self, ctx, instance, pool):
-        self.build(ctx, instance, pool=pool)
-
     def build(self, ctx, instance, pool=None):
         # apply any pending patches (doing this at build time allows adding
         # patches during instance development, and is needed to apply patches
@@ -205,9 +202,6 @@ class SPEC2006(Target):
                 ctx.log.info('building %s-%s %s' %
                              (self.name, instance.name, bench))
                 self._run_bash(ctx, cmd, teeout=print_output)
-
-    def run_parallel(self, ctx, instance, pool):
-        self.run(ctx, instance, pool=pool)
 
     def run(self, ctx, instance, pool=None):
         config = 'infra-' + instance.name
