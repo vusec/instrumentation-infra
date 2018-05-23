@@ -71,19 +71,29 @@ class BenchmarkRunner:
                                 outfile=self.outfile, **kwargs):
                 job.runner = self
         else:
-            # TODO: make this work with stdout as outfile
-            assert False
             job = run(self.ctx, cmd, env=env, **kwargs)
             job.runner = self
             self._print_footer(job)
 
     def _print_footer(self, job):
-        self.ctx.log.debug('appending metadata to ' + job.outfile)
-        with open(job.outfile, 'a') as outfile:
-            with redirect_stdout(outfile):
-                self.target.report_output(self.ctx, job, self.instance, self)
+        if hasattr(job, 'outfile'):
+            # print to results logfile
+            self.ctx.log.debug('appending metadata to ' + job.outfile)
+            with open(job.outfile) as f:
+                output = f.read()
+            with open(job.outfile, 'a') as outfile:
+                with redirect_stdout(outfile):
+                    self.target.report_result(self.ctx, output, self.instance, self)
+        elif job.teeout:
+            # print to stdout
+            self.target.report_result(self.ctx, job.stdout, self.instance, self)
+        else:
+            # print to command output log
+            with open(self.ctx.paths.runlog, 'a') as outfile:
+                with redirect_stdout(outfile):
+                    self.target.report_result(self.ctx, job.stdout, self.instance, self)
 
-    def report(self, job, data: Dict[str, Any]):
+    def report(self, data: Dict[str, Any]):
         """
         :param job:
         :param data:
@@ -91,7 +101,6 @@ class BenchmarkRunner:
         print(prefix, 'begin')
         print(prefix, 'target:', self.target.name)
         print(prefix, 'instance:', self.instance.name)
-        #print(prefix, 'command:', job.cmd_print)
 
         for key, value in data.items():
             print(prefix, key + ':', str(value))

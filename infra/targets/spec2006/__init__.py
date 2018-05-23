@@ -291,12 +291,9 @@ class SPEC2006(Target):
                 runner.run(benchcmd, pool=pool, jobid=jobid,
                            nnodes=ctx.args.iterations)
         else:
-            # FIXME
-            #benchcmd = self._bash_command(ctx, cmd.format(bench=qjoin(benchmarks)))
-            #runner = BenchmarkRunner(ctx, self, instance, bench)
-            #runner.run(benchcmd, teeout=True)
-            self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)),
-                           teeout=True)
+            benchcmd = self._bash_command(ctx, cmd.format(bench=qjoin(benchmarks)))
+            runner = BenchmarkRunner(ctx, self, instance, 'all')
+            runner.run(benchcmd, teeout=True)
 
     def _bash_command(self, ctx, command):
         config_root = os.path.dirname(os.path.abspath(__file__))
@@ -407,7 +404,7 @@ class SPEC2006(Target):
     # define benchmark sets, generated using scripts/parse-benchmarks-sets.py
     benchmarks = benchmark_sets
 
-    def report_output(self, ctx, job, instance, runner):
+    def report_result(self, ctx, job_output, instance, runner):
         spec_root = self._install_path(ctx)
 
         def fix_logpath(logpath):
@@ -417,9 +414,7 @@ class SPEC2006(Target):
             assert os.path.exists(logpath)
             return logpath
 
-        def get_logpaths(filepath):
-            with open(filepath) as f:
-                contents = f.read()
+        def get_logpaths(contents):
             matches = re.findall(r'The log for this run is in (.*)$', contents, re.M)
             assert matches
             for match in matches:
@@ -444,7 +439,7 @@ class SPEC2006(Target):
             m = pat.search(logcontents)
             while m:
                 status, benchmark, workload, ratio, runtime = m.groups()
-                runner.report(job, {
+                runner.report({
                     'benchmark': benchmark,
                     'success': status == 'Success',
                     'workload': workload,
@@ -455,7 +450,7 @@ class SPEC2006(Target):
                 m = pat.search(logcontents, m.end())
 
             for benchmark in error_benchmarks:
-                runner.report(job, {
+                runner.report({
                     'benchmark': benchmark,
                     'success': False,
                     'hostname': hostname
@@ -463,7 +458,7 @@ class SPEC2006(Target):
 
             ctx.log.debug('done parsing')
 
-        for logpath in get_logpaths(job.outfile):
+        for logpath in get_logpaths(job_output):
             parse_logfile(logpath)
 
 

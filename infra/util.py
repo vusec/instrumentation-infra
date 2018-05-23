@@ -175,9 +175,11 @@ def run(ctx: Namespace, cmd: Union[str, List[str]], allow_error=False,
         if defer:
             proc = subprocess.Popen(cmd, env=renv, **kwargs)
             proc.cmd_print = cmd_print
+            proc.teeout = False
             return proc
 
         proc = subprocess.run(cmd, env=renv, **kwargs)
+        proc.teeout = teeout
 
     except FileNotFoundError:
         logfn = ctx.log.debug if allow_error else ctx.log.error

@@ -7,6 +7,7 @@ from .util import Namespace
 from .instance import Instance
 from .package import Package
 from .parallel import Pool
+from .report import BenchmarkRunner
 
 
 class Target(metaclass=ABCMeta):
@@ -258,3 +259,16 @@ class Target(metaclass=ABCMeta):
             for hook in ctx.hooks.post_build:
                 os.chdir(basedir)
                 hook(ctx, absbin)
+
+    def report_result(self, ctx: Namespace, job_output: str,
+                      instance: Instance, runner: BenchmarkRunner):
+        """
+        TODO: document this
+
+        :param ctx: the configuration context
+        :param job_output:
+        :param instance:
+        :param runner:
+        :raises NotImplementedError: unless implemented
+        """
+        raise NotImplementedError(self.__class__.__name__)
