@@ -10,7 +10,7 @@ from ...util import run, apply_patch, qjoin, FatalError
 from ...target import Target
 from ...packages import Bash, Nothp
 from ...parallel import PrunPool
-from ...report import BenchmarkRunner
+from ...report import BenchmarkRunner, RuntimesTable
 from .benchmark_sets import benchmark_sets
 
 
@@ -464,6 +464,14 @@ class SPEC2006(Target):
     def report_results(self, ctx, results, args):
         from pprint import pprint
         pprint(results)
+
+        table = RuntimesTable()
+
+        for instance_name, instance_results in results.items():
+            for result in instance_results:
+                pass
+
+        table.show()
 
 
 def _unindent(cmd):

@@ -3,12 +3,12 @@ import re
 from contextlib import redirect_stdout
 from subprocess import Popen
 from typing import Iterable, List, Dict, Union, Optional, Callable, Any
-from .target import Target
-from .package import Package
-from .instance import Instance
-from .parallel import Pool
-from .util import Namespace, run
-#from .packages import BenchmarkUtils
+from ..target import Target
+from ..package import Package
+from ..instance import Instance
+from ..parallel import Pool
+from ..util import Namespace, run
+#from ..packages import BenchmarkUtils
 
 
 prefix = '[setup-report]'
