@@ -171,7 +171,7 @@ def _parse_metadata(ctx, path):
             if line.startswith(prefix):
                 statement = line[len(prefix) + 1:]
                 if statement == 'begin':
-                    meta = {}
+                    meta = Namespace()
                 elif statement == 'end':
                     yield meta
                     meta = None

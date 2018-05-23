@@ -9,6 +9,7 @@ from typing import Union, List, Dict, Iterable, Optional
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
 from contextlib import redirect_stdout
+from functools import reduce
 
 
 class Namespace(dict):
@@ -301,3 +302,13 @@ class FatalError(Exception):
     that raises the error.
     """
     pass
+
+
+def geomean(values: Iterable[Union[float, int]]) -> float:
+    """
+    Compute the geometric mean of a list of numbers.
+
+    :param values: non-empty list of numbers
+    """
+    assert len(values) > 0
+    return reduce(lambda x, y: x * y, values) ** (1.0 / len(values))
