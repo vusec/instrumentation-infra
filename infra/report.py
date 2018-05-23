@@ -3,12 +3,11 @@ import re
 from contextlib import redirect_stdout
 from subprocess import Popen
 from typing import Iterable, List, Dict, Union, Optional, Callable, Any
-from pprint import pprint
 from .target import Target
 from .package import Package
 from .instance import Instance
 from .parallel import Pool
-from .util import Namespace, FatalError, run
+from .util import Namespace, run
 #from .packages import BenchmarkUtils
 
 
@@ -83,27 +82,27 @@ class BenchmarkRunner:
                 output = f.read()
             with open(job.outfile, 'a') as outfile:
                 with redirect_stdout(outfile):
-                    self.target.report_result(self.ctx, output, self.instance, self)
+                    self.target.log_results(self.ctx, output, self.instance, self)
         elif job.teeout:
             # print to stdout
-            self.target.report_result(self.ctx, job.stdout, self.instance, self)
+            self.target.log_results(self.ctx, job.stdout, self.instance, self)
         else:
             # print to command output log
             with open(self.ctx.paths.runlog, 'a') as outfile:
                 with redirect_stdout(outfile):
-                    self.target.report_result(self.ctx, job.stdout, self.instance, self)
+                    self.target.log_results(self.ctx, job.stdout, self.instance, self)
 
-    def report(self, data: Dict[str, Any]):
+    def log_result(self, data: Dict[str, Any]):
         """
         :param job:
         :param data:
         """
         print(prefix, 'begin')
-        print(prefix, 'target:', self.target.name)
-        print(prefix, 'instance:', self.instance.name)
+        #print(prefix, 'target:', _box_value(self.target.name))
+        #print(prefix, 'instance:', _box_value(self.instance.name))
 
         for key, value in data.items():
-            print(prefix, key + ':', str(value))
+            print(prefix, key + ':', _box_value(value))
 
         print(prefix, 'end')
 
@@ -133,77 +132,88 @@ class BenchmarkRunner:
     #    ]
 
 
-class BenchmarkReporter:
-    def __init__(self, ctx, target, instances, outfile):
-        self.ctx = ctx
-        self.target = target
-        self.instances = instances
-        self.outfile = outfile
-        self.results = None
+def parse_rundirs(ctx, target, instances, rundirs):
+    instance_names = [instance.name for instance in instances]
+    instance_dirs = []
+    results = dict((iname, []) for iname in instance_names)
 
-    def parse_rundirs(self, rundirs):
-        instance_names = [instance.name for instance in self.instances]
-        instance_dirs = []
+    for rundir in rundirs:
+        targetdir = os.path.join(rundir, target.name)
+        if os.path.exists(targetdir):
+            for instance in os.listdir(targetdir):
+                instancedir = os.path.join(targetdir, instance)
+                if os.path.isdir(instancedir):
+                    if not instance_names or instance in instance_names:
+                        instance_dirs.append((instance, instancedir))
+        else:
+            ctx.log.warning('rundir %s contains no results for target %s' %
+                            (rundir, target.name))
 
-        for rundir in rundirs:
-            targetdir = os.path.join(rundir, self.target.name)
-            if os.path.exists(targetdir):
-                for subdir in os.listdir(targetdir):
-                    instancedir = os.path.join(targetdir, subdir)
-                    if os.path.isdir(instancedir):
-                        if not instance_names or subdir in instance_names:
-                            instance_dirs.append(instancedir)
-            else:
-                self.ctx.log.warning('rundir %s contains no results for '
-                                     'target %s' % (rundir, self.target.name))
+    for iname, idir in instance_dirs:
+        instance_results = results.setdefault(iname, [])
 
-        for idir in instance_dirs:
-            for filename in os.listdir(idir):
-                path = os.path.join(idir, filename)
-                print('file:', path)
-                pprint(self._parse_metadata(path))
+        for filename in sorted(os.listdir(idir)):
+            path = os.path.join(idir, filename)
 
-    def _parse_metadata(self, path):
-        meta = {}
+            for result in _parse_metadata(ctx, path):
+                result['outfile'] = path
+                instance_results.append(result)
 
-        with open(path) as f:
-            for line in f:
-                line = line.rstrip()
-                if line.startswith(prefix):
-                    #ty, name, value = line.split(' ', 3)[1:]
+    return results
 
-                    #if ty == 'i':
-                    #    value = int(value)
-                    #elif ty == 'f':
-                    #    value = float(value)
-                    #else:
-                    #    assert ty == 's'
 
-                    name, value = line[len(prefix) + 1:].split(': ', 1)
+def _parse_metadata(ctx, path):
+    with open(path) as f:
+        meta = None
+
+        for line in f:
+            line = line.rstrip()
+            if line.startswith(prefix):
+                statement = line[len(prefix) + 1:]
+                if statement == 'begin':
+                    meta = {}
+                elif statement == 'end':
+                    yield meta
+                    meta = None
+                elif meta is None:
+                    ctx.log.error('ignoring %s statement outside of begin-end '
+                                  'in %s' % (prefix, path))
+                else:
+                    name, value = statement.split(': ', 1)
 
                     if name in meta:
-                        self.ctx.log.warning('duplicate metadata entry for '
-                                             '"%s" in %s, using the last one' %
-                                             (name, path))
-                    meta[name] = value
+                        ctx.log.warning('duplicate metadata entry for "%s" in '
+                                        '%s, using the last one' % (name, path))
 
-        return meta
+                    meta[name] = _unbox_value(value)
 
-    def report(self, mode):
-        with redirect_stdout(self.outfile):
-            try:
-                getattr(self, 'report_' + mode)()
-            except AttributeError:
-                raise FatalError('unknown reporting mode "%s"' % mode)
+    if meta is not None:
+        ctx.log.error('%s begin statement without end in %s' % (prefix, path))
 
-    def report_brief(self):
+
+def _box_value(value):
+    return str(value)
+
+
+def _unbox_value(value):
+    # bool
+    if value == 'True':
+        return True
+    if value == 'False':
+        return False
+
+    # int
+    if value.isdigit():
+        return int(value)
+
+    # float
+    try:
+        return float(value)
+    except ValueError:
         pass
 
-    def report_full(self):
-        raise NotImplementedError
-
-    def report_csv(self):
-        raise NotImplementedError
+    # string
+    return value
 
 
 def _unindent(cmd):

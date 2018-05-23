@@ -5,6 +5,7 @@ import sys
 import traceback
 import shlex
 import datetime
+from contextlib import redirect_stdout
 from inspect import signature
 from collections import OrderedDict
 from multiprocessing import cpu_count
@@ -12,7 +13,7 @@ from .util import FatalError, Namespace, qjoin
 from .instance import Instance
 from .target import Target
 from .parallel import ProcessPool, PrunPool
-from .report import BenchmarkReporter
+from .report import parse_rundirs
 
 
 # disable .pyc file generation
@@ -728,9 +729,9 @@ class Setup:
                 raise FatalError('rundir %s does not exist' % d)
             rundirs.append(os.path.abspath(d))
 
-        reporter = BenchmarkReporter(self.ctx, target, instances, self.args.outfile)
-        reporter.parse_rundirs(rundirs)
-        reporter.report(self.args.mode)
+        results = parse_rundirs(self.ctx, target, instances, rundirs)
+        with redirect_stdout(self.args.outfile):
+            target.report_results(self.ctx, results, self.args)
 
     def _run_config(self):
         if self.args.list_instances:

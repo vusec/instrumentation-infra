@@ -1,8 +1,8 @@
 import os
 import shutil
+import argparse
 from abc import ABCMeta, abstractmethod
-from argparse import ArgumentParser
-from typing import List, Iterable, Iterator, Optional
+from typing import List, Dict, Union, Iterable, Iterator, Optional
 from .util import Namespace
 from .instance import Instance
 from .package import Package
@@ -69,7 +69,7 @@ class Target(metaclass=ABCMeta):
     def __hash__(self):
         return hash('target-' + self.name)
 
-    def add_build_args(self, parser: ArgumentParser):
+    def add_build_args(self, parser: argparse.ArgumentParser):
         """
         Extend the command-line arguments for the :ref:`build <usage-build>`
         command with custom arguments for this target. These arguments end up
@@ -83,7 +83,7 @@ class Target(metaclass=ABCMeta):
         """
         pass
 
-    def add_run_args(self, parser: ArgumentParser):
+    def add_run_args(self, parser: argparse.ArgumentParser):
         """
         Extend the command-line arguments for the :ref:`run <usage-run>`
         command with custom arguments for this target. Since only a single
@@ -259,15 +259,28 @@ class Target(metaclass=ABCMeta):
                 os.chdir(basedir)
                 hook(ctx, absbin)
 
-    def report_result(self, ctx: Namespace, job_output: str,
-                      instance: Instance, runner):
+    def log_results(self, ctx: Namespace, job_output: str,
+                    instance: Instance, runner):
         """
         TODO: document this
 
         :param ctx: the configuration context
         :param job_output:
         :param instance:
-        :param BenchmarkRunner runner:
+        :param report.BenchmarkRunner runner:
+        :raises NotImplementedError: unless implemented
+        """
+        raise NotImplementedError(self.__class__.__name__)
+
+    def report_results(self, ctx: Namespace,
+                       results: Dict[str, List[Dict[str, Union[bool, int, float, str]]]],
+                       args: argparse.Namespace):
+        """
+        TODO: document this
+
+        :param ctx: the configuration context
+        :param results: results to report
+        :param args: command-line arguments
         :raises NotImplementedError: unless implemented
         """
         raise NotImplementedError(self.__class__.__name__)

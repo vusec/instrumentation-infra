@@ -404,7 +404,7 @@ class SPEC2006(Target):
     # define benchmark sets, generated using scripts/parse-benchmarks-sets.py
     benchmarks = benchmark_sets
 
-    def report_result(self, ctx, job_output, instance, runner):
+    def log_results(self, ctx, job_output, instance, runner):
         spec_root = self._install_path(ctx)
 
         def fix_logpath(logpath):
@@ -439,7 +439,7 @@ class SPEC2006(Target):
             m = pat.search(logcontents)
             while m:
                 status, benchmark, workload, ratio, runtime = m.groups()
-                runner.report({
+                runner.log_result({
                     'benchmark': benchmark,
                     'success': status == 'Success',
                     'workload': workload,
@@ -450,7 +450,7 @@ class SPEC2006(Target):
                 m = pat.search(logcontents, m.end())
 
             for benchmark in error_benchmarks:
-                runner.report({
+                runner.log_result({
                     'benchmark': benchmark,
                     'success': False,
                     'hostname': hostname
@@ -460,6 +460,10 @@ class SPEC2006(Target):
 
         for logpath in get_logpaths(job_output):
             parse_logfile(logpath)
+
+    def report_results(self, ctx, results, args):
+        from pprint import pprint
+        pprint(results)
 
 
 def _unindent(cmd):
