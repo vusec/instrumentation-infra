@@ -145,8 +145,13 @@ class SPEC2006(Target):
                 help='baseline instance for overheads')
         parser.add_argument('--only-overhead', action='store_true',
                 help='only show overhead numbers')
-        parser.add_argument('--csv', action='store_true',
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('--csv',
+                action='store_const', const='csv', dest='nonhuman',
                 help='print table in CSV format')
+        group.add_argument('--tsv',
+                action='store_const', const='tsv', dest='nonhuman',
+                help='print table as tab-separated values')
 
     def dependencies(self):
         yield Bash('4.3')
@@ -505,7 +510,7 @@ class SPEC2006(Target):
 
         # optional support for colored text
         try:
-            if not fancy or args.csv:
+            if not fancy or args.nonhuman:
                 raise ImportError
             from termcolor import colored
         except ImportError:
@@ -649,7 +654,7 @@ class SPEC2006(Target):
             body.append(row)
 
         # geomean row
-        if baseline and not args.csv:
+        if baseline and not args.nonhuman:
             lastrow = ['geomean:']
             if not only_overhead:
                 lastrow += [''] * len(instances)
@@ -660,19 +665,23 @@ class SPEC2006(Target):
             lastrow += [''] * (len(header_full) - len(lastrow))
             body.append(lastrow)
 
-        # build table
-        if args.csv:
+        # write table
+        if args.nonhuman == 'csv':
             writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL)
             writer.writerow(header_keys)
             for row in body:
                 writer.writerow(row)
+        elif args.nonhuman == 'tsv':
+            print('\t'.join(header_keys))
+            for row in body:
+                print('\t'.join(str(cell) for cell in row))
         else:
             title = 'overheads' if only_overhead else 'aggregated data'
             table = Table([header_full] + body, ' %s %s ' % (self.name, title))
             table.inner_column_border = False
             if baseline:
                 table.inner_footing_row_border = True
-            for col in range(len(instances) + 1, len(header)):
+            for col in range(len(instances) + 1, len(header_full)):
                 table.justify_columns[col] = 'right'
             print(table.table)
 
