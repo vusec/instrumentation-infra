@@ -64,7 +64,7 @@ class BenchmarkRunner:
             def callback(job):
                 self._print_footer(job)
                 if onsuccess:
-                    onsuccess(job)
+                    return onsuccess(job)
 
             for job in pool.run(self.ctx, cmd, onsuccess=callback, env=env,
                                 outfile=self.outfile, **kwargs):

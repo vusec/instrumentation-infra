@@ -149,14 +149,14 @@ class Pool(metaclass=ABCMeta):
 
     def onsuccess(self, job):
         # don't log if onsuccess() returns False
-        if not job.onsuccess or job.onsuccess(job) is False:
+        if not job.onsuccess or job.onsuccess(job) is not False:
             self.log.info('job %s finished%s' %
                         (job.jobid, self._get_elapsed(job)))
             self.log.debug('command: %s' % job.cmd_print)
 
     def onerror(self, job):
         # don't log if onerror() returns False
-        if not job.onerror or job.onerror(job) is False:
+        if not job.onerror or job.onerror(job) is not False:
             self.log.error('job %s returned status %d%s' %
                         (job.jobid, job.poll(), self._get_elapsed(job)))
             self.log.error('command: %s' % job.cmd_print)
