@@ -461,7 +461,7 @@ class SPEC2006(Target):
                 # find per-input logs by benchutils staticlib
                 rpat = r'Running %s.+?-C (.+?$)(.+?)^Specinvoke:' % benchmark
                 rundir, arglist = re.search(rpat, logcontents, re.M | re.S).groups()
-                errfiles = re.findall(r'-e (\w+\.err)', arglist)
+                errfiles = re.findall(r'-e ([^ ]+)', arglist)
                 inputres = []
                 for errfile in errfiles:
                     path = os.path.join(rundir, errfile)
