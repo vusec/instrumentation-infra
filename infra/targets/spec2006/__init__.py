@@ -293,18 +293,43 @@ class SPEC2006(Target):
                 # log_results below which will fail if the file is incomplete.
                 # This is a temporary fix and should be fixed with a proper
                 # sync command or by analyzing log files at report time
+                benchdir = 'benchspec/CPU2006/{bench}'
                 cmd = _unindent('''
                 rm -rf "{output_root}"
                 mkdir -p "{output_root}"
                 mkdir -p "{specdir}/result"
                 ln -s "{specdir}/result" "{output_root}"
-                if [ -d "{specdir}/benchspec/CPU2006/{{bench}}/exe" ]; then
-                    mkdir -p "{output_root}/benchspec/CPU2006/{{bench}}"
-                    cp -r "{specdir}/benchspec/CPU2006/{{bench}}/exe" \\
-                        "{output_root}/benchspec/CPU2006/{{bench}}"
+                if [ -d "{specdir}/{benchdir}/exe" ]; then
+                    mkdir -p "{output_root}/{benchdir}"
+                    cp -r "{specdir}/{benchdir}/exe" "{output_root}/{benchdir}"
                 fi
-                {{{{ {cmd}; }}}} | \\
-                    sed "s,{output_root}/result/,{specdir}/result/,g"
+
+                # make empty run directories to reserve their names
+                if [ -d "{specdir}/{benchdir}/run" ]; then
+                    mkdir -p "{output_root}/{benchdir}/run"
+                    sed "s,{specdir}/,{output_root}/,g" \\
+                            "{specdir}/{benchdir}/run/list" > \\
+                            "{output_root}/{benchdir}/run/list"
+                    for subdir in "{specdir}/{benchdir}/run"/*; do
+                        if [ "$subdir" != list ]; then
+                            mkdir "{output_root}/{benchdir}/run/$subdir"
+                        fi
+                    done
+                fi
+
+                # run runspec command
+                {{{{ {cmd}; }}}} | sed "s,{output_root}/result/,{specdir}/result/,g"
+
+                # copy output files back for analysis
+                if [ -d "{specdir}/{benchdir}/run" ]; then
+                    lastdir=`tail -2 "{output_root}/{benchdir}/run/list" | grep -oP 'dir=.+?\.[0-9]+' | sed s/dir=//`
+                    cp -r "$lastdir" "{specdir}/{benchdir}/run"
+                    cp "{output_root}/{benchdir}/run/list" "{specdir}/{benchdir}/run/list"
+                else
+                    cp -r "{output_root}/{benchdir}/run" "{specdir}/{benchdir}/run"
+                fi
+                sed -i "s,{output_root}/,{specdir}/,g"  "{specdir}/{benchdir}/run/list"
+
                 rm -rf "{output_root}"
                 sleep 5
                 ''').format(**locals())
@@ -430,8 +455,6 @@ class SPEC2006(Target):
     benchmarks = benchmark_sets
 
     def log_results(self, ctx, job_output, instance, runner, outfile):
-        spec_root = self._install_path(ctx)
-
         def fix_specpath(path):
             if not os.path.exists(path):
                 benchspec_dir = self._install_path(ctx, 'benchspec')
@@ -472,8 +495,10 @@ class SPEC2006(Target):
                 inputres = []
                 for errfile in errfiles:
                     path = os.path.join(fix_specpath(rundir), errfile)
-                    inputres += list(parse_results(ctx, path))
-                assert len(inputres)
+                    ctx.log.debug('fetching staticlib results from errfile ' + path)
+                    res = list(parse_results(ctx, path))
+                    assert len(res) == 1
+                    inputres += res
 
                 # report only the worst case of all input sets
                 maxrss = max(r.maxrss_kb for r in inputres)
