@@ -5,8 +5,7 @@
 
 import inspect
 from importlib import import_module
-from typing import Union, _ForwardRef, Any, NewType, get_type_hints
-from sphinx.ext.autodoc import FunctionDocumenter, MethodDocumenter
+from typing import _ForwardRef, Any
 
 
 def typestr(obj):
