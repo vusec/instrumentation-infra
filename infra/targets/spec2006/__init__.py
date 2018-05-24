@@ -6,6 +6,7 @@ import argparse
 import getpass
 import re
 import statistics
+import csv
 from contextlib import redirect_stdout
 from typing import List
 from ...util import FatalError, run, apply_patch, qjoin, geomean
@@ -138,6 +139,14 @@ class SPEC2006(Target):
         group.add_argument('--runspec-args',
                 nargs=argparse.REMAINDER, default=[],
                 help='additional arguments for runspec')
+
+    def add_report_args(self, parser):
+        parser.add_argument('--baseline', metavar='INSTANCE',
+                help='baseline instance for overheads')
+        parser.add_argument('--only-overhead', action='store_true',
+                help='only show overhead numbers')
+        parser.add_argument('--csv', action='store_true',
+                help='print table in CSV format')
 
     def dependencies(self):
         yield Bash('4.3')
@@ -484,24 +493,29 @@ class SPEC2006(Target):
         for logpath in get_logpaths(job_output):
             parse_logfile(logpath)
 
-    def report_results(self, ctx, results, args):
+    def report(self, ctx, results, args):
+        only_overhead = args.only_overhead
+
+        # only use fancy UTF-8 table if writing to a compatible terminal
+        fancy = sys.stdout.encoding == 'UTF-8' and sys.stdout.name == '<stdout>'
+        if fancy:
+            from terminaltables import SingleTable as Table
+        else:
+            from terminaltables import AsciiTable as Table
+
         # optional support for colored text
         try:
+            if not fancy or args.csv:
+                raise ImportError
             from termcolor import colored
         except ImportError:
             def colored(text, *args):
                 return text
 
-        # only use fancy UTF-8 table if writing to a compatible terminal
-        if sys.stdout.encoding == 'UTF-8' and sys.stdout.name == '<stdout>':
-            from terminaltables import SingleTable as Table
-        else:
-            from terminaltables import AsciiTable as Table
-
         # determine baseline
         baseline = None
 
-        if 'baseline' in args:
+        if args.baseline:
             baseline = args.baseline
         elif len(results) > 1:
             default_baselines = ('baseline', 'clang-lto', 'clang')
@@ -513,6 +527,8 @@ class SPEC2006(Target):
 
         if baseline:
             ctx.log.debug('using %s instance as baseline' % baseline)
+        elif only_overhead:
+            raise FatalError('no baseline found for overhead computation')
         else:
             ctx.log.debug('no baseline found, not computing overheads')
 
@@ -534,12 +550,12 @@ class SPEC2006(Target):
                 if all(r['success'] for r in bresults):
                     entry['status'] = colored('OK', 'green')
 
-                    runtimes = (r['runtime_sec'] for r in bresults)
+                    runtimes = [r['runtime_sec'] for r in bresults]
                     entry['rt_median'] = statistics.median(runtimes)
 
                     if 'maxrss_kb' in bresults[0]:
                         have_memdata = True
-                        memdata = (r['maxrss_kb'] for r in bresults)
+                        memdata = [r['maxrss_kb'] for r in bresults]
                         entry['mem_max'] = max(memdata)
 
                     if len(bresults) > 1:
@@ -584,23 +600,38 @@ class SPEC2006(Target):
             geomeans_mem = {iname: geomean(oh) for iname, oh in overheads_mem.items()}
 
         # build column list based on which data is present
-        columns = [('\nstatus', 'status')]
+        columns = []
+        if not only_overhead:
+            columns.append('status')
         if baseline:
-            columns.append(('runtime\noverhead', 'rt_overhead'))
+            columns.append('rt_overhead')
             if have_memdata:
-                columns.append(('memory\noverhead', 'mem_overhead'))
-        columns += [('runtime\nmedian', 'rt_median'), ('runtime\nstdev', 'rt_stdev')]
-        if have_memdata:
-            columns += [('memory\nmax', 'mem_max'), ('memory\nstdev', 'mem_stdev')]
-        columns.append(('\niters', 'iters'))
+                columns.append('mem_overhead')
+        if not only_overhead:
+            columns += ['rt_median', 'rt_stdev']
+            if have_memdata:
+                columns += ['mem_max', 'mem_stdev']
+            columns.append('iters')
+
+        column_heads = {
+            'status': '\nstatus',
+            'rt_overhead': 'runtime\noverhead',
+            'mem_overhead': 'memory\noverhead',
+            'rt_median': 'runtime\nmedian',
+            'rt_stdev': 'runtime\nstdev',
+            'mem_max': 'memory\nmax',
+            'mem_stdev': 'memory\nstdev',
+            'iters': '\niters'
+        }
 
         # header row
-        header = ['\n\nbenchmark']
-        for heading, key in columns:
+        header_full = ['\n\nbenchmark']
+        header_keys = ['benchmark']
+        for key in columns:
             for iname in instances:
                 if not key.endswith('_overhead') or iname != baseline:
-                    header.append(heading + '\n' + iname)
-        rows = [header]
+                    header_full.append(column_heads[key] + '\n' + iname)
+                    header_keys.append(key + '-' + iname)
 
         # data rows
         def cell(value):
@@ -608,33 +639,42 @@ class SPEC2006(Target):
                 return '%.3f' % value
             return value
 
+        body = []
         for bench, index in sorted(benchdata.items(), key=lambda p: p[0]):
             row = [bench]
-            for heading, key in columns:
+            for key in columns:
                 for iname in instances:
                     if not key.endswith('_overhead') or iname != baseline:
                         row.append(cell(index[iname].get(key, '')))
-            rows.append(row)
+            body.append(row)
 
         # geomean row
-        if baseline:
+        if baseline and not args.csv:
             lastrow = ['geomean:']
-            lastrow += [''] * len(instances)
+            if not only_overhead:
+                lastrow += [''] * len(instances)
             lastrow += [cell(geomeans_rt.get(iname, '-'))
                         for iname in instances if iname != baseline]
             lastrow += [cell(geomeans_mem.get(iname, '-'))
                         for iname in instances if iname != baseline]
-            lastrow += [''] * (len(columns) - len(lastrow))
-            rows.append(lastrow)
+            lastrow += [''] * (len(header_full) - len(lastrow))
+            body.append(lastrow)
 
         # build table
-        table = Table(rows, ' %s summary ' % self.name)
-        table.inner_column_border = False
-        if baseline:
-            table.inner_footing_row_border = True
-        for col in range(len(instances) + 1, len(header)):
-            table.justify_columns[col] = 'right'
-        print(table.table)
+        if args.csv:
+            writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(header_keys)
+            for row in body:
+                writer.writerow(row)
+        else:
+            title = 'overheads' if only_overhead else 'aggregated data'
+            table = Table([header_full] + body, ' %s %s ' % (self.name, title))
+            table.inner_column_border = False
+            if baseline:
+                table.inner_footing_row_border = True
+            for col in range(len(instances) + 1, len(header)):
+                table.justify_columns[col] = 'right'
+            print(table.table)
 
 
 def _unindent(cmd):

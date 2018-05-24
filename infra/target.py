@@ -97,6 +97,20 @@ class Target(metaclass=ABCMeta):
         """
         pass
 
+    def add_report_args(self, parser: argparse.ArgumentParser):
+        """
+        Extend the command-line arguments for the :ref:`report <usage-report>`
+        command with custom arguments for this target. Since only a single
+        target can be reported at a time, prefixing to avoid naming conflicts
+        with other targets is not necessary here.
+
+        For example, :class:`SPEC2006 <targets.SPEC2006>` defines
+        ``--baseline``.
+
+        :param parser: the argument parser to extend
+        """
+        pass
+
     def dependencies(self) -> Iterator[Package]:
         """
         Specify dependencies that should be built and installed in the run
@@ -272,9 +286,9 @@ class Target(metaclass=ABCMeta):
         """
         raise NotImplementedError(self.__class__.__name__)
 
-    def report_results(self, ctx: Namespace,
-                       results: Dict[str, List[Dict[str, Union[bool, int, float, str]]]],
-                       args: argparse.Namespace):
+    def report(self, ctx: Namespace,
+               results: Dict[str, List[Dict[str, Union[bool, int, float, str]]]],
+               args: argparse.Namespace):
         """
         TODO: document this
 

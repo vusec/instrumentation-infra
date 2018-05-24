@@ -234,10 +234,10 @@ class Setup:
                      (proc_default_parallelmax, prun_default_parallelmax))
         prun.add_argument('--prun-opts', default='',
                 help='additional options for prun (for --parallel=prun)')
-        ptargets = prun.add_subparsers(
+        prun_targets = prun.add_subparsers(
                 title='target', metavar='TARGET', dest='target',
                 help=targets_help)
-        ptargets.required = True
+        prun_targets.required = True
 
         # command: report
         rdir = self.ctx.paths.pool_results
@@ -252,10 +252,10 @@ class Setup:
         preport.add_argument('-o', '--outfile', type=argparse.FileType('w'),
                 default=sys.stdout,
                 help='outfile (default: stdout)')
-        preport.add_argument('target', metavar='TARGET', choices=self.targets,
+        preport_targets = preport.add_subparsers(
+                title='target', metavar='TARGET', dest='target',
                 help=targets_help)
-        preport.add_argument('rundirs', nargs='+', metavar='RUNDIR', default=[],
-                help='run directories to parse (%s/run-XXX)' % rdir)
+        preport_targets.required = True
 
         # command: config
         pconfig = self.subparsers.add_parser('config',
@@ -285,11 +285,17 @@ class Setup:
         for target in self.targets.values():
             target.add_build_args(pbuild)
 
-            ptarget = ptargets.add_parser(target.name)
+            ptarget = prun_targets.add_parser(target.name)
             ptarget.add_argument('instances', nargs='+',
                     metavar='INSTANCE', choices=self.instances,
                     help=instances_help)
             target.add_run_args(ptarget)
+
+            ptarget = preport_targets.add_parser(target.name)
+            ptarget.add_argument('rundirs',
+                    nargs='+', metavar='RUNDIR', default=[],
+                    help='run directories to parse (%s/run-XXX)' % rdir)
+            target.add_report_args(ptarget)
 
         for instance in self.instances.values():
             instance.add_build_args(pbuild)
@@ -731,7 +737,7 @@ class Setup:
 
         results = parse_rundirs(self.ctx, target, instances, rundirs)
         with redirect_stdout(self.args.outfile):
-            target.report_results(self.ctx, results, self.args)
+            target.report(self.ctx, results, self.args)
 
     def _run_config(self):
         if self.args.list_instances:
