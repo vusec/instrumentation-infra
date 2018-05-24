@@ -497,7 +497,7 @@ class SPEC2006(Target):
                     path = os.path.join(fix_specpath(rundir), errfile)
                     ctx.log.debug('fetching staticlib results from errfile ' + path)
                     res = list(parse_results(ctx, path))
-                    assert len(res) == 1
+                    assert len(res)
                     inputres += res
 
                 # report only the worst case of all input sets
