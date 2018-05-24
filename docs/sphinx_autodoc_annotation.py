@@ -50,10 +50,10 @@ def typestr(obj):
     if obj.__module__ == 'typing':
         if classname in ('Union', 'Optional'):
             if hasattr(obj, '__union_params__'):
-                a, b = obj.__union_params__  # Python 3.5
+                args = obj.__union_params__  # Python 3.5
             else:
-                a, b = obj.__args__  # Python 3.6
-            return typestr(a) + ' or ' + typestr(b)
+                args = obj.__args__  # Python 3.6
+            return ' or '.join(typestr(arg) for arg in args)
 
         if classname == 'Callable':
             if hasattr(obj, '__result__'):
