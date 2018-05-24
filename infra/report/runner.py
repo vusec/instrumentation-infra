@@ -44,7 +44,7 @@ class BenchmarkRunner:
         BenchmarkUtils().configure(ctx)
 
     def _make_rundir(self):
-        dirname = self.ctx.timestamp.strftime('run-%Y-%m-%d.%H:%M:%S')
+        dirname = self.ctx.timestamp.strftime('run.%Y-%m-%d.%H-%M-%S')
         path = os.path.join(self.ctx.paths.pool_results, dirname,
                             self.target.name, self.instance.name)
         os.makedirs(path, exist_ok=True)
