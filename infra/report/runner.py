@@ -74,27 +74,28 @@ class BenchmarkRunner:
             self._print_footer(job)
 
     def _print_footer(self, job):
-        if hasattr(job, 'outfile'):
-            # print to results logfile
-            self.ctx.log.debug('appending metadata to ' + job.outfile)
-            with open(job.outfile) as f:
-                output = f.read()
-            outfile = open(job.outfile, 'a')
-            opened_outfile = True
+        if hasattr(job, 'outfiles'):
+            # print to results logfiles
+            outfiles = []
+            for outfile in job.outfiles:
+                self.ctx.log.debug('appending metadata to ' + outfile)
+                with open(outfile) as f:
+                    output = f.read()
+                outfiles.append((open(outfile, 'a'), output))
+            opened = True
         elif job.teeout:
             # print to stdout
-            output = job.stdout
-            outfile = sys.stdout
-            opened_outfile = False
+            outfiles = [(sys.stdout, job.stdout)]
+            opened = False
         else:
             # print to command output log
-            output = job.stdout
-            outfile = open(self.ctx.paths.runlog, 'a')
-            opened_outfile = True
+            outfile = [(open(self.ctx.paths.runlog, 'a'), job.stdout)]
+            opened = True
 
-        self.target.log_results(self.ctx, output, self.instance, self, outfile)
-        if opened_outfile:
-            outfile.close()
+        for outfile, output in outfiles:
+            self.target.log_results(self.ctx, output, self.instance, self, outfile)
+            if opened:
+                outfile.close()
 
     def log_result(self, data: Dict[str, Any], outfile):
         """

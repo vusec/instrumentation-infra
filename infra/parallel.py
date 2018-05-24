@@ -189,7 +189,7 @@ class ProcessPool(Pool):
             job.nnodes = 1
 
             os.makedirs(os.path.dirname(outfile), exist_ok=True)
-            job.outfile = outfile
+            job.outfiles = [outfile]
             job.outfile_handle = open(outfile, 'wb')
 
             yield job
@@ -226,7 +226,7 @@ class PrunPool(Pool):
         _set_non_blocking(job.stdout)
         job.jobid = jobid
         job.nnodes = nnodes
-        job.outfile = outfile
+        job.outfiles = ['%s.%d' % (outfile, i) for i in range(nnodes)]
         yield job
 
     def process_job_output(self, job):

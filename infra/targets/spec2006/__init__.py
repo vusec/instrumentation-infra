@@ -425,19 +425,19 @@ class SPEC2006(Target):
     def log_results(self, ctx, job_output, instance, runner, outfile):
         spec_root = self._install_path(ctx)
 
-        def fix_logpath(logpath):
-            if not os.path.exists(logpath):
-                base = os.path.basename(logpath)
-                logpath = os.path.join(spec_root, 'results', base)
-            assert os.path.exists(logpath)
-            return logpath
+        def fix_specpath(path):
+            if not os.path.exists(path):
+                benchspec_dir = self._install_path(ctx, 'benchspec')
+                path = re.sub(r'.*/benchspec', benchspec_dir, path)
+            assert os.path.exists(path)
+            return path
 
         def get_logpaths(contents):
             matches = re.findall(r'The log for this run is in (.*)$', contents, re.M)
             assert matches
             for match in matches:
                 logpath = match.replace('The log for this run is in ', '')
-                yield fix_logpath(logpath)
+                yield logpath
 
         def parse_logfile(logpath):
             ctx.log.debug('parsing log file ' + logpath)
@@ -464,7 +464,7 @@ class SPEC2006(Target):
                 errfiles = re.findall(r'-e ([^ ]+)', arglist)
                 inputres = []
                 for errfile in errfiles:
-                    path = os.path.join(rundir, errfile)
+                    path = os.path.join(fix_specpath(rundir), errfile)
                     inputres += list(parse_results(ctx, path))
                 assert len(inputres)
 
