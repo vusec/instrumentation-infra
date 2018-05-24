@@ -52,6 +52,16 @@ class Namespace(dict):
         return new
 
 
+class FatalError(Exception):
+    """
+    Raised for errors that should stop the execution immediately, but do not
+    need a backtrace. Results in only the exception message being logged. This
+    typically means there is an error in the user input, rather than in the code
+    that raises the error.
+    """
+    pass
+
+
 def apply_patch(ctx: Namespace, path: str, strip_count: int) -> bool:
     """
     Applies a patch in the current directory by calling ``patch -p<strip_count>
@@ -292,16 +302,6 @@ class _Tee(io.IOBase):
             self.thread.join(0)
             os.close(self.readfd)
             os.close(self.writefd)
-
-
-class FatalError(Exception):
-    """
-    Raised for errors that should stop the execution immediately, but do not
-    need a backtrace. Results in only the exception message being logged. This
-    typically means there is an error in the user input, rather than in the code
-    that raises the error.
-    """
-    pass
 
 
 def geomean(values: Iterable[Union[float, int]]) -> float:
