@@ -295,6 +295,9 @@ class SPEC2006(Target):
                 # sync command or by analyzing log files at report time
                 benchdir = 'benchspec/CPU2006/{bench}'
                 cmd = _unindent('''
+                set -ex
+
+                # set up local copy of results dir with binaries and logdir
                 rm -rf "{output_root}"
                 mkdir -p "{output_root}"
                 mkdir -p "{specdir}/result"
@@ -310,9 +313,10 @@ class SPEC2006(Target):
                     sed "s,{specdir}/,{output_root}/,g" \\
                             "{specdir}/{benchdir}/run/list" > \\
                             "{output_root}/{benchdir}/run/list"
-                    for subdir in "{specdir}/{benchdir}/run"/*; do
-                        if [ "$subdir" != list ]; then
-                            mkdir "{output_root}/{benchdir}/run/$subdir"
+                    for subdir in "{specdir}/{benchdir}/run/*"; do
+                        base=\$(basename "\$subdir")
+                        if [ "\$base" != list ]; then
+                            mkdir "{output_root}/{benchdir}/run/\$base"
                         fi
                     done
                 fi
@@ -320,17 +324,29 @@ class SPEC2006(Target):
                 # run runspec command
                 {{{{ {cmd}; }}}} | sed "s,{output_root}/result/,{specdir}/result/,g"
 
-                # copy output files back for analysis
+                # copy output files back to headnode for analysis, use a
+                # directory lock to avoid simultaneous writes and TOCTOU bugs
+                while ! mkdir "{specdir}/{benchdir}/runlock" 2>/dev/null; do sleep 0.1; done
+                release_lock() {{{{
+                    rm -rf "{specdir}/{benchdir}/runlock"
+                }}}}
+                trap release_lock INT TERM EXIT
+
                 if [ -d "{specdir}/{benchdir}/run" ]; then
-                    lastdir=`tail -2 "{output_root}/{benchdir}/run/list" | grep -oP 'dir=.+?\.[0-9]+' | sed s/dir=//`
-                    cp -r "$lastdir" "{specdir}/{benchdir}/run"
+                    lastdir=\$(tail -2 "{output_root}/{benchdir}/run/list" | grep -oP 'dir=.+?\.[0-9]+' | sed s/dir=//)
+                    cp -r "\$lastdir" "{specdir}/{benchdir}/run"
                     cp "{output_root}/{benchdir}/run/list" "{specdir}/{benchdir}/run/list"
                 else
                     cp -r "{output_root}/{benchdir}/run" "{specdir}/{benchdir}/run"
                 fi
-                sed -i "s,{output_root}/,{specdir}/,g"  "{specdir}/{benchdir}/run/list"
+                sed -i "s,{output_root}/,{specdir}/,g" "{specdir}/{benchdir}/run/list"
 
+                rmdir "{specdir}/{benchdir}/runlock"
+
+                # clean up
                 rm -rf "{output_root}"
+
+                # wait for file sync
                 sleep 5
                 ''').format(**locals())
 
@@ -459,7 +475,7 @@ class SPEC2006(Target):
             if not os.path.exists(path):
                 benchspec_dir = self._install_path(ctx, 'benchspec')
                 path = re.sub(r'.*/benchspec', benchspec_dir, path)
-            assert os.path.exists(path)
+            assert os.path.exists(path), 'invalid path ' + path
             return path
 
         def get_logpaths(contents):
