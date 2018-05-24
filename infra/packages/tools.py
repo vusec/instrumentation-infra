@@ -1,13 +1,13 @@
 import os
-import shutil
-from abc import ABCMeta, abstractmethod
+from os.path import exists, join
+from abc import ABCMeta
 from ..package import Package
 from ..util import run
 
 
-class Nothp(Package):
+class Tool(Package, metaclass=ABCMeta):
     def ident(self):
-        return 'nothp'
+        return self.name
 
     def fetch(self, ctx):
         pass
@@ -22,16 +22,45 @@ class Nothp(Package):
         return True
 
     def is_built(self, ctx):
-        return os.path.exists('obj/nothp')
+        return all(exists(join('obj', f)) for f in self.built)
 
     def is_installed(self, ctx):
-        return os.path.exists('install/bin/nothp')
+        return all(exists(join('install', f)) for f in self.installed)
 
     def _run_make(self, ctx, *args):
-        os.chdir(ctx.paths.infra + '/tools/nothp')
+        os.chdir(join(ctx.paths.infra, 'tools', self.name))
         run(ctx, [
             'make',
             'OBJDIR=' + self.path(ctx, 'obj'),
             'INSTALLDIR=' + self.path(ctx, 'install'),
             *args
         ])
+
+
+class Nothp(Tool):
+    """
+    :identifier: nothp
+    """
+    name = 'nothp'
+    built = ['nothp']
+    installed = ['bin/nothp']
+
+
+class BenchmarkUtils(Tool):
+    """
+    :identifier: benchmark-utils
+    """
+    name = 'benchmark-utils'
+    built = ['libbenchutils.a']
+    installed = ['lib/libbenchutils.a']
+
+    def configure(self, ctx):
+        """
+        Set build/link flags in **ctx**. Should be called from the
+        ``configure`` method of an instance.
+
+        :param ctx: the configuration context
+        """
+        ctx.ldflags += ['-L', self.path(ctx, 'install/lib'),
+                        '-Wl,--whole-archive', '-l:libbenchutils.a',
+                        '-Wl,--no-whole-archive']

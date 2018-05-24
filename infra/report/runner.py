@@ -1,14 +1,15 @@
+import sys
 import os.path
 import re
 from contextlib import redirect_stdout
 from subprocess import Popen
-from typing import Iterable, List, Dict, Union, Optional, Callable, Any
+from typing import Iterable, List, Dict, Union, Optional, Callable, Any, Iterator
 from ..target import Target
 from ..package import Package
 from ..instance import Instance
 from ..parallel import Pool
 from ..util import Namespace, run
-#from ..packages import BenchmarkUtils
+from ..packages import BenchmarkUtils
 
 
 prefix = '[setup-report]'
@@ -33,16 +34,14 @@ class BenchmarkRunner:
     def dependencies() -> Iterable[Package]:
         """
         """
-        yield from []
-        #yield BenchmarkUtils()
+        yield BenchmarkUtils()
 
     @staticmethod
     def configure(ctx: Namespace):
         """
         :param ctx: the configuration context
         """
-        pass
-        #BenchmarkUtils().configure(ctx)
+        BenchmarkUtils().configure(ctx)
 
     def _make_rundir(self):
         dirname = self.ctx.timestamp.strftime('run-%Y-%m-%d.%H:%M:%S')
@@ -80,31 +79,37 @@ class BenchmarkRunner:
             self.ctx.log.debug('appending metadata to ' + job.outfile)
             with open(job.outfile) as f:
                 output = f.read()
-            with open(job.outfile, 'a') as outfile:
-                with redirect_stdout(outfile):
-                    self.target.log_results(self.ctx, output, self.instance, self)
+            outfile = open(job.outfile, 'a')
+            opened_outfile = True
         elif job.teeout:
             # print to stdout
-            self.target.log_results(self.ctx, job.stdout, self.instance, self)
+            output = job.stdout
+            outfile = sys.stdout
+            opened_outfile = False
         else:
             # print to command output log
-            with open(self.ctx.paths.runlog, 'a') as outfile:
-                with redirect_stdout(outfile):
-                    self.target.log_results(self.ctx, job.stdout, self.instance, self)
+            output = job.stdout
+            outfile = open(self.ctx.paths.runlog, 'a')
+            opened_outfile = True
 
-    def log_result(self, data: Dict[str, Any]):
+        self.target.log_results(self.ctx, output, self.instance, self, outfile)
+        if opened_outfile:
+            outfile.close()
+
+    def log_result(self, data: Dict[str, Any], outfile):
         """
         :param job:
         :param data:
         """
-        print(prefix, 'begin')
-        #print(prefix, 'target:', _box_value(self.target.name))
-        #print(prefix, 'instance:', _box_value(self.instance.name))
+        with redirect_stdout(outfile):
+            print(prefix, 'begin')
+            #print(prefix, 'target:', _box_value(self.target.name))
+            #print(prefix, 'instance:', _box_value(self.instance.name))
 
-        for key, value in data.items():
-            print(prefix, key + ':', _box_value(value))
+            for key, value in data.items():
+                print(prefix, key + ':', _box_value(value))
 
-        print(prefix, 'end')
+            print(prefix, 'end')
 
     #def wrap_command(self, ctx: Namespace, cmd: Union[str, List[str]]) -> List[str]:
     #    if isinstance(cmd, list):
@@ -132,7 +137,25 @@ class BenchmarkRunner:
     #    ]
 
 
-def parse_rundirs(ctx, target, instances, rundirs):
+def log_result(result: dict, outfile=sys.stdout):
+    """
+    """
+    with redirect_stdout(outfile):
+        print(prefix, 'begin')
+
+        for key, value in result.items():
+            print(prefix, key + ':', _box_value(value))
+
+        print(prefix, 'end')
+
+
+def parse_rundirs(ctx: Namespace,
+                  target: Target,
+                  instances: Iterable[Instance],
+                  rundirs: List[str]
+                  ) -> Dict[str, List[Namespace]]:
+    """
+    """
     instance_names = [instance.name for instance in instances]
     instance_dirs = []
     results = dict((iname, []) for iname in instance_names)
@@ -155,14 +178,16 @@ def parse_rundirs(ctx, target, instances, rundirs):
         for filename in sorted(os.listdir(idir)):
             path = os.path.join(idir, filename)
 
-            for result in _parse_metadata(ctx, path):
+            for result in parse_results(ctx, path):
                 result['outfile'] = path
                 instance_results.append(result)
 
     return results
 
 
-def _parse_metadata(ctx, path):
+def parse_results(ctx: Namespace, path: str) -> Iterator[Namespace]:
+    """
+    """
     with open(path) as f:
         meta = None
 

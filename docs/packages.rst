@@ -60,3 +60,5 @@ Tools
 =====
 
 .. autoclass:: infra.packages.Nothp
+.. autoclass:: infra.packages.BenchmarkUtils
+   :members: configure

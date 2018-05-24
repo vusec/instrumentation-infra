@@ -12,7 +12,7 @@ from ...util import FatalError, run, apply_patch, qjoin, geomean
 from ...target import Target
 from ...packages import Bash, Nothp
 from ...parallel import PrunPool
-from ...report import BenchmarkRunner
+from ...report import BenchmarkRunner, parse_results, log_result
 from .benchmark_sets import benchmark_sets
 
 
@@ -408,7 +408,7 @@ class SPEC2006(Target):
     # define benchmark sets, generated using scripts/parse-benchmarks-sets.py
     benchmarks = benchmark_sets
 
-    def log_results(self, ctx, job_output, instance, runner):
+    def log_results(self, ctx, job_output, instance, runner, outfile):
         spec_root = self._install_path(ctx)
 
         def fix_logpath(logpath):
@@ -443,22 +443,41 @@ class SPEC2006(Target):
             m = pat.search(logcontents)
             while m:
                 status, benchmark, workload, ratio, runtime = m.groups()
-                runner.log_result({
+
+                # find per-input logs by benchutils staticlib
+                rpat = r'Running %s.+?-C (.+?$)(.+?)^Specinvoke:' % benchmark
+                rundir, arglist = re.search(rpat, logcontents, re.M | re.S).groups()
+                errfiles = re.findall(r'-e (\w+\.err)', arglist)
+                inputres = []
+                for errfile in errfiles:
+                    path = os.path.join(rundir, errfile)
+                    inputres += list(parse_results(ctx, path))
+                assert len(inputres)
+
+                # report only the worst case of all input sets
+                maxrss = max(r.maxrss_kb for r in inputres)
+                maxpagefaults = max(r.page_faults for r in inputres)
+                maxcswitch = max(r.context_switches for r in inputres)
+
+                log_result({
                     'benchmark': benchmark,
                     'success': status == 'Success',
                     'workload': workload,
-                    'runtime': float(runtime),
+                    'runtime_sec': float(runtime),
+                    'maxrss_kb': maxrss,
+                    'maxpagefaults': maxpagefaults,
+                    'maxcontextswitches': maxcswitch,
                     'hostname': hostname
-                })
+                }, outfile)
                 error_benchmarks.remove(benchmark)
                 m = pat.search(logcontents, m.end())
 
             for benchmark in error_benchmarks:
-                runner.log_result({
+                log_result({
                     'benchmark': benchmark,
                     'success': False,
                     'hostname': hostname
-                })
+                }, outfile)
 
             ctx.log.debug('done parsing')
 
@@ -502,6 +521,7 @@ class SPEC2006(Target):
 
         # compute aggregates
         benchdata = {}
+        have_memdata = False
 
         for iname, iresults in results.items():
             grouped = {}
@@ -509,39 +529,77 @@ class SPEC2006(Target):
                 grouped.setdefault(result['benchmark'], []).append(result)
 
             for bench, bresults in grouped.items():
+                assert len(bresults)
                 entry = benchdata.setdefault(bench, {}).setdefault(iname, {})
                 if all(r['success'] for r in bresults):
                     entry['status'] = colored('OK', 'green')
-                    entry['runtime'] = statistics.mean(r['runtime'] for r in bresults)
+
+                    runtimes = (r['runtime_sec'] for r in bresults)
+                    entry['rt_median'] = statistics.median(runtimes)
+
+                    if 'maxrss_kb' in bresults[0]:
+                        have_memdata = True
+                        memdata = (r['maxrss_kb'] for r in bresults)
+                        entry['mem_max'] = max(memdata)
+
                     if len(bresults) > 1:
-                        entry['stdev'] = statistics.stdev(r['runtime'] for r in bresults)
+                        entry['rt_stdev'] = statistics.stdev(runtimes)
+                        if have_memdata:
+                            entry['mem_stdev'] = statistics.stdev(memdata)
                     else:
-                        entry['stdev'] = '-'
-                    entry['iters'] = len(bresults) # FIXME
+                        entry['rt_stdev'] = '-'
+                        if have_memdata:
+                            entry['mem_stdev'] = '-'
+
+                    entry['iters'] = len(bresults)
                 else:
                     entry['status'] = colored('ERROR', 'red', attrs=['bold'])
 
         # compute overheads compared to baseline
         if baseline:
-            overheads = {}
+            overheads_rt = {}
+            overheads_mem = {}
+
             for bench, index in benchdata.items():
                 for iname, entry in index.items():
                     baseline_entry = benchdata[bench][baseline]
-                    if 'runtime' in baseline_entry:
-                        baseline_runtime = baseline_entry['runtime']
-                        overhead = entry['runtime'] / baseline_runtime
-                        entry['overhead'] = overhead
-                        overheads.setdefault(iname, []).append(overhead)
+                    if 'rt_median' in baseline_entry:
+                        baseline_runtime = baseline_entry['rt_median']
+                        rt_overhead = entry['rt_median'] / baseline_runtime
+                        entry['rt_overhead'] = rt_overhead
+                        overheads_rt.setdefault(iname, []).append(rt_overhead)
+                    else:
+                        entry['rt_overhead'] = '-'
 
-            geomeans = {iname: geomean(oh) for iname, oh in overheads.items()}
+                    if have_memdata:
+                        if 'mem_max' in baseline_entry:
+                            baseline_mem = baseline_entry['mem_max']
+                            mem_overhead = entry['mem_max'] / baseline_mem
+                            entry['mem_overhead'] = mem_overhead
+                            overheads_mem.setdefault(iname, []).append(mem_overhead)
+                        else:
+                            entry['mem_overhead'] = '-'
+
+            geomeans_rt = {iname: geomean(oh) for iname, oh in overheads_rt.items()}
+            geomeans_mem = {iname: geomean(oh) for iname, oh in overheads_mem.items()}
+
+        # build column list based on which data is present
+        columns = [('\nstatus', 'status')]
+        if baseline:
+            columns.append(('runtime\noverhead', 'rt_overhead'))
+            if have_memdata:
+                columns.append(('memory\noverhead', 'mem_overhead'))
+        columns += [('runtime\nmedian', 'rt_median'), ('runtime\nstdev', 'rt_stdev')]
+        if have_memdata:
+            columns += [('memory\nmax', 'mem_max'), ('memory\nstdev', 'mem_stdev')]
+        columns.append(('\niters', 'iters'))
 
         # header row
-        header = ['\nbenchmark']
-        for key in ('status', 'overhead', 'runtime', 'stdev', 'iters'):
-            if baseline or key != 'overhead':
-                for iname in instances:
-                    if key != 'overhead' or iname != baseline:
-                        header.append(key + '\n' + iname)
+        header = ['\n\nbenchmark']
+        for heading, key in columns:
+            for iname in instances:
+                if not key.endswith('_overhead') or iname != baseline:
+                    header.append(heading + '\n' + iname)
         rows = [header]
 
         # data rows
@@ -552,19 +610,21 @@ class SPEC2006(Target):
 
         for bench, index in sorted(benchdata.items(), key=lambda p: p[0]):
             row = [bench]
-            for key in ('status', 'overhead', 'runtime', 'stdev', 'iters'):
-                if baseline or key != 'overhead':
-                    for iname in instances:
-                        if key != 'overhead' or iname != baseline:
-                            row.append(cell(index[iname].get(key, '')))
+            for heading, key in columns:
+                for iname in instances:
+                    if not key.endswith('_overhead') or iname != baseline:
+                        row.append(cell(index[iname].get(key, '')))
             rows.append(row)
 
         # geomean row
         if baseline:
-            lastrow = ['geomean']
+            lastrow = ['geomean:']
             lastrow += [''] * len(instances)
-            lastrow += [cell(geomeans.get(iname, '-')) for iname in instances if iname != baseline]
-            lastrow += [''] * len(instances) * 3
+            lastrow += [cell(geomeans_rt.get(iname, '-'))
+                        for iname in instances if iname != baseline]
+            lastrow += [cell(geomeans_mem.get(iname, '-'))
+                        for iname in instances if iname != baseline]
+            lastrow += [''] * (len(columns) - len(lastrow))
             rows.append(lastrow)
 
         # build table
