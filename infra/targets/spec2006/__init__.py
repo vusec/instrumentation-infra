@@ -480,22 +480,22 @@ class SPEC2006(Target):
             from terminaltables import AsciiTable as Table
 
         # determine baseline
+        baseline = None
+
         if 'baseline' in args:
             baseline = args.baseline
-        else:
-            default_baselines = ('clang-lto', 'clang', 'baseline')
+        elif len(results) > 1:
+            default_baselines = ('baseline', 'clang-lto', 'clang')
 
             for iname in default_baselines:
                 if iname in results:
                     baseline = iname
                     break
-                else:
-                    raise FatalError('no baseline specified and no default '
-                                     'baseline instance (%s) found, need to '
-                                     'specify --baseline' %
-                                     '/'.join(default_baselines))
 
+        if baseline:
             ctx.log.debug('using %s instance as baseline' % baseline)
+        else:
+            ctx.log.debug('no baseline found, not computing overheads')
 
         # sort instance names to avoid non-deterministic table order
         instances = sorted(results)
@@ -511,7 +511,7 @@ class SPEC2006(Target):
             for bench, bresults in grouped.items():
                 entry = benchdata.setdefault(bench, {}).setdefault(iname, {})
                 if all(r['success'] for r in bresults):
-                    entry['status'] = colored('PASS', 'green')
+                    entry['status'] = colored('OK', 'green')
                     entry['runtime'] = statistics.mean(r['runtime'] for r in bresults)
                     if len(bresults) > 1:
                         entry['stdev'] = statistics.stdev(r['runtime'] for r in bresults)
@@ -522,24 +522,26 @@ class SPEC2006(Target):
                     entry['status'] = colored('ERROR', 'red', attrs=['bold'])
 
         # compute overheads compared to baseline
-        overheads = {}
-        for bench, index in benchdata.items():
-            for iname, entry in index.items():
-                baseline_entry = benchdata[bench][baseline]
-                if 'runtime' in baseline_entry:
-                    baseline_runtime = baseline_entry['runtime']
-                    overhead = entry['runtime'] / baseline_runtime
-                    entry['overhead'] = overhead
-                    overheads.setdefault(iname, []).append(overhead)
+        if baseline:
+            overheads = {}
+            for bench, index in benchdata.items():
+                for iname, entry in index.items():
+                    baseline_entry = benchdata[bench][baseline]
+                    if 'runtime' in baseline_entry:
+                        baseline_runtime = baseline_entry['runtime']
+                        overhead = entry['runtime'] / baseline_runtime
+                        entry['overhead'] = overhead
+                        overheads.setdefault(iname, []).append(overhead)
 
-        geomeans = {iname: geomean(oh) for iname, oh in overheads.items()}
+            geomeans = {iname: geomean(oh) for iname, oh in overheads.items()}
 
         # header row
         header = ['\nbenchmark']
         for key in ('status', 'overhead', 'runtime', 'stdev', 'iters'):
-            for iname in instances:
-                if key != 'overhead' or iname != baseline:
-                    header.append(key + '\n' + iname)
+            if baseline or key != 'overhead':
+                for iname in instances:
+                    if key != 'overhead' or iname != baseline:
+                        header.append(key + '\n' + iname)
         rows = [header]
 
         # data rows
@@ -551,23 +553,25 @@ class SPEC2006(Target):
         for bench, index in sorted(benchdata.items(), key=lambda p: p[0]):
             row = [bench]
             for key in ('status', 'overhead', 'runtime', 'stdev', 'iters'):
-                for iname in instances:
-                    if key != 'overhead' or iname != baseline:
-                        row.append(cell(index[iname].get(key, '')))
+                if baseline or key != 'overhead':
+                    for iname in instances:
+                        if key != 'overhead' or iname != baseline:
+                            row.append(cell(index[iname].get(key, '')))
             rows.append(row)
 
         # geomean row
-        lastrow = ['geomean']
-        lastrow += [''] * len(instances)
-        lastrow += [cell(geomeans.get(iname, '-')) for iname in instances if iname != baseline]
-        lastrow += [''] * len(instances) * 3
-        rows.append(lastrow)
+        if baseline:
+            lastrow = ['geomean']
+            lastrow += [''] * len(instances)
+            lastrow += [cell(geomeans.get(iname, '-')) for iname in instances if iname != baseline]
+            lastrow += [''] * len(instances) * 3
+            rows.append(lastrow)
 
         # build table
-        table = Table(rows, self.name)
+        table = Table(rows, ' %s summary ' % self.name)
         table.inner_column_border = False
-        table.inner_footing_row_border = True
-        #table.outer_border = False
+        if baseline:
+            table.inner_footing_row_border = True
         for col in range(len(instances) + 1, len(header)):
             table.justify_columns[col] = 'right'
         print(table.table)
