@@ -1,2 +1,5 @@
 *.o
 *.so
+*.a
+hello
+plushello
