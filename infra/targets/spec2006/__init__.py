@@ -287,6 +287,12 @@ class SPEC2006(Target):
             if isinstance(pool, PrunPool):
                 # prepare output dir on local disk before running,
                 # and move output files to network disk after completion
+
+                # FIXME the 'sleep 5' is needed to give NFS some time to sync
+                # logfile contents to /var/scratch, which is read by
+                # log_results below which will fail if the file is incomplete.
+                # This is a temporary fix and should be fixed with a proper
+                # sync command or by analyzing log files at report time
                 cmd = _unindent('''
                 rm -rf "{output_root}"
                 mkdir -p "{output_root}"
@@ -300,6 +306,7 @@ class SPEC2006(Target):
                 {{{{ {cmd}; }}}} | \\
                     sed "s,{output_root}/result/,{specdir}/result/,g"
                 rm -rf "{output_root}"
+                sleep 5
                 ''').format(**locals())
 
             for bench in benchmarks:
