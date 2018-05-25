@@ -716,7 +716,7 @@ class SPEC2006(Target):
             for key in columns:
                 for iname in instances:
                     if not key.endswith('_overhead') or iname != baseline:
-                        row.append(cell(index[iname].get(key, '')))
+                        row.append(cell(index.get(iname, {}).get(key, '')))
             body.append(row)
 
         # geomean row

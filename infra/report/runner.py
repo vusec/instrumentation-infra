@@ -53,6 +53,7 @@ class BenchmarkRunner:
     def run(self, cmd: Union[str, List[str]],
             pool: Optional[Pool] = None,
             onsuccess: Optional[Callable[[Popen], None]] = None,
+            onerror: Optional[Callable[[Popen], None]] = None,
             **kwargs):
         """
         :param job:
@@ -60,13 +61,17 @@ class BenchmarkRunner:
         env = {'SETUP_REPORT': '1'}
 
         if pool:
-            def callback(job):
-                self._print_footer(job)
-                if onsuccess:
-                    return onsuccess(job)
+            def callback(oldcb):
+                def cb(job):
+                    self._print_footer(job)
+                    if oldcb:
+                        return oldcb(job)
+                return cb
 
-            for job in pool.run(self.ctx, cmd, onsuccess=callback, env=env,
-                                outfile=self.outfile, **kwargs):
+            for job in pool.run(self.ctx, cmd,
+                                onsuccess=callback(onsuccess),
+                                onerror=callback(onerror),
+                                env=env, outfile=self.outfile, **kwargs):
                 job.runner = self
         else:
             job = run(self.ctx, cmd, env=env, **kwargs)
