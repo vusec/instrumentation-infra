@@ -293,31 +293,34 @@ class SPEC2006(Target):
                 # log_results below which will fail if the file is incomplete.
                 # This is a temporary fix and should be fixed with a proper
                 # sync command or by analyzing log files at report time
-                benchdir = 'benchspec/CPU2006/{bench}'
                 cmd = _unindent('''
                 set -ex
+
+                benchdir="benchspec/CPU2006/{{bench}}"
+                localrun="{output_root}/$benchdir/run"
+                scratchrun="{specdir}/$benchdir/run"
 
                 # set up local copy of results dir with binaries and logdir
                 rm -rf "{output_root}"
                 mkdir -p "{output_root}"
                 mkdir -p "{specdir}/result"
                 ln -s "{specdir}/result" "{output_root}"
-                if [ -d "{specdir}/{benchdir}/exe" ]; then
-                    mkdir -p "{output_root}/{benchdir}"
-                    cp -r "{specdir}/{benchdir}/exe" "{output_root}/{benchdir}"
+                if [ -d "{specdir}/$benchdir/exe" ]
+                then
+                    mkdir -p "{output_root}/$benchdir"
+                    cp -r "{specdir}/$benchdir/exe" "{output_root}/$benchdir"
                 fi
 
                 # make empty run directories to reserve their names
-                if [ -d "{specdir}/{benchdir}/run" ]; then
-                    mkdir -p "{output_root}/{benchdir}/run"
+                if [ -d "$scratchrun" ]
+                then
+                    mkdir -p "$localrun"
                     sed "s,{specdir}/,{output_root}/,g" \\
-                            "{specdir}/{benchdir}/run/list" > \\
-                            "{output_root}/{benchdir}/run/list"
-                    for subdir in "{specdir}/{benchdir}/run/*"; do
-                        base=\$(basename "\$subdir")
-                        if [ "\$base" != list ]; then
-                            mkdir "{output_root}/{benchdir}/run/\$base"
-                        fi
+                            "$scratchrun/list" > "$localrun/list"
+                    for subdir in "$scratchrun"/run_*
+                    do
+                        base="$(basename "$subdir")"
+                        mkdir "$localrun/$base"
                     done
                 fi
 
@@ -326,22 +329,31 @@ class SPEC2006(Target):
 
                 # copy output files back to headnode for analysis, use a
                 # directory lock to avoid simultaneous writes and TOCTOU bugs
-                while ! mkdir "{specdir}/{benchdir}/runlock" 2>/dev/null; do sleep 0.1; done
+                while ! mkdir "{specdir}/$benchdir/copylock" 2>/dev/null; do sleep 0.1; done
                 release_lock() {{{{
-                    rm -rf "{specdir}/{benchdir}/runlock"
+                    rm -rf "{specdir}/$benchdir/copylock"
                 }}}}
                 trap release_lock INT TERM EXIT
 
-                if [ -d "{specdir}/{benchdir}/run" ]; then
-                    lastdir=\$(tail -2 "{output_root}/{benchdir}/run/list" | grep -oP 'dir=.+?\.[0-9]+' | sed s/dir=//)
-                    cp -r "\$lastdir" "{specdir}/{benchdir}/run"
-                    cp "{output_root}/{benchdir}/run/list" "{specdir}/{benchdir}/run/list"
-                else
-                    cp -r "{output_root}/{benchdir}/run" "{specdir}/{benchdir}/run"
-                fi
-                sed -i "s,{output_root}/,{specdir}/,g" "{specdir}/{benchdir}/run/list"
+                if [ -d "$scratchrun" ]
+                then
+                    # copy over any new run directories
+                    cp -r "$localrun"/run_* "$scratchrun/"
 
-                rmdir "{specdir}/{benchdir}/runlock"
+                    # merge list files to keep things consistent
+                    sed -i /__END__/d "$scratchrun/list"
+                    sed "s,{output_root},{specdir}," "$localrun/list" | \\
+                            diff - "$scratchrun/list" | \\
+                            sed "/^[^<]/d;s/^< //" >> "$scratchrun/list"
+
+                else
+                    # no run directory in scratch yet, just copy it over
+                    # entirely and patch the paths
+                    cp -r "$localrun" "$scratchrun"
+                    sed -i "s,{output_root}/,{specdir}/,g" "$scratchrun/list"
+                fi
+
+                rmdir "{specdir}/$benchdir/copylock"
 
                 # clean up
                 rm -rf "{output_root}"
@@ -349,6 +361,12 @@ class SPEC2006(Target):
                 # wait for file sync
                 sleep 5
                 ''').format(**locals())
+
+                # the script is passed like this: prun ... bash -c '<script>'
+                # this means that some escaping is necessary: use \$ instead of
+                # $ for bash variables and \" instead of "
+                cmd = cmd.replace('$', '\$').replace('"', '\\"')
+
 
             for bench in benchmarks:
                 jobid = 'run-%s-%s' % (instance.name, bench)
