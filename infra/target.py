@@ -233,6 +233,18 @@ class Target(metaclass=ABCMeta):
         """
         pass
 
+    def report(self, ctx: Namespace, instances: List[Instance],
+               args: argparse.Namespace):
+        """
+        TODO: document this
+
+        :param ctx: the configuration context
+        :param instances: instances to report results for
+        :param args: command-line arguments
+        :raises NotImplementedError: unless implemented
+        """
+        raise NotImplementedError(self.__class__.__name__)
+
     def is_clean(self, ctx: Namespace) -> bool:
         """
         Returns ``True`` if :func:`clean` should be called before cleaning.
@@ -272,29 +284,3 @@ class Target(metaclass=ABCMeta):
             for hook in ctx.hooks.post_build:
                 os.chdir(basedir)
                 hook(ctx, absbin)
-
-    def log_results(self, ctx: Namespace, job_output: str,
-                    instance: Instance, runner):
-        """
-        TODO: document this
-
-        :param ctx: the configuration context
-        :param job_output:
-        :param instance:
-        :param report.BenchmarkRunner runner:
-        :raises NotImplementedError: unless implemented
-        """
-        raise NotImplementedError(self.__class__.__name__)
-
-    def report(self, ctx: Namespace,
-               results: Dict[str, List[Dict[str, Union[bool, int, float, str]]]],
-               args: argparse.Namespace):
-        """
-        TODO: document this
-
-        :param ctx: the configuration context
-        :param results: results to report
-        :param args: command-line arguments
-        :raises NotImplementedError: unless implemented
-        """
-        raise NotImplementedError(self.__class__.__name__)

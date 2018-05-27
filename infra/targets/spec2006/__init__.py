@@ -11,9 +11,8 @@ from contextlib import redirect_stdout
 from typing import List
 from ...util import FatalError, run, apply_patch, qjoin, geomean
 from ...target import Target
-from ...packages import Bash, Nothp
+from ...packages import Bash, Nothp, BenchmarkUtils
 from ...parallel import PrunPool
-from ...report import BenchmarkRunner, parse_results, log_result
 from .benchmark_sets import benchmark_sets
 
 
@@ -118,6 +117,8 @@ class SPEC2006(Target):
         self.nothp = nothp
         self.force_cpu = force_cpu
 
+        self.butils = BenchmarkUtils(self)
+
     def add_build_args(self, parser, desc='build'):
         parser.add_argument('--spec2006-benchmarks',
                 nargs='+', metavar='BENCHMARK', default=['all_c', 'all_cpp'],
@@ -141,6 +142,7 @@ class SPEC2006(Target):
                 help='additional arguments for runspec')
 
     def add_report_args(self, parser):
+        self.butils.add_report_args(parser)
         parser.add_argument('--baseline', metavar='INSTANCE',
                 help='baseline instance for overheads')
         parser.add_argument('--only-overhead', action='store_true',
@@ -157,7 +159,7 @@ class SPEC2006(Target):
         yield Bash('4.3')
         if self.nothp:
             yield Nothp()
-        yield from BenchmarkRunner.dependencies()
+        yield self.butils
 
     def is_fetched(self, ctx):
         return self.source_type == 'installed' or os.path.exists('install/shrc')
@@ -207,8 +209,8 @@ class SPEC2006(Target):
         # when self.source_type == 'installed')
         self._apply_patches(ctx)
 
-        # add flags to compile with runtime support for benchmark runner
-        BenchmarkRunner.configure(ctx)
+        # add flags to compile with runtime support for benchmark utils
+        self.butils.configure(ctx)
 
         os.chdir(self.path(ctx))
         config = self._make_spec_config(ctx, instance)
@@ -287,12 +289,6 @@ class SPEC2006(Target):
             if isinstance(pool, PrunPool):
                 # prepare output dir on local disk before running,
                 # and move output files to network disk after completion
-
-                # FIXME the 'sleep 5' is needed to give NFS some time to sync
-                # logfile contents to /var/scratch, which is read by
-                # log_results below which will fail if the file is incomplete.
-                # This is a temporary fix and should be fixed with a proper
-                # sync command or by analyzing log files at report time
                 cmd = _unindent('''
                 set -ex
 
@@ -357,9 +353,6 @@ class SPEC2006(Target):
 
                 # clean up
                 rm -rf "{output_root}"
-
-                # wait for file sync
-                sleep 5
                 ''').format(**locals())
 
                 # the script is passed like this: prun ... bash -c '<script>'
@@ -367,21 +360,17 @@ class SPEC2006(Target):
                 # $ for bash variables and \" instead of "
                 cmd = cmd.replace('$', '\$').replace('"', '\\"')
 
-
             for bench in benchmarks:
                 jobid = 'run-%s-%s' % (instance.name, bench)
-                benchcmd = self._bash_command(ctx, cmd.format(bench=bench))
-                runner = BenchmarkRunner(ctx, self, instance, bench)
-                runner.run(benchcmd, pool=pool, jobid=jobid,
-                           nnodes=ctx.args.iterations)
+                outfile = self.butils.outfile_path(ctx, instance, bench)
+                self._run_bash(ctx, cmd.format(bench=bench), pool, jobid=jobid,
+                               outfile=outfile, nnodes=ctx.args.iterations)
         else:
-            benchcmd = self._bash_command(ctx, cmd.format(bench=qjoin(benchmarks)))
-            runner = BenchmarkRunner(ctx, self, instance, 'all')
-            runner.run(benchcmd, teeout=True)
+            self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)))
 
-    def _bash_command(self, ctx, command):
+    def _run_bash(self, ctx, command, pool=None, **kwargs):
         config_root = os.path.dirname(os.path.abspath(__file__))
-        return [
+        cmd = [
             'bash', '-c',
             '\n' + _unindent('''
             cd %s
@@ -390,10 +379,8 @@ class SPEC2006(Target):
             %s
             ''' % (self._install_path(ctx), config_root, command))
         ]
-
-    def _run_bash(self, ctx, command, pool=None, **kwargs):
         runfn = pool.run if pool else run
-        return runfn(ctx, self._bash_command(ctx, command), **kwargs)
+        return runfn(ctx, cmd, **kwargs)
 
     def _make_spec_config(self, ctx, instance):
         config_name = 'infra-' + instance.name
@@ -488,7 +475,9 @@ class SPEC2006(Target):
     # define benchmark sets, generated using scripts/parse-benchmarks-sets.py
     benchmarks = benchmark_sets
 
-    def log_results(self, ctx, job_output, instance, runner, outfile):
+    def parse_outfile(self, ctx, instance_name, outfile):
+        # called by self.butils.parse_logs() in report() below
+
         def fix_specpath(path):
             if not os.path.exists(path):
                 benchspec_dir = self._install_path(ctx, 'benchspec')
@@ -497,7 +486,8 @@ class SPEC2006(Target):
             return path
 
         def get_logpaths(contents):
-            matches = re.findall(r'The log for this run is in (.*)$', contents, re.M)
+            matches = re.findall(r'The log for this run is in (.*)$',
+                                 contents, re.M)
             assert matches
             for match in matches:
                 logpath = match.replace('The log for this run is in ', '')
@@ -517,7 +507,8 @@ class SPEC2006(Target):
             assert m, 'could not find benchmark list'
             error_benchmarks = set(m.group(1).split(', '))
 
-            pat = re.compile(r'([^ ]+) ([^ ]+) base (\w+) ratio=(-?[0-9.]+), runtime=([0-9.]+).*', re.M)
+            pat = re.compile(r'([^ ]+) ([^ ]+) base (\w+) ratio=(-?[0-9.]+), '
+                             r'runtime=([0-9.]+).*', re.M)
             m = pat.search(logcontents)
             while m:
                 status, benchmark, workload, ratio, runtime = m.groups()
@@ -530,7 +521,7 @@ class SPEC2006(Target):
                 for errfile in errfiles:
                     path = os.path.join(fix_specpath(rundir), errfile)
                     ctx.log.debug('fetching staticlib results from errfile ' + path)
-                    res = list(parse_results(ctx, path))
+                    res = list(BenchmarkUtils.parse_results(ctx, path))
                     assert len(res)
                     inputres += res
 
@@ -539,7 +530,7 @@ class SPEC2006(Target):
                 maxpagefaults = max(r.page_faults for r in inputres)
                 maxcswitch = max(r.context_switches for r in inputres)
 
-                log_result({
+                yield {
                     'benchmark': benchmark,
                     'success': status == 'Success',
                     'workload': workload,
@@ -548,24 +539,29 @@ class SPEC2006(Target):
                     'maxpagefaults': maxpagefaults,
                     'maxcontextswitches': maxcswitch,
                     'hostname': hostname
-                }, outfile)
+                }
                 error_benchmarks.remove(benchmark)
                 m = pat.search(logcontents, m.end())
 
             for benchmark in error_benchmarks:
-                log_result({
+                yield {
                     'benchmark': benchmark,
                     'success': False,
                     'hostname': hostname
-                }, outfile)
+                }
 
             ctx.log.debug('done parsing')
 
-        for logpath in get_logpaths(job_output):
-            parse_logfile(logpath)
+        with open(outfile) as f:
+            outfile_contents = f.read()
+        for logpath in get_logpaths(outfile_contents):
+            yield from parse_logfile(logpath)
 
-    def report(self, ctx, results, args):
+    def report(self, ctx, instances, args):
+        results = self.butils.parse_logs(ctx, instances, args)
         only_overhead = args.only_overhead
+
+        # TODO: move runtimes table to a utility module
 
         # only use fancy UTF-8 table if writing to a compatible terminal
         fancy = sys.stdout.encoding == 'UTF-8' and sys.stdout.name == '<stdout>'

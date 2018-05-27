@@ -13,7 +13,6 @@ from .util import FatalError, Namespace, qjoin
 from .instance import Instance
 from .target import Target
 from .parallel import ProcessPool, PrunPool
-from .report import parse_rundirs
 
 
 # disable .pyc file generation
@@ -123,7 +122,7 @@ class Setup:
     ``ctx.hooks.post_build`` defines a list of post-build hooks, which are
     python functions called with the path to the binary as the only parameter.
 
-    ``ctx.timestamp`` is set to ``datetime.datetime.now()``.
+    ``ctx.starttime`` is set to ``datetime.datetime.now()``.
     """
 
     _max_default_jobs = 16
@@ -240,12 +239,8 @@ class Setup:
         prun_targets.required = True
 
         # command: report
-        rdir = self.ctx.paths.pool_results
         preport = self.subparsers.add_parser('report',
-                help='report results from the %s/ dir' % rdir)
-        preport.add_argument('--mode', choices=('brief', 'full', 'csv'),
-                default='brief',
-                help='reporting mode (default: brief)')
+                help='report results after a run')
         preport.add_argument('-i', '--instances', nargs='+', metavar='INSTANCE',
                 default=[], choices=self.instances,
                 help=instances_help)
@@ -292,9 +287,6 @@ class Setup:
             target.add_run_args(ptarget)
 
             ptarget = preport_targets.add_parser(target.name)
-            ptarget.add_argument('rundirs',
-                    nargs='+', metavar='RUNDIR', default=[],
-                    help='run directories to parse (%s/run-XXX)' % rdir)
             target.add_report_args(ptarget)
 
         for instance in self.instances.values():
@@ -366,7 +358,7 @@ class Setup:
         self.ctx.cxxflags = []
         self.ctx.ldflags = []
 
-        self.ctx.timestamp = datetime.datetime.now()
+        self.ctx.starttime = datetime.datetime.now()
 
     def _create_dirs(self):
         os.makedirs(self.ctx.paths.log, exist_ok=True)
@@ -728,16 +720,8 @@ class Setup:
     def _run_report(self):
         target = self._get_target(self.args.target)
         instances = [self._get_instance(name) for name in self.args.instances]
-
-        rundirs = []
-        for d in self.args.rundirs:
-            if not os.path.exists(d):
-                raise FatalError('rundir %s does not exist' % d)
-            rundirs.append(os.path.abspath(d))
-
-        results = parse_rundirs(self.ctx, target, instances, rundirs)
         with redirect_stdout(self.args.outfile):
-            target.report(self.ctx, results, self.args)
+            target.report(self.ctx, self.args.instances, self.args)
 
     def _run_config(self):
         if self.args.list_instances:
