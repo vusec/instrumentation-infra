@@ -656,6 +656,8 @@ class SPEC2006(Target):
                 else:
                     entry['status'] = colored('ERROR', 'red', attrs=['bold'])
 
+        ctx.log.debug('all benchmarks used the %s workload' % workload)
+
         # compute overheads compared to baseline
         if baseline:
             overheads_rt = {}
@@ -757,8 +759,10 @@ class SPEC2006(Target):
                 for row in body:
                     print('\t'.join(str(cell) for cell in row))
             else:
-                title = 'overheads' if only_overhead else 'aggregated data'
-                table = Table([header_full] + body, ' %s %s ' % (self.name, title))
+                title = 'overheads-%s' if only_overhead \
+                        else 'aggregated data (%s workload)'
+                title = ' %s %s ' % (self.name, title % workload)
+                table = Table([header_full] + body, title)
                 table.inner_column_border = False
                 if baseline:
                     table.inner_footing_row_border = True
