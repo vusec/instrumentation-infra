@@ -605,11 +605,19 @@ class SPEC2006(Target):
         # compute aggregates
         benchdata = {}
         have_memdata = False
+        workload = None
 
         for iname, iresults in results.items():
             grouped = {}
             for result in iresults:
                 grouped.setdefault(result['benchmark'], []).append(result)
+                if workload is None:
+                    workload = result['workload']
+                elif result['workload'] != workload:
+                    raise FatalError('%s uses %s workload whereas previous '
+                                     'benchmarks use %s (logfile %s)' 
+                                     (result['benchmark'], result['workload'],
+                                      workload, result['outfile']))
 
             for bench, bresults in grouped.items():
                 assert len(bresults)
