@@ -137,7 +137,7 @@ class BenchmarkUtils(Tool):
 
                 if cache:
                     for result in self.parse_results(ctx, path):
-                        if result.cached:
+                        if result.get('cached', False):
                             cached.append(result)
 
                 if cached:
@@ -145,13 +145,13 @@ class BenchmarkUtils(Tool):
                     ctx.log.debug('using cached results from ' + path)
                 else:
                     fresults = []
+                    ctx.log.debug('parsing outfile ' + path)
                     for result in self.target.parse_outfile(ctx, iname, path):
                         result['cached'] = False
                         fresults.append(result)
 
                     if cache:
-                        ctx.log.debug('caching %d results in %s' %
-                                      (len(fresults), path))
+                        ctx.log.debug('caching %d results' % len(fresults))
                         with open(path, 'a') as f:
                             for result in fresults:
                                 self.log_result({**result, 'cached': True}, f)

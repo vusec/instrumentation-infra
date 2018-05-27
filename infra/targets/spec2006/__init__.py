@@ -488,7 +488,6 @@ class SPEC2006(Target):
         def get_logpaths(contents):
             matches = re.findall(r'The log for this run is in (.*)$',
                                  contents, re.M)
-            assert matches
             for match in matches:
                 logpath = match.replace('The log for this run is in ', '')
                 yield logpath
@@ -554,10 +553,19 @@ class SPEC2006(Target):
 
         with open(outfile) as f:
             outfile_contents = f.read()
-        for logpath in get_logpaths(outfile_contents):
-            yield from parse_logfile(logpath)
 
-    def report(self, ctx, instances, args):
+        logpaths = list(get_logpaths(outfile_contents))
+        if logpaths:
+            for logpath in get_logpaths(outfile_contents):
+                yield from parse_logfile(logpath)
+        else:
+            yield {
+                'benchmark': re.sub(r'\.\d+$', '', os.path.basename(outfile)),
+                'success': False,
+                'timeout': True
+            }
+
+    def report(self, ctx, instances, outfile, args):
         results = self.butils.parse_logs(ctx, instances, args)
         only_overhead = args.only_overhead
 
@@ -613,7 +621,7 @@ class SPEC2006(Target):
                 grouped.setdefault(result['benchmark'], []).append(result)
                 if workload is None:
                     workload = result['workload']
-                elif result['workload'] != workload:
+                elif result.get('workload', workload) != workload:
                     raise FatalError('%s uses %s workload whereas previous '
                                      'benchmarks use %s (logfile %s)' 
                                      (result['benchmark'], result['workload'],
@@ -643,6 +651,8 @@ class SPEC2006(Target):
                             entry['mem_stdev'] = '-'
 
                     entry['iters'] = len(bresults)
+                elif any(r.get('timeout', False) for r in bresults):
+                    entry['status'] = colored('TIMEOUT', 'red', attrs=['bold'])
                 else:
                     entry['status'] = colored('ERROR', 'red', attrs=['bold'])
 
@@ -654,7 +664,7 @@ class SPEC2006(Target):
             for bench, index in benchdata.items():
                 for iname, entry in index.items():
                     baseline_entry = benchdata[bench][baseline]
-                    if 'rt_median' in baseline_entry:
+                    if 'rt_median' in entry and 'rt_median' in baseline_entry:
                         baseline_runtime = baseline_entry['rt_median']
                         rt_overhead = entry['rt_median'] / baseline_runtime
                         entry['rt_overhead'] = rt_overhead
@@ -663,7 +673,7 @@ class SPEC2006(Target):
                         entry['rt_overhead'] = '-'
 
                     if have_memdata:
-                        if 'mem_max' in baseline_entry:
+                        if 'mem_max' in entry and 'mem_max' in baseline_entry:
                             baseline_mem = baseline_entry['mem_max']
                             mem_overhead = entry['mem_max'] / baseline_mem
                             entry['mem_overhead'] = mem_overhead
@@ -736,24 +746,25 @@ class SPEC2006(Target):
             body.append(lastrow)
 
         # write table
-        if args.nonhuman == 'csv':
-            writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL)
-            writer.writerow(header_keys)
-            for row in body:
-                writer.writerow(row)
-        elif args.nonhuman == 'tsv':
-            print('\t'.join(header_keys))
-            for row in body:
-                print('\t'.join(str(cell) for cell in row))
-        else:
-            title = 'overheads' if only_overhead else 'aggregated data'
-            table = Table([header_full] + body, ' %s %s ' % (self.name, title))
-            table.inner_column_border = False
-            if baseline:
-                table.inner_footing_row_border = True
-            for col in range(len(instances) + 1, len(header_full)):
-                table.justify_columns[col] = 'right'
-            print(table.table)
+        with redirect_stdout(outfile):
+            if args.nonhuman == 'csv':
+                writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL)
+                writer.writerow(header_keys)
+                for row in body:
+                    writer.writerow(row)
+            elif args.nonhuman == 'tsv':
+                print('\t'.join(header_keys))
+                for row in body:
+                    print('\t'.join(str(cell) for cell in row))
+            else:
+                title = 'overheads' if only_overhead else 'aggregated data'
+                table = Table([header_full] + body, ' %s %s ' % (self.name, title))
+                table.inner_column_border = False
+                if baseline:
+                    table.inner_footing_row_border = True
+                for col in range(len(instances) + 1, len(header_full)):
+                    table.justify_columns[col] = 'right'
+                print(table.table)
 
 
 def _unindent(cmd):
