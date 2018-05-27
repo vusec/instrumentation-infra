@@ -623,7 +623,7 @@ class SPEC2006(Target):
                     workload = result['workload']
                 elif result.get('workload', workload) != workload:
                     raise FatalError('%s uses %s workload whereas previous '
-                                     'benchmarks use %s (logfile %s)' 
+                                     'benchmarks use %s (logfile %s)' %
                                      (result['benchmark'], result['workload'],
                                       workload, result['outfile']))
 
