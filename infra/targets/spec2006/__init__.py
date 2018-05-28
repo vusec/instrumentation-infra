@@ -10,7 +10,7 @@ import csv
 from contextlib import redirect_stdout
 from collections import defaultdict
 from typing import List
-from ...util import FatalError, run, apply_patch, qjoin, geomean
+from ...util import Namespace, FatalError, run, apply_patch, qjoin, geomean
 from ...target import Target
 from ...packages import Bash, Nothp, BenchmarkUtils
 from ...parallel import PrunPool
@@ -626,7 +626,7 @@ class SPEC2006(Target):
         instances = sorted(results)
 
         # compute aggregates
-        benchdata = defaultdict(lambda: defaultdict(dict)) # TODO: Namespace
+        benchdata = defaultdict(lambda: defaultdict(Namespace))
         have_memdata = False
         workload = None
         node_zscores = defaultdict(lambda: defaultdict(list))
@@ -648,25 +648,25 @@ class SPEC2006(Target):
                 assert len(bresults)
                 entry = benchdata[bench][iname]
                 if all(r['success'] for r in bresults):
-                    entry['status'] = colored('OK', 'green')
+                    entry.status = colored('OK', 'green')
 
                     # runtime
                     runtimes = [r['runtime_sec'] for r in bresults]
-                    entry['rt_median'] = statistics.median(runtimes)
-                    entry['rt_mean'] = statistics.mean(runtimes)
+                    entry.rt_median = statistics.median(runtimes)
+                    entry.rt_mean = statistics.mean(runtimes)
 
                     # memory usage
                     if 'maxrss_kb' in bresults[0]:
                         have_memdata = True
                         memdata = [r['maxrss_kb'] for r in bresults]
-                        entry['mem_max'] = max(memdata)
+                        entry.mem_max = max(memdata)
 
                     # standard deviations
                     if len(bresults) > 1:
-                        entry['rt_stdev'] = stdev = statistics.pstdev(runtimes)
-                        entry['rt_variance'] = statistics.pvariance(runtimes)
+                        entry.rt_stdev = stdev = statistics.pstdev(runtimes)
+                        entry.rt_variance = statistics.pvariance(runtimes)
                         if have_memdata:
-                            entry['mem_stdev'] = statistics.stdev(memdata)
+                            entry.mem_stdev = statistics.stdev(memdata)
 
                         # z-score per node
                         mean_rt = statistics.mean(runtimes)
@@ -677,16 +677,16 @@ class SPEC2006(Target):
                             node_zscores[node][bench].append(zscore)
                             node_runtimes[(node, bench, iname)].append((runtime, zscore))
                     else:
-                        entry['rt_stdev'] = '-'
+                        entry.rt_stdev = '-'
                         if have_memdata:
-                            entry['mem_stdev'] = '-'
+                            entry.mem_stdev = '-'
 
                     # benchmark iterations
-                    entry['iters'] = len(bresults)
+                    entry.iters = len(bresults)
                 elif any(r.get('timeout', False) for r in bresults):
-                    entry['status'] = colored('TIMEOUT', 'red', attrs=['bold'])
+                    entry.status = colored('TIMEOUT', 'red', attrs=['bold'])
                 else:
-                    entry['status'] = colored('ERROR', 'red', attrs=['bold'])
+                    entry.status = colored('ERROR', 'red', attrs=['bold'])
 
         ctx.log.debug('all benchmarks used the %s workload' % workload)
 
@@ -699,21 +699,21 @@ class SPEC2006(Target):
                 for iname, entry in index.items():
                     baseline_entry = benchdata[bench][baseline]
                     if 'rt_median' in entry and 'rt_median' in baseline_entry:
-                        baseline_runtime = baseline_entry['rt_median']
-                        rt_overhead = entry['rt_median'] / baseline_runtime
-                        entry['rt_overhead'] = rt_overhead
+                        baseline_runtime = baseline_entry.rt_median
+                        rt_overhead = entry.rt_median / baseline_runtime
+                        entry.rt_overhead = rt_overhead
                         overheads_rt[iname].append(rt_overhead)
                     else:
-                        entry['rt_overhead'] = '-'
+                        entry.rt_overhead = '-'
 
                     if have_memdata:
                         if 'mem_max' in entry and 'mem_max' in baseline_entry:
-                            baseline_mem = baseline_entry['mem_max']
-                            mem_overhead = entry['mem_max'] / baseline_mem
-                            entry['mem_overhead'] = mem_overhead
+                            baseline_mem = baseline_entry.mem_max
+                            mem_overhead = entry.mem_max / baseline_mem
+                            entry.mem_overhead = mem_overhead
                             overheads_mem[iname].append(mem_overhead)
                         else:
-                            entry['mem_overhead'] = '-'
+                            entry.mem_overhead = '-'
 
             geomeans_rt = {iname: geomean(oh) for iname, oh in overheads_rt.items()}
             geomeans_mem = {iname: geomean(oh) for iname, oh in overheads_mem.items()}
@@ -833,12 +833,14 @@ class SPEC2006(Target):
                         highlighted = []
                         for runtime, zscore in runtimes:
                             rt = '%d' % round(runtime)
-                            deviation = runtime - entry['rt_mean']
-                            deviation_ratio = abs(deviation) / entry['rt_mean']
+                            deviation = runtime - entry.rt_mean
+                            deviation_ratio = abs(deviation) / entry.rt_mean
 
-                            if deviation ** 2 > entry['rt_variance'] * highlight_variance_deviation and \
+                            if deviation ** 2 > entry.rt_variance * highlight_variance_deviation and \
                                 deviation_ratio > highlight_percent_threshold:
                                 rt = colored(rt, 'red')
+                            elif runtime == entry.rt_median:
+                                rt = colored(rt, 'blue', attrs=['bold'])
 
                             highlighted.append(rt)
 
@@ -847,6 +849,8 @@ class SPEC2006(Target):
                     rows.append(row)
 
             title = ' node runtimes '
+            if fancy:
+                title += '(red = high deviation, blue = median) '
             table = Table(rows, title)
             table.inner_column_border = False
             table.padding_left = 0
