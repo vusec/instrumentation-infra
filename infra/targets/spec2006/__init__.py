@@ -57,18 +57,44 @@ class SPEC2006(Target):
     Parallel builds and runs using the ``--parallel`` option are supported.
     Command output will end up in the ``results/`` directory in that case.
     Note that even though the parallel job may finish successfully, **you still
-    need to check the output for errors manually**. Here is a useful oneliner
-    for that::
-
-        grep -rh 'Success:\|Error:' results/run-<timestamp>
+    need to check the output for errors manually** using the ``report``
+    command.
 
     The ``--iterations`` option of the :ref:`run <usage-run>` command is
     translated into the number of nodes per job when ``--parallel`` is
     specified, and to ``--runspec-args -n <iterations>`` otherwise.
 
-    You may specify a list of patches to apply before building. These may be
-    paths to .patch files that will be applied with ``patch -p1``, or choices
-    from the following built-in patches:
+    The :ref:`report <usage-report>` command analyzes logs in the results
+    directory and reports the aggregated data in a table. It receives a list of
+    run directories (``results/run.X``) as positional arguments to traverse for
+    log files. By default, the columns list runtimes, memory usages, overheads,
+    standard deviations and iterations. The computed values are appended to
+    each log file with the prefix ``[setup-report]``, and read from there by
+    subsequent report commands if available (see also :class:`BenchmarkUtils`).
+    This makes log files portable to different machines without copying over
+    the entire SPEC directory. The script depends on a couple of Python
+    libraries for its output::
+
+        pip install [--user] terminaltables termcolor
+
+    Some useful command-line options change what is displayed by ``report``:
+
+    #. ``--baseline`` changes the baseline for overhead computation. By
+       default, the script looks for **baseline**, **clang-lto** and **clang**
+       (in that order).
+    #. ``--csv``/``--tsv`` change the output from human-readable to
+       comma/tab-separated for script processing. E.g., use in conjunction with
+       ``cut`` to obtain a column of values.
+    #. ``--nodes`` adds a (possibly very large) table of runtimes of individual
+       nodes. This is useful for identifying bad nodes on the DAS-5 when
+       some standard deviations are high while using ``--parallel prun``.
+    #. ``--brief`` only prints the overhead columns of the table.
+    #. ``--ascii`` disables UTF-8 output so that output can be saved to a log
+       file or piped to ``less``.
+
+    Finally, you may specify a list of patches to apply before building. These
+    may be paths to .patch files that will be applied with ``patch -p1``, or
+    choices from the following built-in patches:
 
     - **dealII-stddef** Fixes error in dealII compilation on recent compilers
       when ``ptrdiff_t`` is used without including ``stddef.h``. (you basically
@@ -83,8 +109,6 @@ class SPEC2006(Target):
     - **omnetpp-invalid-ptrcheck** fixes a code copy-paste bug in an edge case
       of a switch statement, where a pointer from a union is used while it is
       initialized as an int.
-
-    TODO: document output of ``report`` command
 
     :name: spec2006
     :param source_type: see above
@@ -146,7 +170,7 @@ class SPEC2006(Target):
         self.butils.add_report_args(parser)
         parser.add_argument('--baseline', metavar='INSTANCE',
                 help='baseline instance for overheads')
-        parser.add_argument('--only-overhead', action='store_true',
+        parser.add_argument('--brief', action='store_true',
                 help='only show overhead numbers')
         parser.add_argument('--ascii', action='store_true',
                 help='print ASCII tables instead of UTF-8 formatted ones')
@@ -572,8 +596,8 @@ class SPEC2006(Target):
             }
 
     def report(self, ctx, instances, outfile, args):
-        results = self.butils.parse_logs(ctx, instances, args)
-        only_overhead = args.only_overhead
+        results = self.butils.parse_logs(ctx, instances, args.rundirs)
+        only_overhead = args.brief
         show_nodes_table = args.nodes
 
         # in --nodes table, highlight runtimes whose deviation from the mean

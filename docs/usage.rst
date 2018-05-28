@@ -166,6 +166,28 @@ using ``-j 2`` to avoid excessive context switching::
         spec2006 myinst --test --benchmarks all_c all_cpp
 
 
+.. _usage-report:
+
+The ``report`` command
+======================
+
+::
+
+    ./setup.py report [-i INSTANCE ...] TARGET <target-options>
+
+``report`` aggragates and show results for the specified target. Typical
+results are runtime and memory overheads. While there are similarities between
+targets, the behaviour of this command is target-dependent. See the :func:`API docs
+<infra.Target>` and :doc:`built-in targets <targets>` for more details.
+
+The following example reports a table of runtimes and overheads for SPEC2006,
+gathered from all the log files of parallel runs in ``results/run.*``. It
+collects data for the **clang** and **myinst** instances, and computes the
+overhead of **myinst** using **clang** as a baseline::
+
+    ./setup.py report -i clang myinst spec2006 results/run.* --baseline clang
+
+
 .. _usage-config:
 
 The ``config`` command

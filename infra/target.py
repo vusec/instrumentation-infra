@@ -2,7 +2,7 @@ import os
 import shutil
 import argparse
 from abc import ABCMeta, abstractmethod
-from typing import List, Dict, Union, Iterable, Iterator, Optional
+from typing import List, Dict, Iterable, Iterator, Optional, Any
 from .util import Namespace
 from .instance import Instance
 from .package import Package
@@ -51,6 +51,12 @@ class Target(metaclass=ABCMeta):
 
     #. It calls :func:`is_clean` to see if any build files exist for this target.
     #. If ``is_clean() == False``, it calls :func:`clean`.
+
+    For the :ref:`report <usage-report>` command:
+
+    #. It calls :func:`add_report_args` to include any custom command-line
+       arguments for this target.
+    #. It calls :func:`report`.
 
     Naturally, when defining your own target, all the methods listed above must
     have working implementations. Some implementations are optional and some
@@ -105,7 +111,7 @@ class Target(metaclass=ABCMeta):
         with other targets is not necessary here.
 
         For example, :class:`SPEC2006 <targets.SPEC2006>` defines
-        ``--baseline``.
+        ``--baseline`` (among others).
 
         :param parser: the argument parser to extend
         """
@@ -236,11 +242,28 @@ class Target(metaclass=ABCMeta):
     def report(self, ctx: Namespace, instances: List[Instance],
                args: argparse.Namespace):
         """
-        TODO: document this
+        Report results after a run. ``instances`` is the (possibly empty) list
+        of instances specified by ``--instances`` on the command line. ``args``
+        is populated with command-line arguments added by
+        :func:`add_report_args`.
 
         :param ctx: the configuration context
         :param instances: instances to report results for
         :param args: command-line arguments
+        :raises NotImplementedError: unless implemented
+        """
+        raise NotImplementedError(self.__class__.__name__)
+
+    def parse_outfile(self, ctx: Namespace, instance_name: str,
+                      outfile: str) -> Iterator[Dict[str, Any]]:
+        """
+        Callback method for :func:`packages.BenchmarkUtils.parse_logs`. Used
+        during reporting if :class:`packages.BenchmarkUtils` is used by the
+        target.
+
+        :param ctx: the configuration context
+        :param instance_name: name of corresponding instance
+        :param outfile: path to outfile to parse
         :raises NotImplementedError: unless implemented
         """
         raise NotImplementedError(self.__class__.__name__)
