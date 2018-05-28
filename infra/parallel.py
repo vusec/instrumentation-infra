@@ -230,39 +230,97 @@ class PrunPool(Pool):
         yield job
 
     def process_job_output(self, job):
+        def find_ranges(numbers):
+            ranges = [(i, i) for i in numbers]
+            ranges.sort()
+            for i in range(len(ranges) - 1, 0, -1):
+                lstart, lend = ranges[i - 1]
+                rstart, rend = ranges[i]
+                if lend + 1 == rstart:
+                    ranges[i - 1] = lstart, rend
+                    del ranges[i]
+            return ranges
+
+        def group_cores(nodes):
+            nodes = sorted(nodes)
+            while len(nodes):
+                machine, core = nodes.pop(0)
+                cores = [core]
+                while len(nodes) and nodes[0][0] == machine:
+                    cores.append(nodes.pop(0)[1])
+                yield machine, cores
+
+        def group_nodes(nodes):
+            groups = [([m], [c]) for m, c in sorted(nodes)]
+            for i in range(len(groups) - 1, 0, -1):
+                lmachines, lcores = groups[i - 1]
+                rmachines, rcores = groups[i]
+                if lmachines == rmachines and lcores[-1] + 1 == rcores[0]:
+                    groups[i - 1] = lmachines, lcores + rcores
+                    del groups[i]
+                elif len(lcores) == 1 and lmachines[-1] + 1 == rmachines[0] and \
+                        lcores == rcores:
+                    groups[i - 1] = lmachines + rmachines, lcores
+                    del groups[i]
+            return groups
+
+        def stringify_groups(groups):
+            def join(n, fmt):
+                if len(n) == 1:
+                    return fmt % n[0]
+                else:
+                    return fmt % n[0] + '-' + fmt % n[-1]
+
+            if set(c for m, cores in groups for c in cores) == set([0]):
+                # all on core 0, omit it
+                groupstrings = (join(m, '%03d') for m, c in groups)
+            else:
+                # different cores, add /N suffix
+                groupstrings = ('%s/%s' % (join(m, '%03d'), join(c, '%d')) for m, c in groups)
+
+            return 'node[%s]' % ','.join(groupstrings)
+
         buf = job.stdout.read(1024)
         if buf is None:
             return
 
         job.output += buf.decode('ascii')
 
-        numseconds = -1
+        if getattr(job, 'logged', False):
+            return
+
+        numseconds = None
         nodes = []
+
         for line in job.output.splitlines():
             if line.startswith(':'):
-                for nodeid in line[1:].split():
-                    m = re.fullmatch('node(\d+)/(\d+)', nodeid)
-                    if not m:
-                        return
-                    machine = int(m.group(1))
-                    core = int(m.group(2))
-                    nodes.append((machine, core))
-            elif numseconds == -1:
+                for m in re.finditer(r'node(\d+)/(\d+)', line):
+                    nodes.append((int(m.group(1)), int(m.group(2))))
+            elif numseconds is None:
                 m = re.search('for (\d+) seconds', line)
                 if m:
                     numseconds = int(m.group(1))
 
-        if nodes:
-            assert numseconds > 0
-            desc = 'node' if len(nodes) == 1 else 'nodes'
-            nodelist = ', '.join('%d/%d' % ids for ids in nodes)
-            suffix = '' if numseconds == self.default_job_time \
-                     else ' for %d seconds' % numseconds
-            self.log.info('running %s on %s %s%s' %
-                          (job.jobid, desc, nodelist, suffix))
+        if len(nodes) == job.nnodes:
+            assert numseconds is not None
+            nodestr = stringify_groups(group_nodes(nodes))
+            self.log.info('running %s on %s' % (job.jobid, nodestr))
             job.start_time = time.time()
+            job.logged = True
 
 
 def _set_non_blocking(f):
     flags = fcntl.fcntl(f, fcntl.F_GETFL)
     fcntl.fcntl(f, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+
+def _find_ranges(numbers):
+    ranges = [(i, i) for i in numbers]
+    ranges.sort()
+    for i in range(len(ranges) - 1, 0, -1):
+        lstart, lend = ranges[i - 1]
+        rstart, rend = ranges[i]
+        if lend + 1 == rstart:
+            ranges[i - 1] = lstart, rend
+            del ranges[i]
+    return ranges
