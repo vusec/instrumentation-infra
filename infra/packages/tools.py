@@ -150,17 +150,17 @@ class BenchmarkUtils(Tool):
                       itself, and to read existing results from log files
                       instead of calling ``Target.parse_outfile``
         """
-        rundirs = []
+        abs_rundirs = []
         for d in rundirs:
             if not os.path.exists(d):
                 raise FatalError('rundir %s does not exist' % d)
-            rundirs.append(os.path.abspath(d))
+            abs_rundirs.append(os.path.abspath(d))
 
         instance_names = [instance.name for instance in instances]
         instance_dirs = []
         results = dict((iname, []) for iname in instance_names)
 
-        for rundir in rundirs:
+        for rundir in abs_rundirs:
             targetdir = os.path.join(rundir, self.target.name)
             if os.path.exists(targetdir):
                 for instance in os.listdir(targetdir):
