@@ -278,6 +278,9 @@ class PrunPool(Pool):
                 # different cores, add /N suffix
                 groupstrings = ('%s/%s' % (join(m, '%03d'), join(c, '%d')) for m, c in groups)
 
+            if len(groups) == 1:
+                return 'node' + next(groupstrings)
+
             return 'node[%s]' % ','.join(groupstrings)
 
         buf = job.stdout.read(1024)
