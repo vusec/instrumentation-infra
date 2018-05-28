@@ -8,6 +8,7 @@ import re
 import statistics
 import csv
 from contextlib import redirect_stdout
+from collections import defaultdict
 from typing import List
 from ...util import FatalError, run, apply_patch, qjoin, geomean
 from ...target import Target
@@ -147,6 +148,11 @@ class SPEC2006(Target):
                 help='baseline instance for overheads')
         parser.add_argument('--only-overhead', action='store_true',
                 help='only show overhead numbers')
+        parser.add_argument('--ascii', action='store_true',
+                help='print ASCII tables instead of UTF-8 formatted ones')
+        parser.add_argument('--nodes', action='store_true',
+                help='show a table with performance per node')
+
         group = parser.add_mutually_exclusive_group()
         group.add_argument('--csv',
                 action='store_const', const='csv', dest='nonhuman',
@@ -568,11 +574,20 @@ class SPEC2006(Target):
     def report(self, ctx, instances, outfile, args):
         results = self.butils.parse_logs(ctx, instances, args)
         only_overhead = args.only_overhead
+        show_nodes_table = args.nodes
+
+        # in --nodes table, highlight runtimes whose deviation from the mean
+        # exceeds 3 times the variance, but only if the percentage deviation is
+        # at least 2%
+        highlight_variance_deviation = 3
+        highlight_percent_threshold = 0.02
 
         # TODO: move runtimes table to a utility module
 
         # only use fancy UTF-8 table if writing to a compatible terminal
-        fancy = sys.stdout.encoding == 'UTF-8' and sys.stdout.name == '<stdout>'
+        fancy = sys.stdout.encoding == 'UTF-8' and \
+                sys.stdout.name == '<stdout>' and \
+                not args.ascii
         if fancy:
             from terminaltables import SingleTable as Table
         else:
@@ -607,13 +622,15 @@ class SPEC2006(Target):
         else:
             ctx.log.debug('no baseline found, not computing overheads')
 
-        # sort instance names to avoid non-deterministic table order
+        # sort instance names to avoid random table order
         instances = sorted(results)
 
         # compute aggregates
-        benchdata = {}
+        benchdata = defaultdict(lambda: defaultdict(dict)) # TODO: Namespace
         have_memdata = False
         workload = None
+        node_zscores = defaultdict(lambda: defaultdict(list))
+        node_runtimes = defaultdict(list)
 
         for iname, iresults in results.items():
             grouped = {}
@@ -629,27 +646,42 @@ class SPEC2006(Target):
 
             for bench, bresults in grouped.items():
                 assert len(bresults)
-                entry = benchdata.setdefault(bench, {}).setdefault(iname, {})
+                entry = benchdata[bench][iname]
                 if all(r['success'] for r in bresults):
                     entry['status'] = colored('OK', 'green')
 
+                    # runtime
                     runtimes = [r['runtime_sec'] for r in bresults]
                     entry['rt_median'] = statistics.median(runtimes)
+                    entry['rt_mean'] = statistics.mean(runtimes)
 
+                    # memory usage
                     if 'maxrss_kb' in bresults[0]:
                         have_memdata = True
                         memdata = [r['maxrss_kb'] for r in bresults]
                         entry['mem_max'] = max(memdata)
 
+                    # standard deviations
                     if len(bresults) > 1:
-                        entry['rt_stdev'] = statistics.stdev(runtimes)
+                        entry['rt_stdev'] = stdev = statistics.pstdev(runtimes)
+                        entry['rt_variance'] = statistics.pvariance(runtimes)
                         if have_memdata:
                             entry['mem_stdev'] = statistics.stdev(memdata)
+
+                        # z-score per node
+                        mean_rt = statistics.mean(runtimes)
+                        for r in bresults:
+                            node = r['hostname']
+                            runtime = r['runtime_sec']
+                            zscore = (runtime - mean_rt) / stdev
+                            node_zscores[node][bench].append(zscore)
+                            node_runtimes[(node, bench, iname)].append((runtime, zscore))
                     else:
                         entry['rt_stdev'] = '-'
                         if have_memdata:
                             entry['mem_stdev'] = '-'
 
+                    # benchmark iterations
                     entry['iters'] = len(bresults)
                 elif any(r.get('timeout', False) for r in bresults):
                     entry['status'] = colored('TIMEOUT', 'red', attrs=['bold'])
@@ -660,8 +692,8 @@ class SPEC2006(Target):
 
         # compute overheads compared to baseline
         if baseline:
-            overheads_rt = {}
-            overheads_mem = {}
+            overheads_rt = defaultdict(list)
+            overheads_mem = defaultdict(list)
 
             for bench, index in benchdata.items():
                 for iname, entry in index.items():
@@ -670,7 +702,7 @@ class SPEC2006(Target):
                         baseline_runtime = baseline_entry['rt_median']
                         rt_overhead = entry['rt_median'] / baseline_runtime
                         entry['rt_overhead'] = rt_overhead
-                        overheads_rt.setdefault(iname, []).append(rt_overhead)
+                        overheads_rt[iname].append(rt_overhead)
                     else:
                         entry['rt_overhead'] = '-'
 
@@ -679,7 +711,7 @@ class SPEC2006(Target):
                             baseline_mem = baseline_entry['mem_max']
                             mem_overhead = entry['mem_max'] / baseline_mem
                             entry['mem_overhead'] = mem_overhead
-                            overheads_mem.setdefault(iname, []).append(mem_overhead)
+                            overheads_mem[iname].append(mem_overhead)
                         else:
                             entry['mem_overhead'] = '-'
 
@@ -727,7 +759,7 @@ class SPEC2006(Target):
             return value
 
         body = []
-        for bench, index in sorted(benchdata.items(), key=lambda p: p[0]):
+        for bench, index in sorted(benchdata.items()):
             row = [bench]
             for key in columns:
                 for iname in instances:
@@ -769,6 +801,56 @@ class SPEC2006(Target):
                 for col in range(len(instances) + 1, len(header_full)):
                     table.justify_columns[col] = 'right'
                 print(table.table)
+
+        if show_nodes_table:
+            # order nodes such that the one with the highest z-scores (the most
+            # deviating) come first
+            zmeans = {}
+            for hostname, benchscores in node_zscores.items():
+                allscores = []
+                for bscores in benchscores.values():
+                    for score in bscores:
+                        allscores.append(score)
+                zmeans[hostname] = statistics.mean(allscores)
+            nodes = sorted(zmeans, key=lambda n: zmeans[n], reverse=True)
+
+            # create table with runtimes per node
+            header = [' node:\n mean z-score:', '']
+            for node in nodes:
+                nodename = node.replace('node', '')
+                zscore = ('%.1f' % zmeans[node]).replace('0.', '.')
+                header.append(nodename + '\n' + zscore)
+            rows = [header]
+
+            for bench, index in sorted(benchdata.items()):
+                for iname, entry in index.items():
+                    row = [' ' + bench, iname]
+                    for node in nodes:
+                        runtimes = node_runtimes[(node, bench, iname)]
+                        runtimes.sort(reverse=True)
+
+                        # highlight outliers to easily identify bad nodes
+                        highlighted = []
+                        for runtime, zscore in runtimes:
+                            rt = '%d' % round(runtime)
+                            deviation = runtime - entry['rt_mean']
+                            deviation_ratio = abs(deviation) / entry['rt_mean']
+
+                            if deviation ** 2 > entry['rt_variance'] * highlight_variance_deviation and \
+                                deviation_ratio > highlight_percent_threshold:
+                                rt = colored(rt, 'red')
+
+                            highlighted.append(rt)
+
+                        row.append(','.join(highlighted))
+
+                    rows.append(row)
+
+            title = ' node runtimes '
+            table = Table(rows, title)
+            table.inner_column_border = False
+            table.padding_left = 0
+            print('\n'+ table.table)
 
 
 def _unindent(cmd):
