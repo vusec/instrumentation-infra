@@ -624,7 +624,7 @@ class SPEC2006(Target):
                 raise ImportError
             from termcolor import colored
         except ImportError:
-            def colored(text, *args):
+            def colored(text, *args, **kwargs):
                 return text
 
         # determine baseline
