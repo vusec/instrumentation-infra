@@ -396,7 +396,8 @@ class SPEC2006(Target):
                 self._run_bash(ctx, cmd.format(bench=bench), pool, jobid=jobid,
                                outfile=outfile, nnodes=ctx.args.iterations)
         else:
-            self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)))
+            self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)),
+                           teeout=True)
 
     def _run_bash(self, ctx, command, pool=None, **kwargs):
         config_root = os.path.dirname(os.path.abspath(__file__))
