@@ -122,6 +122,9 @@ class Setup:
     python functions called with the path to the binary as the only parameter.
 
     ``ctx.starttime`` is set to ``datetime.datetime.now()``.
+
+    ``ctx.workdir`` is set to the work directory from which the setup script is
+    invoked.
     """
 
     _max_default_jobs = 16
@@ -358,6 +361,7 @@ class Setup:
         self.ctx.ldflags = []
 
         self.ctx.starttime = datetime.datetime.now()
+        self.ctx.workdir = os.getcwd()
 
     def _create_dirs(self):
         os.makedirs(self.ctx.paths.log, exist_ok=True)

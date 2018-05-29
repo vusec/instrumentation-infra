@@ -699,7 +699,8 @@ class SPEC2006(Target):
                             runtime = r['runtime_sec']
                             zscore = (runtime - mean_rt) / stdev
                             node_zscores[node][bench].append(zscore)
-                            node_runtimes[(node, bench, iname)].append((runtime, zscore))
+                            node_runtimes[(node, bench, iname)].append(
+                                    (runtime, zscore, r['outfile']))
                     else:
                         entry.rt_stdev = '-'
                         if have_memdata:
@@ -852,6 +853,8 @@ class SPEC2006(Target):
                 header.append(nodename + '\n' + zscore)
             rows = [header]
 
+            high_devs = []
+
             for bench, index in sorted(benchdata.items()):
                 for iname, entry in index.items():
                     row = [' ' + bench, iname]
@@ -861,14 +864,15 @@ class SPEC2006(Target):
 
                         # highlight outliers to easily identify bad nodes
                         highlighted = []
-                        for runtime, zscore in runtimes:
+                        for runtime, zscore, ofile in runtimes:
                             rt = '%d' % round(runtime)
                             deviation = runtime - entry.rt_mean
                             deviation_ratio = abs(deviation) / entry.rt_mean
 
                             if deviation ** 2 > entry.rt_variance * highlight_variance_deviation and \
-                                deviation_ratio > highlight_percent_threshold:
+                                    deviation_ratio > highlight_percent_threshold:
                                 rt = colored(rt, 'red')
+                                high_devs.append((bench, iname, runtime, ofile))
                             elif runtime == entry.rt_median:
                                 rt = colored(rt, 'blue', attrs=['bold'])
 
@@ -885,6 +889,17 @@ class SPEC2006(Target):
             table.inner_column_border = False
             table.padding_left = 0
             print('\n'+ table.table)
+
+            # show measurements with high deviations in separate table with log
+            # file paths for easy access
+            if high_devs:
+                rows = [['benchmark', 'instance', 'runtime', 'log file']]
+                for bench, iname, runtime, ofile in high_devs:
+                    opath = re.sub('^%s/' % ctx.workdir, '', ofile)
+                    rows.append([bench, iname, '%.3f' % runtime, opath])
+                table = Table(rows, ' high deviations ')
+                table.inner_column_border = False
+                print('\n'+ table.table)
 
 
 def _unindent(cmd):
