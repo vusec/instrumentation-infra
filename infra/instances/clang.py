@@ -1,42 +1,79 @@
+from typing import Optional, Union
 from ..instance import Instance
-from ..packages import LLVM
+from ..packages import LLVM, Gperftools
 
 
 class Clang(Instance):
     """
-    Sets ``clang`` as the compiler, and adds ``-O2`` to CFLAGS and CXXFLAGS.
+    Sets ``clang`` as the compiler. The version of clang used is determined by
+    the LLVM package passed to the constructor.
 
-    The version of clang used is determined by the LLVM package passed to the
-    constructor.
+    By default, `-O2` optimization is set in CFLAGS and CXXFLAGS. This can be
+    customized by setting **optlevel** to 0/1/2/3/s.
+
+    **alloc** can be **system** (the default) or **tcmalloc**. For custom
+    tcmalloc hackery, overwrite the ``gperftools`` property of this package
+    with a custom :class:`Gperftools` object.
+
+    :name: clang[-O<optlevel>][-lto][-tcmalloc] or custom name
+    :param llvm: an LLVM package containing the relevant clang version
+    :param optlevel: optimization level for ``-O`` (default: 2)
+    :param lto: whether to apply link-time optimizations
+    :param alloc: which allocator to use (default: system)
+    :param name: custom instance name (default: generate based on parameters)
     """
 
-    name = 'clang'
+    def __init__(self,
+                 llvm: LLVM,
+                 *,
+                 optlevel: Union[int, str] = 2,
+                 lto = False,
+                 alloc = 'system',
+                 name: Optional[str] = None):
+        assert optlevel in (0, 1, 2, 3, 's'), 'invalid optimization level'
+        assert not (lto and optlevel == 0), 'LTO needs compile-time opts'
+        assert alloc in ('system', 'tcmalloc'), 'unsupported allocator'
 
-    def __init__(self, llvm: LLVM):
-        """
-        :param llvm: an LLVM package containing the relevant clang version
-        """
         self.llvm = llvm
+        self.custom_name = name
+        self.optflag = '-O' + str(optlevel)
+        self.lto = lto
+        self.alloc = alloc
+
+        if self.alloc == 'tcmalloc':
+            self.gperftools = Gperftools('master')
+
+    @property
+    def name(self):
+        if self.custom_name:
+            return self.custom_name
+
+        name = 'clang'
+        if self.optflag != '-O2':
+            name += self.optflag
+        if self.lto:
+            name += '-lto'
+        if self.alloc != 'system':
+            name += '-' + self.alloc
+        return name
 
     def dependencies(self):
         yield self.llvm
+        if self.alloc == 'tcmalloc':
+            yield self.gperftools
 
     def configure(self, ctx):
         self.llvm.configure(ctx)
-        ctx.cflags += ['-O2']
-        ctx.cxxflags += ['-O2']
 
+        if self.alloc == 'tcmalloc':
+            self.gperftools.configure(ctx)
+        else:
+            assert self.alloc == 'system'
 
-class ClangLTO(Clang):
-    """
-    Clang with link-time optimizations (LTO). Same as :class:`Clang` but adds
-    ``-flto`` to CFLAGS/CXXFLAGS/LDFLAGS.
-    """
+        ctx.cflags += [self.optflag]
+        ctx.cxxflags += [self.optflag]
 
-    name = 'clang-lto'
-
-    def configure(self, ctx):
-        super().configure(ctx)
-        ctx.cflags += ['-flto']
-        ctx.cxxflags += ['-flto']
-        ctx.ldflags += ['-flto']
+        if self.lto:
+            ctx.cflags += ['-flto']
+            ctx.cxxflags += ['-flto']
+            ctx.ldflags += ['-flto']

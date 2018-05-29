@@ -1,1 +1,1 @@
-from .clang import Clang, ClangLTO
+from .clang import Clang
