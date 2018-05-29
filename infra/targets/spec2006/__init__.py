@@ -721,7 +721,13 @@ class SPEC2006(Target):
 
             for bench, index in benchdata.items():
                 for iname, entry in index.items():
-                    baseline_entry = benchdata[bench][baseline]
+                    baseline_entry = benchdata.get(bench, {}).get(baseline, None)
+
+                    if not baseline_entry:
+                        entry.rt_overhead = '-'
+                        entry.mem_overhead = '-'
+                        continue
+
                     if 'rt_median' in entry and 'rt_median' in baseline_entry:
                         baseline_runtime = baseline_entry.rt_median
                         rt_overhead = entry.rt_median / baseline_runtime
