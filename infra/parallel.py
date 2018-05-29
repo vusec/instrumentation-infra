@@ -265,13 +265,17 @@ class PrunPool(Pool):
             return groups
 
         def stringify_groups(groups):
+            samecore = set(c for m, cores in groups for c in cores) == set([0])
+
             def join(n, fmt):
                 if len(n) == 1:
                     return fmt % n[0]
+                elif len(n) == 2 and samecore:
+                    return fmt % n[0] + ',' + fmt % n[-1]
                 else:
                     return fmt % n[0] + '-' + fmt % n[-1]
 
-            if set(c for m, cores in groups for c in cores) == set([0]):
+            if samecore:
                 # all on core 0, omit it
                 groupstrings = (join(m, '%03d') for m, c in groups)
             else:
