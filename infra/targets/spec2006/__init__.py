@@ -176,6 +176,9 @@ class SPEC2006(Target):
                 help='print ASCII tables instead of UTF-8 formatted ones')
         parser.add_argument('--nodes', action='store_true',
                 help='show a table with performance per node')
+        parser.add_argument('-x', '--exclude', action='append',
+                default=[], choices=self.benchmarks['all'],
+                help='benchmarks to exclude from results')
 
         group = parser.add_mutually_exclusive_group()
         group.add_argument('--csv',
@@ -670,6 +673,9 @@ class SPEC2006(Target):
                                       workload, result['outfile']))
 
             for bench, bresults in grouped.items():
+                if bench in args.exclude:
+                    continue
+
                 assert len(bresults)
                 entry = benchdata[bench][iname]
                 if all(r['success'] for r in bresults):
