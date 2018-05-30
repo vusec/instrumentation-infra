@@ -283,7 +283,9 @@ class PrunPool(Pool):
                 groupstrings = ('%s/%s' % (join(m, '%03d'), join(c, '%d')) for m, c in groups)
 
             if len(groups) == 1:
-                return 'node' + next(groupstrings)
+                m, c = groups[0]
+                if len(m) == 1 and len(c) == 1:
+                    return 'node' + next(groupstrings)
 
             return 'node[%s]' % ','.join(groupstrings)
 
