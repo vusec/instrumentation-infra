@@ -112,17 +112,31 @@ class LLVMPasses(Package):
                self.path(ctx, 'obj'))
         yield from super().pkg_config_options(ctx)
 
-    def configure(self, ctx: Namespace):
+    def configure(self, ctx: Namespace, *, linktime=True, compiletime=True):
         """
-        Set build/link flags in **ctx**. Should be called from the
-        ``configure`` method of an instance.
+        Set build/link flags in **ctx**. Should be called from the ``configure``
+        method of an instance.
+
+        **linktime** and **compiletime** can be set to false to avoid loading
+        the pass libraries at link time and at compile time, respectively.
+        Loading passes at link time requires LLVM to be built with the
+        **gold-plugin** patch.
 
         :param ctx: the configuration context
+        :param linktime: are the passes used at link time?
+        :param compiletime: are the passes used at compile time?
         """
-        libpath = self.path(ctx, 'install/libpasses-gold.so')
-        ctx.cflags += ['-flto']
-        ctx.cxxflags += ['-flto']
-        ctx.ldflags += ['-flto', '-Wl,-plugin-opt=-load=' + libpath]
+        if compiletime:
+            libpath = self.path(ctx, 'install/libpasses-opt.so')
+            cflags = ['-Xclang', '-load', '-Xclang', libpath]
+            ctx.cflags += cflags
+            ctx.cxxflags += cflags
+
+        if linktime:
+            libpath = self.path(ctx, 'install/libpasses-gold.so')
+            ctx.cflags += ['-flto']
+            ctx.cxxflags += ['-flto']
+            ctx.ldflags += ['-flto', '-Wl,-plugin-opt=-load=' + libpath]
 
     def runtime_cflags(self, ctx: Namespace) -> List[str]:
         """
