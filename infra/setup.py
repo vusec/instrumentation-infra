@@ -723,7 +723,7 @@ class Setup:
     def _run_report(self):
         target = self._get_target(self.args.target)
         instances = [self._get_instance(name) for name in self.args.instances]
-        target.report(self.ctx, self.args.instances, self.args.outfile, self.args)
+        target.report(self.ctx, instances, self.args.outfile, self.args)
 
     def _run_config(self):
         if self.args.list_instances:
