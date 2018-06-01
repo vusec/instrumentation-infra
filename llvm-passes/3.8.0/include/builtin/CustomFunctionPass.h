@@ -31,9 +31,9 @@ struct CustomFunctionPass : public ModulePass {
     }
 
 protected:
-    virtual bool doInitialization(Module &M) { return false; }
+    virtual bool initializeModule(Module &M) { return false; }
     virtual bool runOnFunction(Function &F) = 0;
-    virtual bool doFinalization(Module &M) { return false; }
+    virtual bool finalizeModule(Module &M) { return false; }
 };
 
 #endif /* !CUSTOM_FUNCTION_PASS_H */
