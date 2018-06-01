@@ -18,22 +18,22 @@ static bool shouldInstrument(Function &F) {
 struct CustomFunctionPass : public ModulePass {
     CustomFunctionPass(char &ID) : ModulePass(ID) {}
     bool runOnModule(Module &M) override {
-        bool Changed = initializeModule(M);
+        bool Changed = doInitialization(M);
 
         for (Function &F : M) {
             if (shouldInstrument(F))
                 Changed |= runOnFunction(F);
         }
 
-        Changed |= finalizeModule(M);
+        Changed |= doFinalization(M);
 
         return Changed;
     }
 
 protected:
-    virtual bool initializeModule(Module &M) { return false; }
+    virtual bool doInitialization(Module &M) { return false; }
     virtual bool runOnFunction(Function &F) = 0;
-    virtual bool finalizeModule(Module &M) { return false; }
+    virtual bool doFinalization(Module &M) { return false; }
 };
 
 #endif /* !CUSTOM_FUNCTION_PASS_H */
