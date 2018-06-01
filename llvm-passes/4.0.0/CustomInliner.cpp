@@ -18,6 +18,8 @@ struct CustomInliner : public LegacyInlinerBase {
 
     InlineCost getInlineCost(CallSite CS) {
         if (Function *F = CS.getCalledFunction()) {
+            // TODO remove __attribute__((unused)) from inline noinstrument helpers
+
             if (isNoInstrument(F) && F->hasFnAttribute(Attribute::AlwaysInline))
                 return InlineCost::getAlways();
 
