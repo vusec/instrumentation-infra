@@ -1,6 +1,8 @@
 #ifndef _DUMP_IR_HELPER_H
 #define _DUMP_IR_HELPER_H
 
+#include "noinstrument.h"
+
 /* For DumpIR pass output. */
 /* XXX could also use __FILE__? */
 #ifdef __cplusplus
