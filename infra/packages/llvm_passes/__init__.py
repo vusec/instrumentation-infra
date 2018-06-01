@@ -51,17 +51,20 @@ class LLVMPasses(Package):
     :param build_suffix: identifier for this set of passes
     :param use_builtins: whether to include :doc:`built-in LLVM passes
                          <passes>` in the shared object
+    :param debug: enable to compile passes with ``-O0 -ggdb``
     :todo: extend this to support compile-time plugins
     """
 
     def __init__(self, llvm: LLVM,
                        srcdir: str,
                        build_suffix: str,
-                       use_builtins: bool):
+                       use_builtins: bool,
+                       debug = False):
         self.llvm = llvm
         self.custom_srcdir = os.path.abspath(srcdir)
         self.build_suffix = build_suffix
         self.builtin_passes = BuiltinLLVMPasses(llvm) if use_builtins else None
+        self.debug = debug
 
     def ident(self):
         return 'llvm-passes-' + self.build_suffix
@@ -94,7 +97,8 @@ class LLVMPasses(Package):
             'make', *args,
             'OBJDIR=' + self.path(ctx, 'obj'),
             'PREFIX=' + self.path(ctx, 'install'),
-            'USE_BUILTINS=' + ('true' if self.builtin_passes else 'false')
+            'USE_BUILTINS=' + str(bool(self.builtin_passes)).lower(),
+            'DEBUG=' + str(self.debug).lower()
         ], **kwargs)
 
     def is_fetched(self, ctx):

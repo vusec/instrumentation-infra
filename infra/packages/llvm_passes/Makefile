@@ -18,17 +18,22 @@ PKG_CONFIG    := python3 $(SETUP_SCRIPT) pkg-config
 LLVM_PREFIX    = $(shell $(PKG_CONFIG) llvm-$(LLVM_VERSION) --prefix)
 LLVM_CONFIG    = $(LLVM_PREFIX)/bin/llvm-config
 
-OLD_CFLAGS    := $(CFLAGS)
-CFLAGS         = -Werror -Wall -std=c++0x -g -O2 -I. \
+OLD_CXXFLAGS  := $(CXXFLAGS)
+CXXFLAGS       = -Werror -Wall -std=c++0x -I. \
                  $(shell $(LLVM_CONFIG) --cxxflags | sed s/-I/-isystem/g) \
-                 $(OLD_CFLAGS)
+                 $(OLD_CXXFLAGS)
+ifeq ($(DEBUG),true)
+    CXXFLAGS += -O0 -ggdb
+else
+    CXXFLAGS += -O2 -g
+endif
 
 OLD_LDFLAGS   := $(LDFLAGS)
 LDFLAGS        = -g -shared $(OLD_LDFLAGS)
 LDFLAGSGOLD    = -Wl,--no-undefined -L$(LLVM_PREFIX)/lib -l:LLVMgold.so -Wl,--rpath=$(LLVM_PREFIX)/lib
 ifeq ($(USE_BUILTINS),true)
     BUILTIN_PREFIX  = $(shell $(PKG_CONFIG) llvm-passes-builtin-$(LLVM_VERSION) --prefix)
-    CFLAGS         += $(shell $(PKG_CONFIG) llvm-passes-builtin-$(LLVM_VERSION) --cxxflags)
+    CXXFLAGS       += $(shell $(PKG_CONFIG) llvm-passes-builtin-$(LLVM_VERSION) --cxxflags)
     LDFLAGS        += -L$(BUILTIN_PREFIX) -Wl,-whole-archive -lpasses-builtin -Wl,-no-whole-archive
     BUILTIN_DEP     = $(BUILTIN_PREFIX)/libpasses-builtin.a
 else
@@ -53,7 +58,7 @@ $(OBJDIR)/$(LIBGOLD) $(OBJDIR)/$(LIBOPT): $(OBJS) $(BUILTIN_DEP)
 
 $(OBJDIR)/%.o: %.cpp | $(OBJDIR)
 	@mkdir -p $(@D)  # needed for subdirs
-	$(CXX) -c $(CFLAGS) -MMD -o $@ $<
+	$(CXX) -c $(CXXFLAGS) -MMD -o $@ $<
 
 $(OBJDIR):
 	mkdir -p $@
