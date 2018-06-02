@@ -555,13 +555,18 @@ class SPEC2006(Target):
                     path = os.path.join(fix_specpath(rundir), errfile)
                     ctx.log.debug('fetching staticlib results from errfile ' + path)
                     res = list(BenchmarkUtils.parse_results(ctx, path))
-                    assert len(res)
+                    if not res:
+                        ctx.log.warning('no staticlib results in %s, there '
+                                        'was probably an error' % path)
                     inputres += res
 
-                # report only the worst case of all input sets
-                maxrss = max(r.maxrss_kb for r in inputres)
-                maxpagefaults = max(r.page_faults for r in inputres)
-                maxcswitch = max(r.context_switches for r in inputres)
+                if inputres:
+                    # report only the worst case of all input sets
+                    maxrss = max(r.maxrss_kb for r in inputres)
+                    maxpagefaults = max(r.page_faults for r in inputres)
+                    maxcswitch = max(r.context_switches for r in inputres)
+                else:
+                    maxrss = maxpagefaults = maxcswitch = None
 
                 yield {
                     'benchmark': benchmark,
