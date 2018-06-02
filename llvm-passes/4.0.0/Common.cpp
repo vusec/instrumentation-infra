@@ -153,6 +153,12 @@ Function* getNoInstrumentFunction(Module &M, StringRef Name, bool AllowMissing) 
     return F;
 }
 
+Function* getOrInsertNoInstrumentFunction(Module &M, StringRef Name, FunctionType *Ty) {
+    std::string FullName(NOINSTRUMENT_PREFIX);
+    FullName += Name;
+    return cast<Function>(M.getOrInsertFunction(FullName, Ty));
+}
+
 bool isNoInstrument(Value *V) {
     if (V && V->hasName()) {
         StringRef Name = V->getName();

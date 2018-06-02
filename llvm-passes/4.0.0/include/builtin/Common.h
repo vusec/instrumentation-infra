@@ -106,6 +106,7 @@ inline bool shouldInstrument(Function *F) {
 Function* createNoInstrumentFunction(Module &M,
         FunctionType *FnTy, StringRef Name, bool AlwaysInline=true);
 Function* getNoInstrumentFunction(Module &M, StringRef Name, bool AllowMissing=false);
+Function* getOrInsertNoInstrumentFunction(Module &M, StringRef Name, FunctionType *Ty);
 
 inline bool isUnionType(Type *Ty) {
     return Ty->isStructTy() && Ty->getStructName().startswith("union.");
