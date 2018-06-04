@@ -3,7 +3,7 @@ import io
 import argparse
 from os.path import exists, join
 from abc import ABCMeta
-from typing import Dict, List, Iterator, Iterable, Any
+from typing import Dict, List, Iterator, Iterable, Any, Optional
 from ..package import Package
 from ..instance import Instance
 from ..target import Target
@@ -32,8 +32,11 @@ class Tool(Package, metaclass=ABCMeta):
     def is_installed(self, ctx):
         return all(exists(join('install', f)) for f in self.installed)
 
+    def _srcpath(self, ctx, *args):
+        return join(ctx.paths.infra, 'tools', self.name, *args)
+
     def _run_make(self, ctx, *args):
-        os.chdir(join(ctx.paths.infra, 'tools', self.name))
+        os.chdir(self._srcpath(ctx))
         run(ctx, [
             'make',
             'OBJDIR=' + self.path(ctx, 'obj'),
@@ -82,7 +85,7 @@ class BenchmarkUtils(Tool):
     LoggedResult = Dict[str, Any]
     ParsedResult = Namespace
 
-    def __init__(self, target: Target):
+    def __init__(self, target: Optional[Target] = None):
         self.target = target
 
     def add_report_args(self, parser: argparse.ArgumentParser):
@@ -100,6 +103,11 @@ class BenchmarkUtils(Tool):
         ctx.ldflags += ['-L', self.path(ctx, 'install/lib'),
                         '-Wl,--whole-archive', '-l:libbenchutils.a',
                         '-Wl,--no-whole-archive']
+
+    def pkg_config_options(self, ctx):
+        yield ('--includes', 'include path for reporting helpers',
+               ['-I', self._srcpath(ctx)])
+        yield from super().pkg_config_options(ctx)
 
     def outfile_path(self, ctx: Namespace, instance: Instance,
                      benchmark: str) -> str:
