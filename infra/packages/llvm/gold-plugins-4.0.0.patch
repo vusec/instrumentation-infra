@@ -1,7 +1,7 @@
-Index: lib/LTO/LTOBackend.cpp
-===================================================================
---- a/lib/LTO/LTOBackend.cpp	(revision 304942)
-+++ b/lib/LTO/LTOBackend.cpp	(working copy)
+diff --git a/lib/LTO/LTOBackend.cpp b/lib/LTO/LTOBackend.cpp
+index 809db80..4fec4c8 100644
+--- a/lib/LTO/LTOBackend.cpp
++++ b/lib/LTO/LTOBackend.cpp
 @@ -21,7 +21,9 @@
  #include "llvm/Analysis/TargetTransformInfo.h"
  #include "llvm/Bitcode/BitcodeReader.h"
@@ -48,7 +48,7 @@ Index: lib/LTO/LTOBackend.cpp
  LLVM_ATTRIBUTE_NORETURN static void reportOpenError(StringRef Path, Twine Msg) {
    errs() << "failed to open " << Path << ": " << Msg << '\n';
    errs().flush();
-@@ -174,7 +196,12 @@
+@@ -174,7 +196,12 @@ static void runOldPMPasses(Config &Conf, Module &Mod, TargetMachine *TM,
  
    PassManagerBuilder PMB;
    PMB.LibraryInfo = new TargetLibraryInfoImpl(Triple(TM->getTargetTriple()));
@@ -62,7 +62,7 @@ Index: lib/LTO/LTOBackend.cpp
    // Unconditionally verify input since it is not verified before this
    // point and has unknown origin.
    PMB.VerifyInput = true;
-@@ -182,12 +209,54 @@
+@@ -182,12 +209,54 @@ static void runOldPMPasses(Config &Conf, Module &Mod, TargetMachine *TM,
    PMB.LoopVectorize = true;
    PMB.SLPVectorize = true;
    PMB.OptLevel = Conf.OptLevel;
@@ -117,11 +117,11 @@ Index: lib/LTO/LTOBackend.cpp
  }
  
  bool opt(Config &Conf, TargetMachine *TM, unsigned Task, Module &Mod,
-Index: lib/LTO/LTOCodeGenerator.cpp
-===================================================================
---- a/lib/LTO/LTOCodeGenerator.cpp	(revision 304942)
-+++ b/lib/LTO/LTOCodeGenerator.cpp	(working copy)
-@@ -537,6 +537,7 @@
+diff --git a/lib/LTO/LTOCodeGenerator.cpp b/lib/LTO/LTOCodeGenerator.cpp
+index 6af31e6..d6f000f 100644
+--- a/lib/LTO/LTOCodeGenerator.cpp
++++ b/lib/LTO/LTOCodeGenerator.cpp
+@@ -537,6 +537,7 @@ void LTOCodeGenerator::finishOptimizationRemarks() {
  bool LTOCodeGenerator::optimize(bool DisableVerify, bool DisableInline,
                                  bool DisableGVNLoadPRE,
                                  bool DisableVectorization) {
@@ -129,13 +129,42 @@ Index: lib/LTO/LTOCodeGenerator.cpp
    if (!this->determineTarget())
      return false;
  
-Index: tools/gold/CMakeLists.txt
-===================================================================
---- a/tools/gold/CMakeLists.txt	(revision 304942)
-+++ b/tools/gold/CMakeLists.txt	(working copy)
+diff --git a/tools/gold/CMakeLists.txt b/tools/gold/CMakeLists.txt
+index e9029e1..85d049b 100644
+--- a/tools/gold/CMakeLists.txt
++++ b/tools/gold/CMakeLists.txt
 @@ -1,4 +1,4 @@
 -set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/gold.exports)
 +#set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/gold.exports)
  
  if( LLVM_ENABLE_PIC AND LLVM_BINUTILS_INCDIR )
    include_directories( ${LLVM_BINUTILS_INCDIR} )
+diff --git a/tools/gold/gold-plugin.cpp b/tools/gold/gold-plugin.cpp
+index 50e102b..424285b 100644
+--- a/tools/gold/gold-plugin.cpp
++++ b/tools/gold/gold-plugin.cpp
+@@ -26,6 +26,7 @@
+ #include "llvm/Support/Path.h"
+ #include "llvm/Support/TargetSelect.h"
+ #include "llvm/Support/raw_ostream.h"
++#include "llvm/InitializePasses.h"
+ #include <list>
+ #include <map>
+ #include <plugin-api.h>
+@@ -249,6 +250,16 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
+   InitializeAllAsmParsers();
+   InitializeAllAsmPrinters();
+ 
++  // Make opt passes available at LTO time to be used in combintation with
++  // custom passes.
++  PassRegistry &Registry = *PassRegistry::getPassRegistry();
++  initializeCore(Registry);
++  initializeIPO(Registry);
++  initializeScalarOpts(Registry);
++  initializeAnalysis(Registry);
++  initializeTransformUtils(Registry);
++  initializeInstCombine(Registry);
++
+   // We're given a pointer to the first transfer vector. We read through them
+   // until we find one where tv_tag == LDPT_NULL. The REGISTER_* tagged values
+   // contain pointers to functions that we need to call to register our own
