@@ -567,8 +567,10 @@ class Setup:
 
         # first fetch all necessary code so that the internet connection can be
         # broken during building
-        for package in deps + separate_packages:
+        for package in deps:
             self._fetch_package(package, self.args.force_rebuild_deps)
+        for package in separate_packages:
+            self._fetch_package(package, True)
 
         if not self.args.deps_only:
             for target in targets:
