@@ -5,7 +5,9 @@ import shlex
 import io
 import threading
 import select
-from typing import Union, List, Dict, Iterable, Optional
+import inspect
+import functools
+from typing import Union, List, Dict, Iterable, Optional, Callable
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
 from contextlib import redirect_stdout
@@ -312,3 +314,44 @@ def geomean(values: Iterable[Union[float, int]]) -> float:
     """
     assert len(values) > 0
     return reduce(lambda x, y: x * y, values) ** (1.0 / len(values))
+
+
+def param_attrs(constructor: Callable) -> Callable:
+    """
+    Decorator for class constructors that sets parameter values as object
+    attributes::
+
+        >>> class Foo:
+        ...     @param_attrs
+        ...     def __init__(self, a, b=1, *, c=True):
+        ...         pass
+
+        >>> foo = Foo('a')
+        >>> foo.a
+        'a'
+        >>> foo.b
+        1
+        >>> foo.c
+        True
+
+    :param constructor: the ``__init__`` method being decorated
+    """
+    params = inspect.signature(constructor).parameters
+    positional = [p.name for p in params.values()
+                  if p.kind == p.POSITIONAL_OR_KEYWORD]
+    assert positional.pop(0) == 'self'
+
+    @functools.wraps(constructor)
+    def wrapper(self, *args, **kwargs):
+        for name, param in params.items():
+            if name in kwargs:
+                setattr(self, name, kwargs[name])
+            elif param.default != param.empty:
+                setattr(self, name, param.default)
+
+        for name, value in zip(positional, args):
+            setattr(self, name, value)
+
+        constructor(self, *args, **kwargs)
+
+    return wrapper
