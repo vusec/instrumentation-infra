@@ -405,7 +405,8 @@ class Setup:
         :param instance: The instance to register.
         """
         if instance.name in self.instances:
-            self.ctx.log.warning('overwriting existing instance "%s"' % instance)
+            raise FatalError('overwriting existing instance "%s"' %
+                             instance.name)
         self.instances[instance.name] = instance
 
     def _get_instance(self, name):
@@ -421,7 +422,7 @@ class Setup:
         :param target: The target to register.
         """
         if target.name in self.targets:
-            self.ctx.log.warning('overwriting existing target "%s"' % target)
+            raise FatalError('overwriting existing target "%s"' % target.name)
         self.targets[target.name] = target
 
     def _get_target(self, name):
@@ -759,7 +760,7 @@ class Setup:
 
     def _run_command(self):
         try:
-            if self.args.command not in ('exec-hook', 'pkg-config'):
+            if self.args.command not in ('exec-hook', 'config', 'pkg-config'):
                 os.chdir(self.ctx.paths.root)
                 self.ctx.runlog = open(self.ctx.paths.runlog, 'w')
 
