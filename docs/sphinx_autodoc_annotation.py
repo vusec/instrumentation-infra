@@ -61,8 +61,12 @@ def typestr(obj):
                 ret = obj.__result__
             else:
                 # Python 3.6
-                params = obj.__args__[:-1]
-                ret = obj.__args__[-1]
+                params = obj.__args__[:-1] if obj.__args__ else None
+                ret = obj.__args__[-1] if obj.__args__ else None
+
+            if params is None:
+                return 'callable'
+
             params = ', '.join(typestr(t) for t in params)
             return 'callable[(%s) -> %s]' % (params, typestr(ret))
 
@@ -71,6 +75,9 @@ def typestr(obj):
                 args = obj.__tuple_params__  # Python 3.5
             else:
                 args = obj.__args__  # Python 3.6
+
+            if args is None:
+                return classname.lower()
 
             args = ', '.join(typestr(t) for t in args)
             return '%s[%s]' % (classname.lower(), args)
