@@ -7,7 +7,7 @@ import threading
 import select
 import inspect
 import functools
-from typing import Union, List, Dict, Iterable, Optional, Callable
+from typing import Union, List, Dict, Iterable, Optional, Callable, Any
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
 from contextlib import redirect_stdout
@@ -225,15 +225,16 @@ def run(ctx: Namespace, cmd: Union[str, List[str]], allow_error=False,
     return proc
 
 
-def qjoin(args: Iterable[str]) -> str:
+def qjoin(args: Iterable[Any]) -> str:
     """
     Join the command-line arguments to a single string to make it safe to pass
     to paste in a shell. Basically this adds quotes to each element containing
-    spaces (uses :func:`shlex.quote`).
+    spaces (uses :func:`shlex.quote`). Arguments are stringified by
+    :class:`str` before joining.
 
     :param args: arguments to join
     """
-    return ' '.join(shlex.quote(arg) for arg in args)
+    return ' '.join(shlex.quote(str(arg)) for arg in args)
 
 
 def download(ctx: Namespace, url: str, outfile: Optional[str] = None):
