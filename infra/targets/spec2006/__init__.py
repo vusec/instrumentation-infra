@@ -670,7 +670,7 @@ class SPEC2006(Target):
             for result in iresults:
                 grouped.setdefault(result['benchmark'], []).append(result)
                 if workload is None:
-                    workload = result['workload']
+                    workload = result.get('workload', None)
                 elif result.get('workload', workload) != workload:
                     raise FatalError('%s uses %s workload whereas previous '
                                      'benchmarks use %s (logfile %s)' %
