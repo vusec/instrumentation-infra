@@ -58,7 +58,7 @@ for a complete reference.
 ``builtin/Common.h`` (3.8.0/4.0.0): Includes a bunch of much-used LLVM headers and
 defines some helper functions.
 
-``builtin/Allocation.h`` (3.8.0/4.0.0): Hlpers to populate an ``AllocationSite``
+``builtin/Allocation.h`` (3.8.0/4.0.0): Helpers to populate an ``AllocationSite``
 struct with standardized information about any stack/heap allocations.
 
 TODO: rewrite ``builtin/Allocation.h`` to an ``-allocs`` analysis pass.
