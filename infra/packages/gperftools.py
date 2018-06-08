@@ -81,7 +81,7 @@ class Gperftools(Package):
         return os.path.exists('obj/.libs/libtcmalloc.so')
 
     def build(self, ctx):
-        if not os.path.exists('src/configure'):
+        if not os.path.exists('src/configure') or not os.path.exists('src/INSTALL'):
             os.chdir('src')
             run(ctx, 'autoreconf -vfi')
             self.goto_rootdir(ctx)
