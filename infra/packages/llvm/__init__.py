@@ -23,9 +23,15 @@ class LLVM(Package):
     - **gold-plugins** (for 3.8.0/3.9.1/4.0.0/5.0.0): adds a ``-load`` option
       to load passes from a shared object file during link-time optimizations,
       best used in combination with :class:`LLVMPasses`
+
     - **statsfilter** (for 3.8.0/3.9.1/5.0.0): adds ``-stats-only`` option,
       which relates to ``-stats`` like ``-debug-only`` relates to ``-debug``
+
     - **safestack** (for 3.8.0): adds ``-fsanitize=safestack`` for old LLVM
+
+    - **compiler-rt-typefix** (for 4.0.0): fixes a compiler-rt-4.0.0 bug to make
+      it compile for recent glibc, is applied automatically if ``compiler_rt``
+      is set
 
     :identifier: llvm-<version>
     :param version: the full LLVM version to download, like X.Y.Z
@@ -51,6 +57,9 @@ class LLVM(Package):
         self.compiler_rt = compiler_rt
         self.patches = patches
         self.build_flags = build_flags
+
+        if compiler_rt and version == '4.0.0':
+            patches.append('compiler-rt-typefix')
 
     def ident(self):
         return 'llvm-' + self.version
