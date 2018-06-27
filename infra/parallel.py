@@ -132,9 +132,9 @@ class Pool(metaclass=ABCMeta):
         if isinstance(cmd, str):
             cmd = shlex.split(cmd)
 
-        jobs = list(self.make_jobs(ctx, cmd, jobid, outfile, nnodes, **kwargs))
+        jobs = []
 
-        for job in jobs:
+        for job in self.make_jobs(ctx, cmd, jobid, outfile, nnodes, **kwargs):
             assert hasattr(job, 'jobid')
             assert hasattr(job, 'nnodes')
             assert hasattr(job, 'stdout')
@@ -144,6 +144,7 @@ class Pool(metaclass=ABCMeta):
             self.jobs[job.stdout.fileno()] = job
             self.poller.register(job.stdout, select.EPOLLIN | select.EPOLLPRI |
                                              select.EPOLLERR | select.EPOLLHUP)
+            jobs.append(job)
 
         return jobs
 
