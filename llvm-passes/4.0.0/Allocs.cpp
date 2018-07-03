@@ -10,8 +10,8 @@ using namespace llvm;
 //static cl::list<std::string> MallocWrappers("malloc-wrapper",
 //        cl::desc("Add custom malloc function name"));
 
-static cl::opt<bool> ShowDebugOutput("allocs-debug",
-        cl::desc("Show all found allocations in debug output"),
+static cl::opt<bool> ClOnDemand("allocs-ondemand",
+        cl::desc("Do not scan for allocations, find them later with getAllocSite instead"),
         cl::init(false));
 
 static std::map<std::string, AllocInfo> AllocFuncs = {
@@ -50,16 +50,25 @@ static std::map<std::string, AllocInfo> AllocFuncs = {
 
 /* Allocation sites */
 
-AllocSite *AllocSite::TryCreate(Instruction &I) {
-    CallSite CS(&I);
-    if (CS) {
-        Function *Callee = CS.getCalledFunction();
-        if (Callee && Callee->hasName()) {
-            auto it = AllocFuncs.find(Callee->getName().str());
-            if (it != AllocFuncs.end())
-                return new AllocSite(I, it->second);
+AllocSite *AllocSite::TryCreate(Value *V) {
+    if (GlobalVariable *GV = dyn_cast<GlobalVariable>(V))
+        return new AllocSite(*GV);
+
+    if (AllocaInst *AI = dyn_cast<AllocaInst>(V))
+        return new AllocSite(*AI);
+
+    if (Instruction *I = dyn_cast<Instruction>(V)) {
+        CallSite CS(I);
+        if (CS) {
+            Function *Callee = CS.getCalledFunction();
+            if (Callee && Callee->hasName()) {
+                auto it = AllocFuncs.find(Callee->getName().str());
+                if (it != AllocFuncs.end())
+                    return new AllocSite(*I, it->second);
+            }
         }
     }
+
     return nullptr;
 }
 
@@ -69,24 +78,31 @@ Constant *AllocSite::getSizeInt(uint64_t N) {
 
 SmallVector<Value*, 2> AllocSite::getSizeFactors() {
     assert(isAnyAlloc());
-    SmallVector<Value*, 2> MulOps;
-if (isGlobalAlloc()) {
-        MulOps.push_back(getSizeInt(DL.getTypeStoreSize(V->getType()->getPointerElementType())));
+    SmallVector<Value*, 2> Factors;
+
+    if (isGlobalAlloc()) {
+        Factors.push_back(getSizeInt(DL.getTypeStoreSize(V->getType()->getPointerElementType())));
     } else if (isStackAlloc()) {
         AllocaInst *AI = cast<AllocaInst>(V);
-        MulOps.push_back(getSizeInt(DL.getTypeAllocSize(AI->getAllocatedType())));
+        Factors.push_back(getSizeInt(DL.getTypeAllocSize(AI->getAllocatedType())));
         if (AI->isArrayAllocation())
-            MulOps.push_back(AI->getArraySize());
+            Factors.push_back(AI->getArraySize());
     } else {
         CallSite CS(V);
         assert(CS);
         if (Info.SizeArg >= 0)
-            MulOps.push_back(CS.getArgOperand(Info.SizeArg));
+            Factors.push_back(CS.getArgOperand(Info.SizeArg));
         if (Info.MembArg >= 0)
-            MulOps.push_back(CS.getArgOperand(Info.MembArg));
+            Factors.push_back(CS.getArgOperand(Info.MembArg));
     }
 
-    return std::move(MulOps);
+    return std::move(Factors);
+}
+
+Value *AllocSite::getCallParam(uint64_t i) {
+    CallSite CS(V);
+    assert(CS);
+    return CS.getArgOperand(i);
 }
 
 uint64_t AllocSite::getConstSize() {
@@ -127,10 +143,8 @@ Value *AllocSite::getOrInsertSize(bool *Changed) {
             return B.CreateMul(MulOps[0], MulOps[1], "bytesize");
         }
         default:
-            assert(!"impossible # of mulops");
+            assert(!"impossible # of factors");
     }
-
-    return nullptr;
 }
 
 Value *AllocSite::getFreedPointer() {
@@ -145,12 +159,29 @@ Value *AllocSite::getRellocatedPointer() {
 }
 
 const SCEV *AllocSite::getSizeSCEV(ScalarEvolution &SE) {
-    assert(isAnyAlloc());
-    return nullptr;
+    if (isGlobalAlloc()) {
+        return SE.getSizeOfExpr(
+            DL.getLargestLegalIntType(V->getContext()),
+            V->getType()->getPointerElementType()
+        );
+    }
+
+    SmallVector<Value*, 2> Ops = getSizeFactors();
+
+    switch (Ops.size()) {
+        case 0:  return nullptr;
+        case 1:  return SE.getSCEV(Ops[0]);
+        case 2:  return SE.getMulExpr(SE.getSCEV(Ops[0]), SE.getSCEV(Ops[1]), SCEV::FlagNUW);
+        default: assert(!"impossible # of factors");
+    }
 }
 
 const SCEV *AllocSite::getEndSCEV(ScalarEvolution &SE) {
     assert(isAnyAlloc());
+    if (const SCEV *Start = SE.getSCEV(V)) {
+        if (const SCEV *Size = getSizeSCEV(SE))
+            return SE.getAddExpr(Start, Size, SCEV::FlagNUW);
+    }
     return nullptr;
 }
 
@@ -167,8 +198,23 @@ AllocsPass::site_range AllocsPass::func_sites(Function *F) {
     return site_range(site_iterator(B, E), site_iterator(E, E));
 }
 
+AllocSite *AllocsPass::getAllocSite(Value *V) {
+    auto it = OnDemandCache.find(V);
+    if (it != OnDemandCache.end())
+        return it->second;
+    AllocSite *A = AllocSite::TryCreate(V);
+    if (A)
+        OnDemandCache[V] = A;
+    return A;
+}
+
 bool AllocsPass::runOnModule(Module &M) {
+    DL = &M.getDataLayout();
+
     // TODO: register custom wrappers
+
+    if (ClOnDemand)
+        return false;
 
     // Global allocations are stored under NULL function
     SiteList &GlobalAllocs = FuncSites.FindAndConstruct(nullptr).second;
@@ -180,43 +226,49 @@ bool AllocsPass::runOnModule(Module &M) {
         SiteList &Sites = FuncSites.FindAndConstruct(&F).second;
 
         for (Instruction &I : instructions(F)) {
-            if (AllocSite *A = AllocSite::TryCreate(I))
+            if (AllocSite *A = AllocSite::TryCreate(&I))
                 Sites[&I] = A;
         }
     }
 
     bool Changed = false;
 
-    if (ShowDebugOutput) {
+    if (DebugFlag) {
         for (AllocSite *A : sites()) {
-            if (A->isGlobalAlloc())
-                dbgs() << "global";
-            if (A->isStackAlloc())
-                dbgs() << "stack";
-            if (A->isHeapAlloc())
-                dbgs() << "heap";
-            if (A->isAnyAlloc())
-                dbgs() << " alloc";
-            if (A->isAnyFree())
-                dbgs() << "free";
-            if (A->isMalloc())
-                dbgs() << " (malloc)";
-            if (A->isCalloc())
-                dbgs() << " (calloc)";
-            if (A->isRealloc())
-                dbgs() << " (realloc)";
-            if (A->isStrDup())
-                dbgs() << " (strdup)";
-            if (A->isNew())
-                dbgs() << " (new)";
-            if (A->isDelete())
-                dbgs() << " (delete)";
-            if (A->isWrapper())
-                dbgs() << " (wrapper)";
+            if (A->isGlobalAlloc()) dbgs() << "global";
+            if (A->isStackAlloc())  dbgs() << "stack";
+            if (A->isHeapAlloc())   dbgs() << "heap";
+            if (A->isAnyAlloc())    dbgs() << " alloc";
+            if (A->isAnyFree())     dbgs() << "free";
+            if (A->isMalloc())      dbgs() << " (malloc)";
+            if (A->isCalloc())      dbgs() << " (calloc)";
+            if (A->isRealloc())     dbgs() << " (realloc)";
+            if (A->isStrDup())      dbgs() << " (strdup)";
+            if (A->isNew())         dbgs() << " (new)";
+            if (A->isDelete())      dbgs() << " (delete)";
+            if (A->isWrapper())     dbgs() << " (wrapper)";
             dbgs() << ": " << *A->getValue() << "\n";
 
             if (A->isAnyAlloc()) {
-                dbgs() << "  byte size: " << *A->getOrInsertSize(&Changed) << "\n";
+                if (Value *Size = A->getOrInsertSize(&Changed))
+                    dbgs() << "  byte size: " << *Size << "\n";
+            }
+        }
+
+        for (Function &F : M) {
+            for (Instruction &I : instructions(F)) {
+                if (LoadInst *LI = dyn_cast<LoadInst>(&I)) {
+                    if (isInBounds(*LI)) {
+                        dbgs() << "in-bounds load: " << I << "\n";
+                        dbgs() << "  pointer: " << *LI->getPointerOperand() << "\n";
+                    }
+                }
+                else if (StoreInst *SI = dyn_cast<StoreInst>(&I)) {
+                    if (isInBounds(*SI)) {
+                        dbgs() << "in-bounds store: " << I << "\n";
+                        dbgs() << "  pointer: " << *SI->getPointerOperand() << "\n";
+                    }
+                }
             }
         }
     }
@@ -224,15 +276,57 @@ bool AllocsPass::runOnModule(Module &M) {
     return Changed;
 }
 
-void AllocsPass::getAnalysisUsage(AnalysisUsage &AU) const {
-    AU.setPreservesAll();
-}
-
-void AllocsPass::freeSites() {
+AllocsPass::~AllocsPass() {
     for (auto &it : FuncSites) {
         for (auto &iit : it.second)
             delete iit.second;
     }
+}
+
+void AllocsPass::getAnalysisUsage(AnalysisUsage &AU) const {
+    AU.setPreservesAll();
+}
+
+/* Bounds analysis */
+
+SizeOffsetType AllocsPass::computeSizeAndOffset(Value *Addr) {
+    // TODO: (array) parameters with constant size
+    unsigned PtrBitWidth = DL->getPointerSizeInBits();
+    APInt Offset(PtrBitWidth, 0);
+    Addr = Addr->stripAndAccumulateInBoundsConstantOffsets(*DL, Offset);
+    if (AllocSite *A = getAllocSite(Addr)) {
+        uint64_t Size = A->getConstSize();
+        if (Size != AllocSite::UnknownSize)
+            return std::make_pair(APInt(PtrBitWidth, Size), Offset);
+    }
+    return std::make_pair(APInt(), APInt()); // ObjectSizeOffsetVisitor::unknown()
+}
+
+// Copied from AddressSanitizer::isSafeAccess
+bool AllocsPass::isInBoundsAccess(Value *Addr, uint64_t AccessedBytes) {
+    SizeOffsetType SizeOffset = computeSizeAndOffset(Addr);
+    if (!ObjectSizeOffsetVisitor::bothKnown(SizeOffset))
+        return false;
+
+    uint64_t Size = SizeOffset.first.getZExtValue();
+    int64_t Offset = SizeOffset.second.getSExtValue();
+
+    // Three checks are required to ensure safety:
+    // . Offset >= 0  (since the offset is given from the base ptr)
+    // . Size >= Offset  (unsigned)
+    // . Size - Offset >= NeededSize  (unsigned)
+    return Offset >= 0 && Size >= uint64_t(Offset) &&
+           Size - uint64_t(Offset) >= AccessedBytes;
+}
+
+bool AllocsPass::isInBounds(LoadInst &LI) {
+    return isInBoundsAccess(LI.getPointerOperand(),
+            DL->getTypeStoreSize(LI.getType()));
+}
+
+bool AllocsPass::isInBounds(StoreInst &SI) {
+    return isInBoundsAccess(SI.getPointerOperand(),
+            DL->getTypeStoreSize(SI.getValueOperand()->getType()));
 }
 
 char AllocsPass::ID = 0;

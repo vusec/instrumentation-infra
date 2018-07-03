@@ -2,12 +2,16 @@
 #define ALLOCS_H
 
 #include <llvm/Pass.h>
+#include <llvm/IR/Value.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instruction.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/MapVector.h>
+#include <llvm/ADT/APInt.h>
 #include <llvm/Analysis/ScalarEvolution.h>
+#include <llvm/Analysis/MemoryBuiltins.h>
 
 using namespace llvm;
 
@@ -33,9 +37,10 @@ struct AllocInfo {
     int SizeArg;
     bool IsWrapper;
 
-    static const AllocInfo GlobalInfo;
+    static const AllocInfo AllocaInfo, GlobalInfo;
 };
 
+const AllocInfo AllocInfo::AllocaInfo = { AllocInfo::Alloca, -1, -1, false };
 const AllocInfo AllocInfo::GlobalInfo = { AllocInfo::Global, -1, -1, false };
 
 struct AllocSite {
@@ -54,12 +59,14 @@ private:
     SmallVector<Value*, 2> getSizeFactors();
 
 public:
+    AllocSite(AllocaInst &AI)
+        : AllocSite(&AI, AllocInfo::AllocaInfo, AI.getModule()) {}
     AllocSite(GlobalVariable &GV)
         : AllocSite(&GV, AllocInfo::GlobalInfo, GV.getParent()) {}
     AllocSite(Instruction &I, AllocInfo Info)
-        : AllocSite(&I, Info, I.getParent()->getParent()->getParent()) {}
+        : AllocSite(&I, Info, I.getModule()) {}
 
-    static AllocSite *TryCreate(Instruction &I);
+    static AllocSite *TryCreate(Value *V);
 
     inline Value *getValue()              { return V; }
     inline AllocInfo::AllocType getType() { return Info.Type; }
@@ -77,6 +84,8 @@ public:
     inline bool isAnyAlloc()    { return Info.Type & AllocInfo::AnyAlloc; }
     inline bool isAnyFree()     { return Info.Type & AllocInfo::AnyFree; }
     inline bool isWrapper()     { return Info.IsWrapper; }
+
+    Value *getCallParam(uint64_t i);
 
     uint64_t getConstSize();
     Value *getOrInsertSize(bool *Changed = nullptr);
@@ -153,25 +162,38 @@ struct AllocsPass : ModulePass {
 
     static char ID;
     AllocsPass() : ModulePass(ID) {}
-    ~AllocsPass() { freeSites(); }
+    ~AllocsPass();
 
     bool runOnModule(Module &M) override;
     void getAnalysisUsage(AnalysisUsage &AU) const override;
 
 private:
     DenseMap<Function*, SiteList> FuncSites;
+    DenseMap<Value*, AllocSite*> OnDemandCache;
+    const DataLayout *DL;
 
     site_range func_sites(Function *F);
-    void freeSites();
+
+    bool isSafeAccess(Value *Addr, uint64_t TypeSize) const;
 
 public:
-    AllocSite *getAllocSite(GlobalVariable &GV);
-    AllocSite *getAllocSite(Instruction &I);
-    AllocSite *findAllocSite(Value &V);
+    // on-demand functions
+    AllocSite *getAllocSite(GlobalVariable &GV) { return getAllocSite(&GV); }
+    AllocSite *getAllocSite(Instruction &I)     { return getAllocSite(&I); }
+    AllocSite *getAllocSite(Value *V);
 
+    // iterators for scanned all allocation sites (not on-demand)
     site_range sites();
     site_range global_sites()          { return func_sites(nullptr); }
     site_range func_sites(Function &F) { return func_sites(&F); }
+
+    // basic static bound analysis for constant GEPs
+    SizeOffsetType computeSizeAndOffset(Value *Addr);
+    bool isInBoundsAccess(Value *Addr, uint64_t TypeSize);
+    bool isInBounds(LoadInst &LI);
+    bool isInBounds(StoreInst &SI);
+    // TODO: AtomicRMWInst, AtomicCmpXchgInst, MemIntrinsic
+    // TODO: make generic MemAccess.h utilities for all cases above (or -memaccess pass)
 };
 
 #endif /* !ALLOCS_H */
