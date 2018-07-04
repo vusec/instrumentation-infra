@@ -188,27 +188,35 @@ const SCEV *AllocSite::getEndSCEV(ScalarEvolution &SE) {
 /* Analysis pass */
 
 AllocsPass::site_range AllocsPass::sites() {
+    assert(!ClOnDemand && !"iteration not available in on-demand mode");
     auto B = FuncSites.begin(), E = FuncSites.end();
     return site_range(site_iterator(B, E), site_iterator(E, E));
 }
 
 AllocsPass::site_range AllocsPass::func_sites(Function *F) {
+    assert(!ClOnDemand && !"iteration not available in on-demand mode");
     auto B = FuncSites.find(F), E = B;
     if (E != FuncSites.end()) ++E;
     return site_range(site_iterator(B, E), site_iterator(E, E));
 }
 
 AllocSite *AllocsPass::getAllocSite(Value *V) {
-    auto it = OnDemandCache.find(V);
-    if (it != OnDemandCache.end())
+    auto it = SiteLookup.find(V);
+    if (it != SiteLookup.end())
         return it->second;
-    AllocSite *A = AllocSite::TryCreate(V);
-    if (A)
-        OnDemandCache[V] = A;
-    return A;
+
+    if (ClOnDemand) {
+        AllocSite *A = AllocSite::TryCreate(V);
+        if (A)
+            SiteLookup[V] = A;
+        return A;
+    }
+
+    return nullptr;
 }
 
 bool AllocsPass::runOnModule(Module &M) {
+    // TODO: ignore noinstrument globals/functions
     DL = &M.getDataLayout();
 
     // TODO: register custom wrappers
@@ -217,40 +225,44 @@ bool AllocsPass::runOnModule(Module &M) {
         return false;
 
     // Global allocations are stored under NULL function
-    SiteList &GlobalAllocs = FuncSites.FindAndConstruct(nullptr).second;
-    for (GlobalVariable &GV : M.globals())
-        GlobalAllocs[&GV] = new AllocSite(GV);
+    SiteList &GlobalAllocs = FuncSites[nullptr];
+    for (GlobalVariable &GV : M.globals()) {
+        GlobalAllocs.push_back(new AllocSite(GV));
+        SiteLookup[&GV] = GlobalAllocs.back();
+    }
 
     // Local allocations/frees are stored under parent function
     for (Function &F : M) {
-        SiteList &Sites = FuncSites.FindAndConstruct(&F).second;
+        SiteList &Sites = FuncSites[&F];
 
         for (Instruction &I : instructions(F)) {
-            if (AllocSite *A = AllocSite::TryCreate(&I))
-                Sites[&I] = A;
+            if (AllocSite *A = AllocSite::TryCreate(&I)) {
+                Sites.push_back(A);
+                SiteLookup[&I] = A;
+            }
         }
     }
 
     bool Changed = false;
 
     if (DebugFlag) {
-        for (AllocSite *A : sites()) {
-            if (A->isGlobalAlloc()) dbgs() << "global";
-            if (A->isStackAlloc())  dbgs() << "stack";
-            if (A->isHeapAlloc())   dbgs() << "heap";
-            if (A->isAnyAlloc())    dbgs() << " alloc";
-            if (A->isAnyFree())     dbgs() << "free";
-            if (A->isMalloc())      dbgs() << " (malloc)";
-            if (A->isCalloc())      dbgs() << " (calloc)";
-            if (A->isRealloc())     dbgs() << " (realloc)";
-            if (A->isStrDup())      dbgs() << " (strdup)";
-            if (A->isNew())         dbgs() << " (new)";
-            if (A->isDelete())      dbgs() << " (delete)";
-            if (A->isWrapper())     dbgs() << " (wrapper)";
-            dbgs() << ": " << *A->getValue() << "\n";
+        for (AllocSite &A : sites()) {
+            if (A.isGlobalAlloc()) dbgs() << "global";
+            if (A.isStackAlloc())  dbgs() << "stack";
+            if (A.isHeapAlloc())   dbgs() << "heap";
+            if (A.isAnyAlloc())    dbgs() << " alloc";
+            if (A.isAnyFree())     dbgs() << "free";
+            if (A.isMalloc())      dbgs() << " (malloc)";
+            if (A.isCalloc())      dbgs() << " (calloc)";
+            if (A.isRealloc())     dbgs() << " (realloc)";
+            if (A.isStrDup())      dbgs() << " (strdup)";
+            if (A.isNew())         dbgs() << " (new)";
+            if (A.isDelete())      dbgs() << " (delete)";
+            if (A.isWrapper())     dbgs() << " (wrapper)";
+            dbgs() << ": " << *A.getValue() << "\n";
 
-            if (A->isAnyAlloc()) {
-                if (Value *Size = A->getOrInsertSize(&Changed))
+            if (A.isAnyAlloc()) {
+                if (Value *Size = A.getOrInsertSize(&Changed))
                     dbgs() << "  byte size: " << *Size << "\n";
             }
         }
@@ -274,13 +286,6 @@ bool AllocsPass::runOnModule(Module &M) {
     }
 
     return Changed;
-}
-
-AllocsPass::~AllocsPass() {
-    for (auto &it : FuncSites) {
-        for (auto &iit : it.second)
-            delete iit.second;
-    }
 }
 
 void AllocsPass::getAnalysisUsage(AnalysisUsage &AU) const {

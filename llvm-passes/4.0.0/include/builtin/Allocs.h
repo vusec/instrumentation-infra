@@ -92,9 +92,8 @@ public:
     const SCEV *getEndSCEV(ScalarEvolution &SE);
 };
 
-template<class KeyT, class ValueT>
-class ListIterator {
-    typedef MapVector<KeyT, ValueT> ListT;
+class AllocListIterator {
+    typedef SmallVector<AllocSite*, 16> ListT;
     typedef typename ListT::iterator ListIt;
     typedef DenseMap<Function*, ListT> FuncMapT;
     typedef typename FuncMapT::iterator FuncMapIt;
@@ -105,36 +104,37 @@ class ListIterator {
 public:
     typedef std::input_iterator_tag iterator_category;
 
-    ListIterator(FuncMapIt B, FuncMapIt E)
+    AllocListIterator(FuncMapIt B, FuncMapIt E)
         : FLI(B), FLE(E), L(&B->second), LI(L->begin()) {
         if (FLI != FLE)
             advanceToNextFunc();
     }
 
-    ListIterator(ListIterator<KeyT, ValueT> &I)
+    AllocListIterator(AllocListIterator &I)
         : FLI(I.FLI), FLE(I.FLE), L(I.L), LI(I.LI) {}
-    ListIterator(const ListIterator<KeyT, ValueT> &I)
+    AllocListIterator(const AllocListIterator &I)
         : FLI(I.FLI), FLE(I.FLE), L(I.L), LI(I.LI) {}
 
-    inline bool operator==(const ListIterator &y) const {
+    inline bool operator==(const AllocListIterator &y) const {
         assert(FLE == y.FLE && "uncomparable iterators");
         return FLI == y.FLI && (FLI == FLE || LI == y.LI);
     }
-    inline bool operator!=(const ListIterator &y) const {
+    inline bool operator!=(const AllocListIterator &y) const {
         return !operator==(y);
     }
 
-    ListIterator& operator++() {
+    AllocListIterator& operator++() {
         ++LI;
         advanceToNextFunc();
         return *this;
     }
-    inline ListIterator operator++(int) {
-        ListIterator tmp = *this; ++*this; return tmp;
+    inline AllocListIterator operator++(int) {
+        AllocListIterator tmp = *this; ++*this; return tmp;
     }
 
-    inline ValueT& operator*()  const { return LI->second; }
-    inline ValueT* operator->() const { return &operator*(); }
+    inline AllocSite& operator*()  const { return **LI; }
+    inline AllocSite* operator->() const { return *LI; }
+    //inline AllocSite* operator->() const { return &operator*(); }
 
     //inline bool atEnd() const { return FLI == FLE; }
 
@@ -148,23 +148,24 @@ private:
             LI = L->begin();
         }
     }
+
+    friend class AllocsPass;
 };
 
 struct AllocsPass : ModulePass {
-    typedef MapVector<Value*, AllocSite*> SiteList;
-    typedef ListIterator<Value*, AllocSite*> site_iterator;
+    typedef AllocListIterator::ListT SiteList;
+    typedef AllocListIterator site_iterator;
     typedef iterator_range<site_iterator> site_range;
 
     static char ID;
     AllocsPass() : ModulePass(ID) {}
-    ~AllocsPass();
 
     bool runOnModule(Module &M) override;
     void getAnalysisUsage(AnalysisUsage &AU) const override;
 
 private:
     DenseMap<Function*, SiteList> FuncSites;
-    DenseMap<Value*, AllocSite*> OnDemandCache;
+    DenseMap<Value*, AllocSite*> SiteLookup;
     const DataLayout *DL;
 
     site_range func_sites(Function *F);
