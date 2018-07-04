@@ -159,6 +159,7 @@ struct AllocsPass : ModulePass {
 
     static char ID;
     AllocsPass() : ModulePass(ID) {}
+    ~AllocsPass();
 
     bool runOnModule(Module &M) override;
     void getAnalysisUsage(AnalysisUsage &AU) const override;

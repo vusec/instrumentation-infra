@@ -288,6 +288,13 @@ bool AllocsPass::runOnModule(Module &M) {
     return Changed;
 }
 
+AllocsPass::~AllocsPass() {
+    for (auto &it : FuncSites) {
+        for (AllocSite *AS : it.second)
+            delete AS;
+    }
+}
+
 void AllocsPass::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
 }
