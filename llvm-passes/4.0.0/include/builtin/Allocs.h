@@ -36,12 +36,7 @@ struct AllocInfo {
     int MembArg;
     int SizeArg;
     bool IsWrapper;
-
-    static const AllocInfo AllocaInfo, GlobalInfo;
 };
-
-const AllocInfo AllocInfo::AllocaInfo = { AllocInfo::Alloca, -1, -1, false };
-const AllocInfo AllocInfo::GlobalInfo = { AllocInfo::Global, -1, -1, false };
 
 struct AllocSite {
     static const uint64_t UnknownSize = (uint64_t)(-1LL);
@@ -60,9 +55,9 @@ private:
 
 public:
     AllocSite(AllocaInst &AI)
-        : AllocSite(&AI, AllocInfo::AllocaInfo, AI.getModule()) {}
+        : AllocSite(&AI, { AllocInfo::Alloca, -1, -1, false }, AI.getModule()) {}
     AllocSite(GlobalVariable &GV)
-        : AllocSite(&GV, AllocInfo::GlobalInfo, GV.getParent()) {}
+        : AllocSite(&GV, { AllocInfo::Global, -1, -1, false }, GV.getParent()) {}
     AllocSite(Instruction &I, AllocInfo Info)
         : AllocSite(&I, Info, I.getModule()) {}
 
