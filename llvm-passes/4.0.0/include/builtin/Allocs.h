@@ -8,10 +8,11 @@
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/ADT/DenseMap.h>
-#include <llvm/ADT/MapVector.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/Analysis/ScalarEvolution.h>
 #include <llvm/Analysis/MemoryBuiltins.h>
+#include "MemAccess.h"
 
 using namespace llvm;
 
@@ -189,8 +190,10 @@ public:
     bool isInBoundsAccess(Value *Addr, uint64_t TypeSize);
     bool isInBounds(LoadInst &LI);
     bool isInBounds(StoreInst &SI);
-    // TODO: AtomicRMWInst, AtomicCmpXchgInst, MemIntrinsic
-    // TODO: make generic MemAccess.h utilities for all cases above (or -memaccess pass)
+    bool isInBounds(AtomicCmpXchgInst &CX);
+    bool isInBounds(AtomicRMWInst &RMW);
+    bool isInBounds(MemIntrinsic &RMW);
+    bool isInBounds(const MemAccess &MA);
 };
 
 #endif /* !ALLOCS_H */

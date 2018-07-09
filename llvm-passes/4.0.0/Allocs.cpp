@@ -124,9 +124,6 @@ uint64_t AllocSite::getConstSize() {
 Value *AllocSite::getOrInsertSize(bool *Changed) {
     assert(isAnyAlloc() && !isStrDup());
 
-    if (Changed)
-        *Changed = false;
-
     uint64_t ConstSize = getConstSize();
     if (ConstSize != UnknownSize)
         return getSizeInt(ConstSize);
@@ -188,13 +185,13 @@ const SCEV *AllocSite::getEndSCEV(ScalarEvolution &SE) {
 /* Analysis pass */
 
 AllocsPass::site_range AllocsPass::sites() {
-    assert(!ClOnDemand && !"iteration not available in on-demand mode");
+    assert(!ClOnDemand && "iteration not available in on-demand mode");
     auto B = FuncSites.begin(), E = FuncSites.end();
     return site_range(site_iterator(B, E), site_iterator(E, E));
 }
 
 AllocsPass::site_range AllocsPass::func_sites(Function *F) {
-    assert(!ClOnDemand && !"iteration not available in on-demand mode");
+    assert(!ClOnDemand && "iteration not available in on-demand mode");
     auto B = FuncSites.find(F), E = B;
     if (E != FuncSites.end()) ++E;
     return site_range(site_iterator(B, E), site_iterator(E, E));
@@ -267,21 +264,18 @@ bool AllocsPass::runOnModule(Module &M) {
             }
         }
 
+        SmallVector<MemAccess, 16> MemAccesses;
+
         for (Function &F : M) {
-            for (Instruction &I : instructions(F)) {
-                if (LoadInst *LI = dyn_cast<LoadInst>(&I)) {
-                    if (isInBounds(*LI)) {
-                        dbgs() << "in-bounds load: " << I << "\n";
-                        dbgs() << "  pointer: " << *LI->getPointerOperand() << "\n";
-                    }
-                }
-                else if (StoreInst *SI = dyn_cast<StoreInst>(&I)) {
-                    if (isInBounds(*SI)) {
-                        dbgs() << "in-bounds store: " << I << "\n";
-                        dbgs() << "  pointer: " << *SI->getPointerOperand() << "\n";
-                    }
+            MemAccess::collect(F, MemAccesses);
+            for (const MemAccess &MA : MemAccesses) {
+                if (isInBounds(MA)) {
+                    dbgs() << "in-bounds " << (MA.isRead() ? "read" : "write");
+                    dbgs() << ": " << *MA.getInstruction() << "\n";
+                    dbgs() << "  pointer: " << *MA.getPointer() << "\n";
                 }
             }
+            MemAccesses.clear();
         }
     }
 
@@ -339,6 +333,37 @@ bool AllocsPass::isInBounds(LoadInst &LI) {
 bool AllocsPass::isInBounds(StoreInst &SI) {
     return isInBoundsAccess(SI.getPointerOperand(),
             DL->getTypeStoreSize(SI.getValueOperand()->getType()));
+}
+
+bool AllocsPass::isInBounds(AtomicCmpXchgInst &CX) {
+    return isInBoundsAccess(CX.getPointerOperand(),
+            DL->getTypeStoreSize(CX.getCompareOperand()->getType()));
+}
+
+bool AllocsPass::isInBounds(AtomicRMWInst &RMW) {
+    return isInBoundsAccess(RMW.getPointerOperand(),
+            DL->getTypeStoreSize(RMW.getValOperand()->getType()));
+}
+
+bool AllocsPass::isInBounds(MemIntrinsic &MI) {
+    ConstantInt *L = dyn_cast<ConstantInt>(MI.getLength());
+    if (!L)
+        return false;
+    unsigned Size = L->getZExtValue();
+
+    if (MemTransferInst *MT = dyn_cast<MemTransferInst>(&MI)) {
+        if (!isInBoundsAccess(MT->getRawSource(), Size))
+            return false;
+    }
+
+    return isInBoundsAccess(MI.getRawDest(), Size);
+}
+
+bool AllocsPass::isInBounds(const MemAccess &MA) {
+    assert(MA.isValid());
+    if (MA.hasConstLength())
+        return isInBoundsAccess(MA.getPointer(), MA.getConstLength());
+    return false;
 }
 
 char AllocsPass::ID = 0;
