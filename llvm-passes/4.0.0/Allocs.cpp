@@ -316,7 +316,6 @@ AllocSite *AllocsPass::getAllocSite(Value *V) {
 }
 
 bool AllocsPass::runOnModule(Module &M) {
-    // TODO: ignore noinstrument globals/functions
     DL = &M.getDataLayout();
 
     if (ClOnDemand)
@@ -325,18 +324,22 @@ bool AllocsPass::runOnModule(Module &M) {
     // Global allocations are stored under NULL function
     SiteList &GlobalAllocs = FuncSites[nullptr];
     for (GlobalVariable &GV : M.globals()) {
-        GlobalAllocs.push_back(new AllocSite(GV));
-        SiteLookup[&GV] = GlobalAllocs.back();
+        if (!isNoInstrument(&GV)) {
+            GlobalAllocs.push_back(new AllocSite(GV));
+            SiteLookup[&GV] = GlobalAllocs.back();
+        }
     }
 
     // Local allocations/frees are stored under parent function
     for (Function &F : M) {
-        SiteList &Sites = FuncSites[&F];
+        if (!isNoInstrument(&F)) {
+            SiteList &Sites = FuncSites[&F];
 
-        for (Instruction &I : instructions(F)) {
-            if (AllocSite *A = AllocSite::TryCreate(&I)) {
-                Sites.push_back(A);
-                SiteLookup[&I] = A;
+            for (Instruction &I : instructions(F)) {
+                if (AllocSite *A = AllocSite::TryCreate(&I)) {
+                    Sites.push_back(A);
+                    SiteLookup[&I] = A;
+                }
             }
         }
     }
@@ -470,5 +473,6 @@ bool AllocsPass::isInBounds(const MemAccess &MA) {
 
 char AllocsPass::ID = 0;
 static RegisterPass<AllocsPass> X("allocs",
-        "Find allocations (stack + heap + global) and frees (heap)",
+        "Find allocations (stack + heap + global) and frees (heap), "
+        "except for sites annotated with noinstrument",
         false, true);
