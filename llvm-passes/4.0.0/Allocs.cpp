@@ -7,10 +7,8 @@
 
 using namespace llvm;
 
-//static cl::list<std::string> MallocWrappers("malloc-wrapper",
-//        cl::desc("Add custom malloc function name"));
-
-static cl::opt<bool> ClOnDemand("allocs-ondemand",
+static cl::opt<bool>
+ClOnDemand("allocs-ondemand",
         cl::desc("Do not scan for allocations, find them later with getAllocSite instead"),
         cl::init(false));
 
@@ -47,6 +45,111 @@ static std::map<std::string, AllocInfo> AllocFuncs = {
     { "free",                            { AllocInfo::Free,   -1, -1, false } },
     // TODO: delete
 };
+
+typedef std::pair<std::string, AllocInfo> CustomFuncT;
+
+struct CustomAllocFuncParser : public cl::parser<CustomFuncT> {
+    CustomAllocFuncParser(cl::Option &O) : cl::parser<CustomFuncT>(O) {}
+    CustomAllocFuncParser(const CustomAllocFuncParser&) = delete;
+    ~CustomAllocFuncParser() {}
+
+    bool parse(cl::Option &O, StringRef ArgName,
+               const std::string &ArgValue, CustomFuncT &Val);
+};
+
+static cl::list<CustomFuncT, bool, CustomAllocFuncParser>
+ClCustomFuncs("allocs-custom-funcs",
+        cl::CommaSeparated,
+        cl::desc("Custom allocator functions"),
+        cl::value_desc("<funcname>:<type>:<membarg>[:<membsizearg>]"));
+
+/* Custom function parsing */
+
+static std::vector<std::string> split(const std::string &s, char delim) {
+    std::vector<std::string> parts;
+    std::size_t start = 0, pos = s.find(delim);
+
+    while (pos != std::string::npos) {
+        parts.push_back(s.substr(start, pos - start));
+        start = pos + 1;
+        pos = s.find(delim, start);
+    }
+
+    parts.push_back(s.substr(start));
+    return parts;
+}
+
+static bool parseInt(const std::string &s, int &i) {
+    std::stringstream ss(s);
+    ss >> i;
+    return !ss.fail();
+}
+
+bool CustomAllocFuncParser::parse(cl::Option &O, StringRef ArgName,
+            const std::string &ArgValue, CustomFuncT &Val) {
+    static const std::map<const std::string, const AllocInfo::AllocType> TypeMap = {
+        { "malloc",  AllocInfo::Malloc  },
+        { "new",     AllocInfo::New     },
+        { "calloc",  AllocInfo::Calloc  },
+        { "strdup",  AllocInfo::StrDup  },
+        { "realloc", AllocInfo::Realloc },
+        { "free",    AllocInfo::Free    },
+        { "delete",  AllocInfo::Delete  },
+        { "alloca",  AllocInfo::Alloca  },
+        { "global",  AllocInfo::Global  },
+    };
+
+    std::string &FuncName = Val.first;
+    AllocInfo &Info = Val.second;
+
+    // Format is <funcname>:<type>:<membarg>[:<membsizearg>]
+    std::vector<std::string> parts = split(ArgValue, ':');
+
+    if (parts.size() < 3 || parts.size() > 4)
+        return O.error("invalid custom allocator '" + ArgValue + "', format " +
+                       "should be <funcname>:<type>:<membarg>[:<membsizearg>]");
+
+    FuncName = parts[0];
+
+    if (FuncName.empty())
+        return O.error("empty function name in '" + ArgValue + "'");
+
+    auto it = TypeMap.find(parts[1]);
+    if (it == TypeMap.end())
+        return O.error("invalid allocator type '" + parts[1] + "' in '" + ArgValue + "'");
+    Info.Type = it->second;
+
+    if (!parseInt(parts[2], Info.MembArg))
+        return O.error("invalid <membarg> '" + parts[2] + + "' in '" + ArgValue + "'");
+
+    if (parts.size() == 3)
+        Info.SizeArg = -1;
+    else if (!parseInt(parts[3], Info.SizeArg))
+        return O.error("invalid <membsizearg> '" + parts[3] + + "' in '" + ArgValue + "'");
+
+    Info.IsWrapper = true;
+
+    AllocFuncs.insert(Val);
+    if (DebugFlag) {
+        dbgs() << "[" DEBUG_TYPE "] registered custom wrapper " << FuncName << " (type=";
+        switch (Info.Type) {
+            case AllocInfo::Malloc:  dbgs() << "malloc";  break;
+            case AllocInfo::New:     dbgs() << "new";     break;
+            case AllocInfo::Calloc:  dbgs() << "calloc";  break;
+            case AllocInfo::StrDup:  dbgs() << "strdup";  break;
+            case AllocInfo::Realloc: dbgs() << "realloc"; break;
+            case AllocInfo::Free:    dbgs() << "free";    break;
+            case AllocInfo::Delete:  dbgs() << "delee";   break;
+            case AllocInfo::Alloca:  dbgs() << "alloca";  break;
+            case AllocInfo::Global:  dbgs() << "global";  break;
+            default: assert(!"invalid type");
+        }
+        dbgs() << ", membarg=" << Info.MembArg;
+        dbgs() << ", membsizearg=" << Info.SizeArg << ")\n";
+    }
+
+    return false;
+}
 
 /* Allocation sites */
 
@@ -216,8 +319,6 @@ bool AllocsPass::runOnModule(Module &M) {
     // TODO: ignore noinstrument globals/functions
     DL = &M.getDataLayout();
 
-    // TODO: register custom wrappers
-
     if (ClOnDemand)
         return false;
 
@@ -244,6 +345,7 @@ bool AllocsPass::runOnModule(Module &M) {
 
     if (DebugFlag) {
         for (AllocSite &A : sites()) {
+            dbgs() << "[" DEBUG_TYPE "] ";
             if (A.isGlobalAlloc()) dbgs() << "global";
             if (A.isStackAlloc())  dbgs() << "stack";
             if (A.isHeapAlloc())   dbgs() << "heap";
@@ -260,7 +362,7 @@ bool AllocsPass::runOnModule(Module &M) {
 
             if (A.isAnyAlloc()) {
                 if (Value *Size = A.getOrInsertSize(&Changed))
-                    dbgs() << "  byte size: " << *Size << "\n";
+                    dbgs() << "[" DEBUG_TYPE "]   byte size: " << *Size << "\n";
             }
         }
 
@@ -270,9 +372,9 @@ bool AllocsPass::runOnModule(Module &M) {
             MemAccess::collect(F, MemAccesses);
             for (const MemAccess &MA : MemAccesses) {
                 if (isInBounds(MA)) {
-                    dbgs() << "in-bounds " << (MA.isRead() ? "read" : "write");
+                    dbgs() << "[" DEBUG_TYPE "] in-bounds " << (MA.isRead() ? "read" : "write");
                     dbgs() << ": " << *MA.getInstruction() << "\n";
-                    dbgs() << "  pointer: " << *MA.getPointer() << "\n";
+                    dbgs() << "[" DEBUG_TYPE "]   pointer: " << *MA.getPointer() << "\n";
                 }
             }
             MemAccesses.clear();
