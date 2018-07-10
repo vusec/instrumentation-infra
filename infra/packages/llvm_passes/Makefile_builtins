@@ -9,11 +9,13 @@ CXX         ?= g++
 CXXFLAGS    ?=
 CXXFLAGS    += -I. -Iinclude/builtin -Werror -Wall -std=c++0x -g -O2 \
               `llvm-config --cxxflags`
-LDFLAGS     ?=
-LDFLAGS     += -g -shared
-LLVMLIB      = `llvm-config --prefix`/lib
-LDFLAGSGOLD  = -Wl,--no-undefined -L$(LLVMLIB) \
-               -l:LLVMgold.so -Wl,--rpath=$(LLVMLIB)
+LDFLAGS        ?=
+LDFLAGS        += -g -shared
+LLVMLIB         = `llvm-config --prefix`/lib
+LDFLAGSGOLD     = -Wl,--no-undefined -L$(LLVMLIB) \
+                  -l:LLVMgold.so -Wl,--rpath=$(LLVMLIB)
+LINK_STATICLIB := -L$(OBJDIR) -Wl,-whole-archive \
+                  -lpasses-builtin -Wl,-no-whole-archive
 
 SUBDIRS   ?=
 SRCS      := $(wildcard *.cpp) $(foreach d,$(SUBDIRS),$(wildcard $d/*.cpp))
@@ -28,7 +30,7 @@ all: $(OBJDIR)/$(LIBGOLD) $(OBJDIR)/$(LIBOPT)
 
 $(OBJDIR)/$(LIBGOLD): LDFLAGS += $(LDFLAGSGOLD)
 $(OBJDIR)/$(LIBGOLD) $(OBJDIR)/$(LIBOPT): $(OBJDIR)/$(LIBSTATIC)
-	$(CXX) $^ $(LDFLAGS) -o $@
+	$(CXX) $(LDFLAGS) $(LINK_STATICLIB) -o $@
 
 $(OBJDIR)/$(LIBSTATIC): $(OBJS) | $(OBJDIR)
 	cd $(OBJDIR) && $(AR) crsv $(@F) $(OBJNAMES)
