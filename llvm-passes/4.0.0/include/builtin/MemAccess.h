@@ -17,13 +17,14 @@ protected:
     unsigned Alignment;
     bool IsRead;
 
-    MemAccess() : I(nullptr) {}
-    MemAccess(const MemAccess&) = default;
-    ~MemAccess() = default;
     MemAccess(Instruction &I, Value *P, Value *L, unsigned A, bool R)
         : I(&I), Pointer(P), Length(L), Alignment(A), IsRead(R) {}
 
 public:
+    MemAccess() : I(nullptr) {}
+    MemAccess(const MemAccess&) = default;
+    ~MemAccess() = default;
+
     Instruction *getInstruction() const { return I; }
     Value *getPointer() const           { return Pointer; }
     Value *getLength() const            { return Length; }
