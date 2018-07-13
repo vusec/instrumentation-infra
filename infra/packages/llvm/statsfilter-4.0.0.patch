@@ -1,9 +1,11 @@
+diff --git a/lib/Support/Statistic.cpp b/lib/Support/Statistic.cpp
+index 0c50dfd..a8e2e44 100644
 --- a/lib/Support/Statistic.cpp
 +++ b/lib/Support/Statistic.cpp
-@@ -46,6 +46,25 @@ Enabled(
+@@ -46,6 +46,25 @@ static cl::opt<bool> Stats("stats",
  static cl::opt<bool> StatsAsJSON("stats-json",
                                   cl::desc("Display statistics as json data"));
-
+ 
 +static ManagedStatic<std::vector<std::string>> FilteredStatsTypes;
 +
 +namespace {
@@ -23,26 +25,25 @@
 +          cl::Hidden, cl::ZeroOrMore, cl::value_desc("stats string"),
 +          cl::location(StatsOnlyOptLoc), cl::ValueRequired);
 +
- namespace {
- /// StatisticInfo - This class is used in a ManagedStatic so that it is created
- /// on demand (when the first statistic is bumped) and destroyed only when
-@@ -115,31 +134,46 @@ void StatisticInfo::sort() {
+ static bool Enabled;
+ static bool PrintOnExit;
+ 
+@@ -126,31 +145,45 @@ void StatisticInfo::sort() {
    });
  }
-
+ 
 +bool shouldPrintStatistic(const Statistic *S) {
 +  if (FilteredStatsTypes->empty())
 +    return true;
 +  for (auto &d : *FilteredStatsTypes)
-+    if (d == S->getDebugType())
++    if (d == S->getDebugType()())
 +      return true;
 +  return false;
 +}
 +
-+
  void llvm::PrintStatistics(raw_ostream &OS) {
    StatisticInfo &Stats = *StatInfo;
-
+ 
 +  Stats.sort();
 +
 +  std::vector<const Statistic*> FilteredStats;
@@ -61,14 +62,14 @@
 -                         (unsigned)std::strlen(Stats.Stats[i]->getDebugType()));
 +                         (unsigned)std::strlen(S->getDebugType()));
    }
-
+ 
 -  Stats.sort();
 -
    // Print out the statistics header...
    OS << "===" << std::string(73, '-') << "===\n"
       << "                          ... Statistics Collected ...\n"
       << "===" << std::string(73, '-') << "===\n\n";
-
+ 
    // Print all of the statistics.
 -  for (size_t i = 0, e = Stats.Stats.size(); i != e; ++i)
 +  for (const Statistic *S : FilteredStats)
@@ -79,6 +80,6 @@
 +                 MaxValLen, S->getValue(),
 +                 MaxDebugTypeLen, S->getDebugType(),
 +                 S->getDesc());
-
+ 
    OS << '\n';  // Flush the output stream.
    OS.flush();

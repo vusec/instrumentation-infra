@@ -34,7 +34,7 @@
 +  if (FilteredStatsTypes->empty())
 +    return true;
 +  for (auto &d : *FilteredStatsTypes)
-+    if (d == S->getName())
++    if (d == S->getDebugType())
 +      return true;
 +  return false;
 +}
