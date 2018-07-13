@@ -37,7 +37,7 @@ public:
     bool isRead()                 const { return IsRead; }
     bool isWrite()                const { return !IsRead; }
 
-    bool hasConstLength()         const { return isa<Constant>(Length); }
+    bool hasConstLength()         const { return isa<ConstantInt>(Length); }
     uint64_t getConstLength()     const { return cast<ConstantInt>(Length)->getZExtValue(); }
 
     bool isValid()                const { return I != nullptr; }
