@@ -369,18 +369,14 @@ bool AllocsPass::runOnModule(Module &M) {
             }
         }
 
-        SmallVector<MemAccess, 16> MemAccesses;
-
         for (Function &F : M) {
-            MemAccess::collect(F, MemAccesses);
-            for (const MemAccess &MA : MemAccesses) {
+            for (const MemAccess &MA : memaccesses(F)) {
                 if (isInBounds(MA)) {
                     dbgs() << "[" DEBUG_TYPE "] in-bounds " << (MA.isRead() ? "read" : "write");
                     dbgs() << ": " << *MA.getInstruction() << "\n";
                     dbgs() << "[" DEBUG_TYPE "]   pointer: " << *MA.getPointer() << "\n";
                 }
             }
-            MemAccesses.clear();
         }
     }
 

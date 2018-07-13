@@ -5,15 +5,6 @@
 
 using namespace llvm;
 
-void MemAccess::collect(Function &F, SmallVectorImpl<MemAccess> &L) {
-    for (Instruction &I : instructions(F)) {
-        if (const MemRead MR = MemRead::TryCreate(I))
-            L.push_back(MR);
-        if (const MemWrite MW = MemWrite::TryCreate(I))
-            L.push_back(MW);
-    }
-}
-
 static inline const DataLayout &getDL(Instruction &I) {
     return I.getModule()->getDataLayout();
 }
@@ -46,20 +37,27 @@ MemRead::MemRead(AtomicRMWInst &RMW)
         RMW.getPointerOperand()->getPointerAlignment(getDL(RMW)),
         true) {}
 
-const MemRead MemRead::TryCreate(Instruction &I) {
-        if (LoadInst *LI = dyn_cast<LoadInst>(&I))
-            return MemRead(*LI);
-
-        if (MemTransferInst *MT = dyn_cast<MemTransferInst>(&I))
+const MemRead MemRead::Create(Instruction &I) {
+    if (LoadInst *LI = dyn_cast<LoadInst>(&I))
+        return MemRead(*LI);
+    if (MemTransferInst *MT = dyn_cast<MemTransferInst>(&I))
         return MemRead(*MT);
-
     if (AtomicCmpXchgInst *CX = dyn_cast<AtomicCmpXchgInst>(&I))
         return MemRead(*CX);
-
     if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(&I))
         return MemRead(*RMW);
-
     return MemRead();
+}
+
+MemRead::MemRead(Instruction &I) : MemAccess() {
+    if (LoadInst *LI = dyn_cast<LoadInst>(&I))
+        *this = MemRead(*LI);
+    else if (MemTransferInst *MT = dyn_cast<MemTransferInst>(&I))
+        *this = MemRead(*MT);
+    else if (AtomicCmpXchgInst *CX = dyn_cast<AtomicCmpXchgInst>(&I))
+        *this = MemRead(*CX);
+    else if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(&I))
+        *this = MemRead(*RMW);
 }
 
 MemWrite::MemWrite(StoreInst &SI)
@@ -86,18 +84,25 @@ MemWrite::MemWrite(AtomicRMWInst &RMW)
         RMW.getPointerOperand()->getPointerAlignment(getDL(RMW)),
         false) {}
 
-const MemWrite MemWrite::TryCreate(Instruction &I) {
+const MemWrite MemWrite::Create(Instruction &I) {
     if (StoreInst *SI = dyn_cast<StoreInst>(&I))
         return MemWrite(*SI);
-
     if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I))
         return MemWrite(*MI);
-
     if (AtomicCmpXchgInst *CX = dyn_cast<AtomicCmpXchgInst>(&I))
         return MemWrite(*CX);
-
     if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(&I))
         return MemWrite(*RMW);
-
     return MemWrite();
+}
+
+MemWrite::MemWrite(Instruction &I) {
+    if (StoreInst *SI = dyn_cast<StoreInst>(&I))
+        *this = MemWrite(*SI);
+    else if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I))
+        *this = MemWrite(*MI);
+    else if (AtomicCmpXchgInst *CX = dyn_cast<AtomicCmpXchgInst>(&I))
+        *this = MemWrite(*CX);
+    else if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(&I))
+        *this = MemWrite(*RMW);
 }
