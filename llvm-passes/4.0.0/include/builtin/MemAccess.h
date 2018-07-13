@@ -31,24 +31,29 @@ public:
     MemAccess(const MemAccess&) = default;
     ~MemAccess() = default;
 
-    Instruction *getInstruction() const { return I; }
-    Value *getPointer()           const { return Pointer; }
-    Value *getLength()            const { return Length; }
-    bool hasReadValue()           const { return isa<LoadInst>(I); }
-    Value *getReadValue()         const { return cast<LoadInst>(I); }
-    unsigned getAlignment()       const { return Alignment; }
-    bool isRead()                 const { return IsRead; }
-    bool isWrite()                const { return !IsRead; }
+    inline Instruction *getInstruction() const { return I; }
+    inline Value *getPointer()           const { return Pointer; }
+    inline Value *getLength()            const { return Length; }
+    inline bool hasReadValue()           const { return isa<LoadInst>(I); }
+    inline Value *getReadValue()         const { return cast<LoadInst>(I); }
+    inline unsigned getAlignment()       const { return Alignment; }
+    inline bool isRead()                 const { return IsRead; }
+    inline bool isWrite()                const { return !IsRead; }
 
-    bool hasConstLength()         const { return isa<ConstantInt>(Length); }
-    uint64_t getConstLength()     const { return cast<ConstantInt>(Length)->getZExtValue(); }
+    inline bool hasConstLength()         const { return isa<ConstantInt>(Length); }
+    inline uint64_t getConstLength()     const { return cast<ConstantInt>(Length)->getZExtValue(); }
 
-    bool isValid()                const { return I != nullptr; }
-    operator bool()               const { return isValid(); }
+    inline bool isValid()                const { return I != nullptr; }
+    inline operator bool()               const { return isValid(); }
 
-    void dump()                   const { dbgs() << toString() << "\n"; }
-    void print(raw_ostream &O)    const;
-    const std::string toString()  const;
+    inline void dump()                   const { print(dbgs()); dbgs() << "\n"; }
+    const std::string toString()         const {
+        std::string s;
+        raw_string_ostream ss(s);
+        print(ss);
+        return s;
+    }
+    void print(raw_ostream &O) const;
 };
 
 class MemRead : public MemAccess {

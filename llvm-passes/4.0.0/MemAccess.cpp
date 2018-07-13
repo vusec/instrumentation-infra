@@ -25,13 +25,6 @@ void MemAccess::print(raw_ostream &O) const {
     O << ")";
 }
 
-const std::string MemAccess::toString() const {
-    std::string s;
-    raw_string_ostream ss(s);
-    print(ss);
-    return s;
-}
-
 MemRead::MemRead(LoadInst &LI)
     : MemAccess(LI,
         LI.getPointerOperand(),
