@@ -13,6 +13,25 @@ static inline Constant *getInt(Instruction &I, unsigned N) {
     return ConstantInt::get(getDL(I).getLargestLegalIntType(I.getContext()), N);
 }
 
+void MemAccess::print(raw_ostream &O) const {
+    O << "Mem" << (IsRead ? "Read(" : "Write(");
+    O << "inst={" << *I << "}";
+    if (isa<ConstantInt>(Length))
+        O << " length=" << getConstLength();
+    else
+        O << " length={" << *Length << "}";
+    if (Alignment)
+        O << " align=" << Alignment;
+    O << ")";
+}
+
+const std::string MemAccess::toString() const {
+    std::string s;
+    raw_string_ostream ss(s);
+    print(ss);
+    return s;
+}
+
 MemRead::MemRead(LoadInst &LI)
     : MemAccess(LI,
         LI.getPointerOperand(),

@@ -6,6 +6,9 @@
 #include <llvm/IR/IntrinsicInst.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/Debug.h>
+#include <string>
 #include <iterator>
 
 #include <llvm/Support/raw_ostream.h>
@@ -43,7 +46,9 @@ public:
     bool isValid()                const { return I != nullptr; }
     operator bool()               const { return isValid(); }
 
-    //bool isInBounds() const; FIXME: use AllocSite
+    void dump()                   const { dbgs() << toString() << "\n"; }
+    void print(raw_ostream &O)    const;
+    const std::string toString()  const;
 };
 
 class MemRead : public MemAccess {
