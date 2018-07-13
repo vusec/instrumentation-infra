@@ -134,10 +134,7 @@ public:
     }
 
     inline AllocSite& operator*()  const { return **LI; }
-    inline AllocSite* operator->() const { return *LI; }
-    //inline AllocSite* operator->() const { return &operator*(); }
-
-    //inline bool atEnd() const { return FLI == FLE; }
+    inline AllocSite* operator->() const { return &operator*(); }
 
 private:
     void advanceToNextFunc() {

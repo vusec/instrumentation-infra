@@ -6,7 +6,6 @@
 #include <llvm/IR/IntrinsicInst.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Constants.h>
-#include <llvm/ADT/SmallVector.h>
 #include <iterator>
 
 #include <llvm/Support/raw_ostream.h>
@@ -32,6 +31,8 @@ public:
     Instruction *getInstruction() const { return I; }
     Value *getPointer()           const { return Pointer; }
     Value *getLength()            const { return Length; }
+    bool hasReadValue()           const { return isa<LoadInst>(I); }
+    Value *getReadValue()         const { return cast<LoadInst>(I); }
     unsigned getAlignment()       const { return Alignment; }
     bool isRead()                 const { return IsRead; }
     bool isWrite()                const { return !IsRead; }
