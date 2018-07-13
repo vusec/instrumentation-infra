@@ -172,8 +172,6 @@ private:
 
     site_range func_sites(Function *F);
 
-    bool isSafeAccess(Value *Addr, uint64_t TypeSize) const;
-
 public:
     // on-demand functions
     AllocSite *getAllocSite(GlobalVariable &GV) { return getAllocSite(&GV); }
