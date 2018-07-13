@@ -102,50 +102,54 @@ bool CustomAllocFuncParser::parse(cl::Option &O, StringRef ArgName,
     std::string &FuncName = Val.first;
     AllocInfo &Info = Val.second;
 
-    // Format is <funcname>:<type>:<membarg>[:<membsizearg>]
-    std::vector<std::string> parts = split(ArgValue, ':');
+    // Also allow split by . because , gives issues when used with -Wl,...
+    for (const std::string ArgPart : split(ArgValue, '.')) {
+        // Format is <funcname>:<type>:<membarg>[:<membsizearg>]
+        std::vector<std::string> parts = split(ArgPart, ':');
 
-    if (parts.size() < 3 || parts.size() > 4)
-        return O.error("invalid custom allocator '" + ArgValue + "', format " +
-                       "should be <funcname>:<type>:<membarg>[:<membsizearg>]");
+        if (parts.size() < 3 || parts.size() > 4)
+            return O.error("invalid custom allocator '" + ArgPart + "', format " +
+                           "should be <funcname>:<type>:<membarg>[:<membsizearg>]");
 
-    FuncName = parts[0];
+        FuncName = parts[0];
 
-    if (FuncName.empty())
-        return O.error("empty function name in '" + ArgValue + "'");
+        if (FuncName.empty())
+            return O.error("empty function name in '" + ArgPart + "'");
 
-    auto it = TypeMap.find(parts[1]);
-    if (it == TypeMap.end())
-        return O.error("invalid allocator type '" + parts[1] + "' in '" + ArgValue + "'");
-    Info.Type = it->second;
+        auto it = TypeMap.find(parts[1]);
+        if (it == TypeMap.end())
+            return O.error("invalid allocator type '" + parts[1] + "' in '" + ArgPart + "'");
+        Info.Type = it->second;
 
-    if (!parseInt(parts[2], Info.MembArg))
-        return O.error("invalid <membarg> '" + parts[2] + + "' in '" + ArgValue + "'");
+        if (!parseInt(parts[2], Info.MembArg))
+            return O.error("invalid <membarg> '" + parts[2] + + "' in '" + ArgPart + "'");
 
-    if (parts.size() == 3)
-        Info.SizeArg = -1;
-    else if (!parseInt(parts[3], Info.SizeArg))
-        return O.error("invalid <membsizearg> '" + parts[3] + + "' in '" + ArgValue + "'");
+        if (parts.size() == 3)
+            Info.SizeArg = -1;
+        else if (!parseInt(parts[3], Info.SizeArg))
+            return O.error("invalid <membsizearg> '" + parts[3] + + "' in '" + ArgPart + "'");
 
-    Info.IsWrapper = true;
+        Info.IsWrapper = true;
 
-    AllocFuncs.insert(Val);
-    if (DebugFlag) {
-        dbgs() << "[" DEBUG_TYPE "] registered custom wrapper " << FuncName << " (type=";
-        switch (Info.Type) {
-            case AllocInfo::Malloc:  dbgs() << "malloc";  break;
-            case AllocInfo::New:     dbgs() << "new";     break;
-            case AllocInfo::Calloc:  dbgs() << "calloc";  break;
-            case AllocInfo::StrDup:  dbgs() << "strdup";  break;
-            case AllocInfo::Realloc: dbgs() << "realloc"; break;
-            case AllocInfo::Free:    dbgs() << "free";    break;
-            case AllocInfo::Delete:  dbgs() << "delee";   break;
-            case AllocInfo::Alloca:  dbgs() << "alloca";  break;
-            case AllocInfo::Global:  dbgs() << "global";  break;
-            default: assert(!"invalid type");
+        AllocFuncs.insert(Val);
+
+        if (DebugFlag) {
+            dbgs() << "[" DEBUG_TYPE "] registered custom wrapper " << FuncName << " (type=";
+            switch (Info.Type) {
+                case AllocInfo::Malloc:  dbgs() << "malloc";  break;
+                case AllocInfo::New:     dbgs() << "new";     break;
+                case AllocInfo::Calloc:  dbgs() << "calloc";  break;
+                case AllocInfo::StrDup:  dbgs() << "strdup";  break;
+                case AllocInfo::Realloc: dbgs() << "realloc"; break;
+                case AllocInfo::Free:    dbgs() << "free";    break;
+                case AllocInfo::Delete:  dbgs() << "delee";   break;
+                case AllocInfo::Alloca:  dbgs() << "alloca";  break;
+                case AllocInfo::Global:  dbgs() << "global";  break;
+                default: assert(!"invalid type");
+            }
+            dbgs() << ", membarg=" << Info.MembArg;
+            dbgs() << ", membsizearg=" << Info.SizeArg << ")\n";
         }
-        dbgs() << ", membarg=" << Info.MembArg;
-        dbgs() << ", membsizearg=" << Info.SizeArg << ")\n";
     }
 
     return false;
