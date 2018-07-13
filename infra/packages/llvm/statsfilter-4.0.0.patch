@@ -36,7 +36,7 @@ index 0c50dfd..a8e2e44 100644
 +  if (FilteredStatsTypes->empty())
 +    return true;
 +  for (auto &d : *FilteredStatsTypes)
-+    if (d == S->getDebugType()())
++    if (d == S->getDebugType())
 +      return true;
 +  return false;
 +}
