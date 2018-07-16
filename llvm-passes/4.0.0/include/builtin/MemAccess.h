@@ -39,6 +39,7 @@ public:
     inline unsigned getAlignment()       const { return Alignment; }
     inline bool isRead()                 const { return IsRead; }
     inline bool isWrite()                const { return !IsRead; }
+    inline bool isAtomic()               const { return isa<AtomicCmpXchgInst>(I) || isa<AtomicRMWInst>(I); }
 
     inline bool hasConstLength()         const { return isa<ConstantInt>(Length); }
     inline uint64_t getConstLength()     const { return cast<ConstantInt>(Length)->getZExtValue(); }
