@@ -913,6 +913,23 @@ class SPEC2006(Target):
                 table.inner_column_border = False
                 print('\n'+ table.table)
 
+    #: :class:`list` Command line arguments for the built-in ``-allocs`` pass;
+    #: Registers custom allocation function wrappers in SPEC benchmarks.
+    custom_allocs_flags = ['-allocs-custom-funcs=' + '.'.join((
+        # 400.perlbench
+        'Perl_safesysmalloc'  ':malloc'  ':0',
+        'Perl_safesyscalloc'  ':calloc'  ':1:0',
+        'Perl_safesysrealloc' ':realloc' ':1',
+        'Perl_safesysfree'    ':free'    ':-1',
+
+        # 403.gcc
+        'ggc_alloc'           ':malloc'  ':0',
+        'alloc_anon'          ':malloc'  ':1',
+        'xmalloc'             ':malloc'  ':0',
+        'xcalloc'             ':calloc'  ':1:0',
+        'xrealloc'            ':realloc' ':1',
+    ))]
+
 
 def _unindent(cmd):
     stripped = re.sub(r'^\n|\n *$', '', cmd)
