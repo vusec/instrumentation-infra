@@ -5,12 +5,49 @@
 
 using namespace llvm;
 
-static inline const DataLayout &getDL(Instruction &I) {
+static inline const DataLayout &getDL(const Instruction &I) {
     return I.getModule()->getDataLayout();
 }
 
-static inline Constant *getInt(Instruction &I, unsigned N) {
+static inline Constant *getInt(const Instruction &I, unsigned N) {
     return ConstantInt::get(getDL(I).getLargestLegalIntType(I.getContext()), N);
+}
+
+void MemAccess::setPointer(Value *P) {
+    if (LoadInst *LI = dyn_cast<LoadInst>(I)) {
+        LI->setOperand(LI->getPointerOperandIndex(), P);
+    } else if (StoreInst *SI = dyn_cast<StoreInst>(I)) {
+        SI->setOperand(SI->getPointerOperandIndex(), P);
+    } else if (AtomicCmpXchgInst *CX = dyn_cast<AtomicCmpXchgInst>(I)) {
+        CX->setOperand(CX->getPointerOperandIndex(), P);
+    } else if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(I)) {
+        RMW->setOperand(RMW->getPointerOperandIndex(), P);
+    } else if (MemTransferInst *MT = dyn_cast<MemTransferInst>(I)) {
+        if (IsRead)
+            MT->setSource(P);
+        else
+            MT->setDest(P);
+    } else if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(I)) {
+        MI->setDest(P);
+    } else {
+        assert(!"invalid instruction");
+    }
+    Pointer = P;
+}
+
+void MemAccess::setValue(Value *V) {
+    assert(isWrite() && "can only set value of writes");
+    if (StoreInst *SI = dyn_cast<StoreInst>(I)) {
+        SI->setOperand(0, V);
+    } else if (AtomicCmpXchgInst *CX = dyn_cast<AtomicCmpXchgInst>(I)) {
+        CX->setOperand(2, V);
+    } else if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(I)) {
+        RMW->setOperand(1, V);
+    } else if (MemSetInst *MS = dyn_cast<MemSetInst>(I)) {
+        MS->setValue(V);
+    } else {
+        assert(!"invalid instruction");
+    }
 }
 
 void MemAccess::print(raw_ostream &O) const {
@@ -49,7 +86,7 @@ MemRead::MemRead(AtomicRMWInst &RMW)
         RMW.getPointerOperand()->getPointerAlignment(getDL(RMW)),
         true) {}
 
-const MemRead MemRead::Create(Instruction &I) {
+MemRead MemRead::Create(Instruction &I) {
     if (LoadInst *LI = dyn_cast<LoadInst>(&I))
         return MemRead(*LI);
     if (MemTransferInst *MT = dyn_cast<MemTransferInst>(&I))
@@ -96,7 +133,7 @@ MemWrite::MemWrite(AtomicRMWInst &RMW)
         RMW.getPointerOperand()->getPointerAlignment(getDL(RMW)),
         false) {}
 
-const MemWrite MemWrite::Create(Instruction &I) {
+MemWrite MemWrite::Create(Instruction &I) {
     if (StoreInst *SI = dyn_cast<StoreInst>(&I))
         return MemWrite(*SI);
     if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I))

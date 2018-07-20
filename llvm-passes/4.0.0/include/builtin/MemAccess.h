@@ -34,27 +34,25 @@ public:
     inline Instruction *getInstruction() const { return I; }
     inline Value *getPointer()           const { return Pointer; }
     inline Value *getLength()            const { return Length; }
-    inline bool hasReadValue()           const { return isa<LoadInst>(I); }
-    inline Value *getReadValue()         const { return cast<LoadInst>(I); }
+    inline bool hasValue()               const { return IsRead ? isa<LoadInst>(I) : isa<StoreInst>(I); }
+    inline Value *getValue()             const { return IsRead ? cast<LoadInst>(I) :
+                                                        cast<StoreInst>(I)->getValueOperand(); }
     inline unsigned getAlignment()       const { return Alignment; }
     inline bool isRead()                 const { return IsRead; }
     inline bool isWrite()                const { return !IsRead; }
     inline bool isAtomic()               const { return isa<AtomicCmpXchgInst>(I) || isa<AtomicRMWInst>(I); }
-
     inline bool hasConstLength()         const { return isa<ConstantInt>(Length); }
     inline uint64_t getConstLength()     const { return cast<ConstantInt>(Length)->getZExtValue(); }
 
-    inline bool isValid()                const { return I != nullptr; }
-    inline operator bool()               const { return isValid(); }
+    void setPointer(Value *P);
+    void setValue(Value *V);
 
-    inline void dump()                   const { print(dbgs()); dbgs() << "\n"; }
-    const std::string toString()         const {
-        std::string s;
-        raw_string_ostream ss(s);
-        print(ss);
-        return s;
-    }
-    void print(raw_ostream &O) const;
+    inline bool isValid()  const { return I != nullptr; }
+    inline operator bool() const { return isValid(); }
+
+    inline void dump()           const { print(dbgs()); dbgs() << '\n'; }
+    const std::string toString() const { std::string s; raw_string_ostream ss(s); print(ss); return s; }
+    void print(raw_ostream &O)   const;
 };
 
 class MemRead : public MemAccess {
@@ -68,7 +66,7 @@ public:
     MemRead(AtomicCmpXchgInst &CX);
     MemRead(AtomicRMWInst &RMW);
     MemRead(Instruction &I);
-    static const MemRead Create(Instruction &I);
+    static MemRead Create(Instruction &I);
 };
 
 class MemWrite : public MemAccess {
@@ -82,7 +80,7 @@ public:
     MemWrite(AtomicCmpXchgInst &CX);
     MemWrite(AtomicRMWInst &RMW);
     MemWrite(Instruction &I);
-    static const MemWrite Create(Instruction &I);
+    static MemWrite Create(Instruction &I);
 };
 
 template<typename inst_iterator>
@@ -94,9 +92,11 @@ class MemAccessIterator {
 public:
     typedef std::input_iterator_tag iterator_category;
     typedef signed                  difference_type;
-    typedef const MemAccess         value_type;
-    typedef const MemAccess*        pointer;
-    typedef const MemAccess&        reference;
+    typedef MemAccess               value_type;
+    typedef MemAccess*              pointer;
+    typedef MemAccess&              reference;
+    typedef const MemAccess*        const_pointer;
+    typedef const MemAccess&        const_reference;
 
     MemAccessIterator() = delete;
     MemAccessIterator(inst_iterator B, inst_iterator E)
@@ -130,8 +130,10 @@ public:
         return tmp;
     }
 
-    inline reference operator*()  const { return MA; }
-    inline pointer   operator->() const { return &operator*(); }
+    inline reference       operator*()        { return MA; }
+    inline const_reference operator*()  const { return MA; }
+    inline pointer         operator->()       { return &operator*(); }
+    inline const_pointer   operator->() const { return &operator*(); }
 
     inline bool atEnd() const { return I == E; }
 
@@ -146,41 +148,41 @@ private:
     }
 };
 
-typedef MemAccessIterator<inst_iterator>        func_memaccess_iterator;
-typedef iterator_range<func_memaccess_iterator> func_memaccess_range;
-typedef MemAccessIterator<BasicBlock::iterator> bb_memaccess_iterator;
-typedef iterator_range<bb_memaccess_iterator>   bb_memaccess_range;
+typedef MemAccessIterator<inst_iterator>        func_ma_iterator;
+typedef iterator_range<func_ma_iterator>        func_ma_range;
+typedef MemAccessIterator<BasicBlock::iterator> bb_ma_iterator;
+typedef iterator_range<bb_ma_iterator>          bb_ma_range;
 
-static inline func_memaccess_iterator memaccess_begin(Function &F) {
-    return func_memaccess_iterator(inst_begin(F), inst_end(F));
+static inline func_ma_iterator ma_begin(Function &F) {
+    return func_ma_iterator(inst_begin(F), inst_end(F));
 }
-static inline func_memaccess_iterator memaccess_end(Function &F) {
-    return func_memaccess_iterator(inst_end(F), inst_end(F));
+static inline func_ma_iterator ma_end(Function &F) {
+    return func_ma_iterator(inst_end(F), inst_end(F));
 }
-static inline func_memaccess_range memaccesses(Function &F) {
-    return func_memaccess_range(memaccess_begin(F), memaccess_end(F));
-}
-
-static inline bb_memaccess_iterator memaccess_begin(BasicBlock &BB) {
-    return bb_memaccess_iterator(BB.begin(), BB.end());
-}
-static inline bb_memaccess_iterator memaccess_end(BasicBlock &BB) {
-    return bb_memaccess_iterator(BB.end(), BB.end());
-}
-static inline bb_memaccess_range memaccesses(BasicBlock &BB) {
-    return bb_memaccess_range(memaccess_begin(BB), memaccess_end(BB));
+static inline func_ma_range memaccesses(Function &F) {
+    return func_ma_range(ma_begin(F), ma_end(F));
 }
 
-static inline bb_memaccess_iterator memaccess_begin(Instruction &I) {
+static inline bb_ma_iterator ma_begin(BasicBlock &BB) {
+    return bb_ma_iterator(BB.begin(), BB.end());
+}
+static inline bb_ma_iterator ma_end(BasicBlock &BB) {
+    return bb_ma_iterator(BB.end(), BB.end());
+}
+static inline bb_ma_range memaccesses(BasicBlock &BB) {
+    return bb_ma_range(ma_begin(BB), ma_end(BB));
+}
+
+static inline bb_ma_iterator ma_begin(Instruction &I) {
     BasicBlock::iterator B(I), E = B;
-    return bb_memaccess_iterator(B, ++E);
+    return bb_ma_iterator(B, ++E);
 }
-static inline bb_memaccess_iterator memaccess_end(Instruction &I) {
+static inline bb_ma_iterator ma_end(Instruction &I) {
     BasicBlock::iterator E(I);
-    return bb_memaccess_iterator(++E, E);
+    return bb_ma_iterator(++E, E);
 }
-static inline bb_memaccess_range memaccesses(Instruction &I) {
-    return bb_memaccess_range(memaccess_begin(I), memaccess_end(I));
+static inline bb_ma_range memaccesses(Instruction &I) {
+    return bb_ma_range(ma_begin(I), ma_end(I));
 }
 
-#endif // MEMACCESS_H
+#endif // ma_H
