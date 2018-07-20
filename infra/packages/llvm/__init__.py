@@ -119,7 +119,7 @@ class LLVM(Package):
             'cmake',
             '-G', 'Ninja',
             '-DCMAKE_INSTALL_PREFIX=' + self.path(ctx, 'install'),
-            '-DLLVM_BINUTILS_INCDIR=' + self.binutils.path(ctx, 'src/include'),
+            '-DLLVM_BINUTILS_INCDIR=' + self.binutils.path(ctx, 'install/include'),
             '-DCMAKE_BUILD_TYPE=Release',
             '-DLLVM_ENABLE_ASSERTIONS=On',
             '-DLLVM_OPTIMIZED_TABLEGEN=On',
