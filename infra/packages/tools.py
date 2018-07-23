@@ -270,7 +270,7 @@ class BenchmarkUtils(Tool):
     @staticmethod
     def merge_results(results: Iterable[ParsedResult]) -> ParsedResult:
         """
-        Merge several results into one (typically for the same benchmarks).
+        Merge several results into one (typically for the same benchmark).
 
         Duplicate keys are aggregated based on their names: keys starting with
         an underscore are special. Values for keys starting with "_max",
