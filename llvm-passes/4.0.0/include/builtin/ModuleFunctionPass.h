@@ -8,8 +8,8 @@
 
 using namespace llvm;
 
-struct CustomFunctionPass : public ModulePass {
-    CustomFunctionPass(char &ID) : ModulePass(ID) {}
+struct ModuleFunctionPass : public ModulePass {
+    ModuleFunctionPass(char &ID) : ModulePass(ID) {}
     bool runOnModule(Module &M) override {
         bool Changed = initializeModule(M);
 
