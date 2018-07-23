@@ -560,23 +560,18 @@ class SPEC2006(Target):
                                         'was probably an error' % path)
                     inputres += res
 
-                if inputres:
-                    # report only the worst case of all input sets
-                    maxrss = max(r.maxrss_kb for r in inputres)
-                    maxpagefaults = max(r.page_faults for r in inputres)
-                    maxcswitch = max(r.context_switches for r in inputres)
-                else:
-                    maxrss = maxpagefaults = maxcswitch = None
+                # merge counter results found in different invocations,
+                # computing aggregates based on keys
+                counters = BenchmarkUtils.merge_results(inputres)
 
                 yield {
                     'benchmark': benchmark,
                     'success': status == 'Success',
                     'workload': workload,
                     'runtime_sec': float(runtime),
-                    'maxrss_kb': maxrss,
-                    'maxpagefaults': maxpagefaults,
-                    'maxcontextswitches': maxcswitch,
-                    'hostname': hostname
+                    'hostname': hostname,
+                    'inputs': len(errfiles),
+                    **counters
                 }
                 error_benchmarks.remove(benchmark)
                 m = pat.search(logcontents, m.end())
@@ -648,10 +643,6 @@ class SPEC2006(Target):
                     baseline = iname
                     break
 
-        if baseline:
-            ctx.log.debug('using %s instance as baseline' % baseline)
-        elif only_overhead:
-            raise FatalError('no baseline found for overhead computation')
         else:
             ctx.log.debug('no baseline found, not computing overheads')
 
@@ -692,9 +683,9 @@ class SPEC2006(Target):
                     entry.rt_mean = statistics.mean(runtimes)
 
                     # memory usage
-                    if 'maxrss_kb' in bresults[0]:
+                    if 'max_rss_kb' in bresults[0]:
                         have_memdata = True
-                        memdata = [r['maxrss_kb'] for r in bresults]
+                        memdata = [r['max_rss_kb'] for r in bresults]
                         entry.mem_max = max(memdata)
 
                     # standard deviations

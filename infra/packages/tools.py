@@ -3,6 +3,7 @@ import io
 import argparse
 from os.path import exists, join
 from abc import ABCMeta
+from collections import defaultdict
 from typing import Dict, List, Iterator, Iterable, Any, Optional
 from ..package import Package
 from ..instance import Instance
@@ -265,6 +266,45 @@ class BenchmarkUtils(Tool):
         if result is not None:
             ctx.log.error('%s begin statement without end in %s' %
                           (cls.prefix, path))
+
+    @staticmethod
+    def merge_results(results: Iterable[ParsedResult]) -> ParsedResult:
+        """
+        Merge several results into one (typically for the same benchmarks).
+
+        Duplicate keys are aggregated based on their names: keys starting with
+        an underscore are special. Values for keys starting with "_max",
+        "_min", "_sum", "_any" or "_all" are aggregated by the corresponding
+        built-in function. The leading underscore is removed in the merged result.
+
+        Other duplicate keys (without leading underscore) are merged by joining
+        all values in a comma-separated string.
+
+        :param results: results to merge
+        :returns: a single result with aggregated values
+        """
+        merged = defaultdict(list)
+        for res in results:
+            for k, v in res.items():
+                merged[k].append(v)
+
+        aggregators = {'_max': max, '_min': min, '_sum': sum,
+                       '_any': any, '_all': all}
+        aggregated = {}
+        for key, values in merged.items():
+            if key.startswith('_'):
+                for aggrid, fn in aggregators.items():
+                    if key.startswith(aggrid):
+                        aggregated[key[1:]] = fn(values)
+                        break
+                else:
+                    raise FatalError('unknown aggregator in ' + key)
+            elif len(values) == 1:
+                aggregated[key] = values[0] # avoid string cast below
+            else:
+                aggregated[key] = ','.join(str(v) for v in values)
+
+        return aggregated
 
 
 def _box_value(value):
