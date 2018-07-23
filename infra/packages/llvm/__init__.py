@@ -123,6 +123,8 @@ class LLVM(Package):
             '-DCMAKE_BUILD_TYPE=Release',
             '-DLLVM_ENABLE_ASSERTIONS=On',
             '-DLLVM_OPTIMIZED_TABLEGEN=On',
+            '-DCMAKE_C_COMPILER=gcc',
+            '-DCMAKE_CXX_COMPILER=g++', # must be the same as used for compiling passes
             *self.build_flags,
             '../src'
         ])
