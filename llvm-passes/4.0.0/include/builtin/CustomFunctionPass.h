@@ -1,19 +1,12 @@
 #ifndef CUSTOM_FUNCTION_PASS_H
 #define CUSTOM_FUNCTION_PASS_H
 
-#include "Common.h"
+#include <llvm/Pass.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/Function.h>
+#include "NoInstrument.h"
 
 using namespace llvm;
-
-static bool shouldInstrument(Function &F) {
-    if (F.isDeclaration())
-        return false;
-
-    if (isNoInstrument(&F))
-        return false;
-
-    return true;
-}
 
 struct CustomFunctionPass : public ModulePass {
     CustomFunctionPass(char &ID) : ModulePass(ID) {}

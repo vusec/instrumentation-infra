@@ -1,5 +1,5 @@
-#ifndef COMMON_UTILS_H
-#define COMMON_UTILS_H
+#ifndef BUILTIN_COMMON_H
+#define BUILTIN_COMMON_H
 
 #include <llvm/Pass.h>
 #include <llvm/IR/Module.h>
@@ -34,22 +34,9 @@
 #include <cassert>
 #include <sstream>
 
-#define NOINSTRUMENT_PREFIX "__noinstrument_"
-
-#define ifcast(ty, var, val) if (ty *var = dyn_cast<ty>(val))
-#define ifncast(ty, var, val) ty *var = dyn_cast<ty>(val); if (var == nullptr)
-#define foreach(ty, var, arr) for (auto *_I : (arr)) if (ty *var = cast<ty>(_I))
-#define foreach_func_inst(fn, var) \
-    for (inst_iterator _II = inst_begin(fn), _E = inst_end(fn); _II != _E; ++_II) \
-        if (Instruction *var = &*_II)
-
-#ifdef DEBUG_TYPE
-#define LOG_LINE(line) (llvm::dbgs() << "[" << DEBUG_TYPE << "] " << line << '\n')
-#else
-#define LOG_LINE(line) (llvm::dbgs() << line << '\n')
-#endif
-
-#define DEBUG_LINE(line) DEBUG(LOG_LINE(line))
+#include "NoInstrument.h"
+#include "Casting.h"
+#include "Logging.h"
 
 using namespace llvm;
 
@@ -95,19 +82,6 @@ inline int getOperandNo(User *U, Value *Op, bool AllowMissing=false) {
     return -1;
 }
 
-bool isNoInstrument(Value *V);
-
-void setNoInstrument(Value *V);
-
-inline bool shouldInstrument(Function *F) {
-    return !isNoInstrument(F);
-}
-
-Function* createNoInstrumentFunction(Module &M,
-        FunctionType *FnTy, StringRef Name, bool AlwaysInline=true);
-Function* getNoInstrumentFunction(Module &M, StringRef Name, bool AllowMissing=false);
-Function* getOrInsertNoInstrumentFunction(Module &M, StringRef Name, FunctionType *Ty);
-
 inline bool isUnionType(Type *Ty) {
     return Ty->isStructTy() && Ty->getStructName().startswith("union.");
 }
@@ -134,4 +108,4 @@ inline T *getSingleUser(Value *V) {
     return cast<T>(*V->user_begin());
 }
 
-#endif /* !COMMON_UTILS_H */
+#endif // BUILTIN_COMMON_H
