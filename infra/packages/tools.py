@@ -268,14 +268,30 @@ class BenchmarkUtils(Tool):
                           (cls.prefix, path))
 
     @staticmethod
-    def merge_results(results: Iterable[ParsedResult]) -> ParsedResult:
+    def aggregate_values(values: Iterable[Any], key: str) -> Any:
+        aggregators = {'_max': max, '_min': min, '_sum': sum,
+                       '_any': any, '_all': all}
+        if key.startswith('_'):
+            for aggrid, fn in aggregators.items():
+                if key.startswith(aggrid):
+                    return fn(values)
+            raise FatalError('unknown aggregator in ' + key)
+        else:
+            values = list(values)
+            if len(values) == 1:
+                return values[0] # avoid string cast below
+            else:
+                return ','.join(str(v) for v in values)
+
+    @classmethod
+    def merge_results(cls, results: Iterable[ParsedResult]) -> ParsedResult:
         """
         Merge several results into one (typically for the same benchmark).
 
         Duplicate keys are aggregated based on their names: keys starting with
         an underscore are special. Values for keys starting with "_max",
         "_min", "_sum", "_any" or "_all" are aggregated by the corresponding
-        built-in function. The leading underscore is removed in the merged result.
+        built-in function.
 
         Other duplicate keys (without leading underscore) are merged by joining
         all values in a comma-separated string.
@@ -287,24 +303,7 @@ class BenchmarkUtils(Tool):
         for res in results:
             for k, v in res.items():
                 merged[k].append(v)
-
-        aggregators = {'_max': max, '_min': min, '_sum': sum,
-                       '_any': any, '_all': all}
-        aggregated = {}
-        for key, values in merged.items():
-            if key.startswith('_'):
-                for aggrid, fn in aggregators.items():
-                    if key.startswith(aggrid):
-                        aggregated[key[1:]] = fn(values)
-                        break
-                else:
-                    raise FatalError('unknown aggregator in ' + key)
-            elif len(values) == 1:
-                aggregated[key] = values[0] # avoid string cast below
-            else:
-                aggregated[key] = ','.join(str(v) for v in values)
-
-        return aggregated
+        return {k: cls.aggregate_values(v, k) for k, v in merged.items()}
 
 
 def _box_value(value):

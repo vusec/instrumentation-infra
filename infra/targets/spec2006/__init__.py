@@ -179,6 +179,9 @@ class SPEC2006(Target):
         parser.add_argument('-x', '--exclude', action='append',
                 default=[], choices=self.benchmarks['all'],
                 help='benchmarks to exclude from results')
+        parser.add_argument('-f', '--add-field', action='append',
+                dest='add_fields', default=[],
+                help='add column for result field (use to report counters)')
 
         group = parser.add_mutually_exclusive_group()
         group.add_argument('--csv',
@@ -683,9 +686,9 @@ class SPEC2006(Target):
                     entry.rt_mean = statistics.mean(runtimes)
 
                     # memory usage
-                    if 'max_rss_kb' in bresults[0]:
+                    if '_max_rss_kb' in bresults[0]:
                         have_memdata = True
-                        memdata = [r['max_rss_kb'] for r in bresults]
+                        memdata = [r['_max_rss_kb'] for r in bresults]
                         entry.mem_max = max(memdata)
 
                     # standard deviations
@@ -709,8 +712,14 @@ class SPEC2006(Target):
                         if have_memdata:
                             entry.mem_stdev = '-'
 
+                    # custom counters
+                    for field in args.add_fields:
+                        field_data = (r[field] for r in bresults)
+                        entry[field] = BenchmarkUtils.aggregate_values(field_data, field)
+
                     # benchmark iterations
                     entry.iters = len(bresults)
+
                 elif any(r.get('timeout', False) for r in bresults):
                     entry.status = colored('TIMEOUT', 'red', attrs=['bold'])
                 else:
@@ -765,6 +774,8 @@ class SPEC2006(Target):
             if have_memdata:
                 columns += ['mem_max', 'mem_stdev']
             columns.append('iters')
+        for field in args.add_fields:
+            columns.append(field)
 
         column_heads = {
             'status': '\nstatus',
@@ -783,7 +794,8 @@ class SPEC2006(Target):
         for key in columns:
             for iname in instances:
                 if not key.endswith('_overhead') or iname != baseline:
-                    header_full.append(column_heads[key] + '\n' + iname)
+                    head = column_heads.get(key, '\n' + key)
+                    header_full.append(head + '\n' + iname)
                     header_keys.append(key + '-' + iname)
 
         # data rows
