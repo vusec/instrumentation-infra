@@ -6,7 +6,7 @@ CXXFLAGS := $(CFLAGS)
 LDFLAGS  :=
 LDLIBS   :=
 LIB      := libbenchutils.a
-SRCS     := rusage.c
+SRCS     := stats.c
 OBJS     := $(patsubst %.c,$(OBJDIR)/%.o,$(SRCS))
 DEPS     := $(OBJS:%.o=%.d)
 
