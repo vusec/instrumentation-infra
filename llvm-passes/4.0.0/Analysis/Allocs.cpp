@@ -1,9 +1,10 @@
 #include <map>
-#include <set>
-#include "Common.h"
-#include "Allocs.h"
 
 #define DEBUG_TYPE "allocs"
+
+#include "Common.h" // TODO: replace with specific includes
+#include "Utils/NoInstrument.h"
+#include "Analysis/Allocs.h"
 
 using namespace llvm;
 

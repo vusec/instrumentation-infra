@@ -1,5 +1,5 @@
-#ifndef MEMACCESS_H
-#define MEMACCESS_H
+#ifndef BUILTIN_MEM_ACCESS_H
+#define BUILTIN_MEM_ACCESS_H
 
 #include <llvm/IR/Value.h>
 #include <llvm/IR/Instructions.h>
@@ -185,4 +185,4 @@ static inline bb_ma_range memaccesses(Instruction &I) {
     return bb_ma_range(ma_begin(I), ma_end(I));
 }
 
-#endif // ma_H
+#endif // BUILTIN_MEM_ACCESS_H

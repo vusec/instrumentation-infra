@@ -34,9 +34,9 @@
 #include <cassert>
 #include <sstream>
 
-#include "NoInstrument.h"
-#include "Casting.h"
-#include "Logging.h"
+#include "Utils/NoInstrument.h"
+#include "Utils/Casting.h"
+#include "Utils/Logging.h"
 
 using namespace llvm;
 

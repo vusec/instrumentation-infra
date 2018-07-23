@@ -1,6 +1,6 @@
 #include <string>
 #include <llvm/Support/raw_ostream.h>
-#include "NoInstrument.h"
+#include "Utils/NoInstrument.h"
 
 using namespace llvm;
 

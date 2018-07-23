@@ -1,5 +1,5 @@
-#ifndef CUSTOM_FUNCTION_PASS_H
-#define CUSTOM_FUNCTION_PASS_H
+#ifndef BUILTIN_CUSTOM_FUNCTION_PASS_H
+#define BUILTIN_CUSTOM_FUNCTION_PASS_H
 
 #include <llvm/Pass.h>
 #include <llvm/IR/Module.h>
@@ -29,4 +29,4 @@ protected:
     virtual bool finalizeModule(Module &M) { return false; }
 };
 
-#endif /* !CUSTOM_FUNCTION_PASS_H */
+#endif // BUILTIN_CUSTOM_FUNCTION_PASS_H

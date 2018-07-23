@@ -1,5 +1,5 @@
-#ifndef ALLOCS_H
-#define ALLOCS_H
+#ifndef BUILTIN_ALLOCS_H
+#define BUILTIN_ALLOCS_H
 
 #include <llvm/Pass.h>
 #include <llvm/IR/Value.h>
@@ -191,4 +191,4 @@ public:
     bool isInBounds(const MemAccess &MA);
 };
 
-#endif /* !ALLOCS_H */
+#endif // BUILTIN_ALLOCS_H
