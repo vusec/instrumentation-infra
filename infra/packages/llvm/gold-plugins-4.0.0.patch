@@ -91,12 +91,12 @@ index 809db80..4fec4c8 100644
 +    }
 +  }
 +
-+  if (PassList.size() != 0)
++  if (PassList.size() != 0) {
 +    if (IsThinLTO)
-+    PMB.populateThinLTOPassManager(passes);
-+  else
-+    PMB.populateLTOPassManager(passes);
-+
++      PMB.populateThinLTOPassManager(passes);
++    else
++      PMB.populateLTOPassManager(passes);
++  }
 +  std::unique_ptr<tool_output_file> Out;
 +  if (LLOutputFilename != "") {
 +    std::error_code EC;
