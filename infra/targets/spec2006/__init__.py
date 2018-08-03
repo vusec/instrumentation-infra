@@ -159,9 +159,6 @@ class SPEC2006(Target):
         parser.add_argument('--test', action='store_true',
                 help='run a single iteration of the test workload')
         group = parser.add_mutually_exclusive_group()
-        group.add_argument('--measuremem', action='store_true',
-                help='measure memory usage (single run, does not support '
-                     'runspec arguments)')
         group.add_argument('--runspec-args',
                 nargs=argparse.REMAINDER, default=[],
                 help='additional arguments for runspec')
@@ -311,12 +308,7 @@ class SPEC2006(Target):
         if self.force_cpu >= 0:
             wrapper += ' taskset -c %d' % self.force_cpu
 
-        if ctx.args.measuremem:
-            cmd = 'runspec --config={config} --action=setup {runargs} %s\n' \
-                  '{wrapper} {config_root}/measuremem.py {output_root} {config} {{bench}}'
-        else:
-            cmd = '{wrapper} runspec --config={config} --nobuild {runargs} {{bench}}'
-
+        cmd = '{wrapper} runspec --config={config} --nobuild {runargs} {{bench}}'
         cmd = cmd.format(**locals())
 
         benchmarks = self._get_benchmarks(ctx, instance)
