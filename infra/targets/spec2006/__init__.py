@@ -203,11 +203,12 @@ class SPEC2006(Target):
         elif self.source_type == 'tarfile':
             ctx.log.debug('extracting SPEC-CPU2006 source files')
             run(ctx, ['tar', 'xf', self.source])
-            srcdir = re.sub(r'(\.tar\.gz|\.tgz)$', '', self.source)
+            srcdir = re.sub(r'(\.tar\.gz|\.tgz)$', '', os.path.basename(self.source))
             if not os.path.exists(srcdir):
                 raise FatalError('extracted SPEC tarfile in %s, could not find '
                                  '%s/ afterwards' % (os.getcwd(), srcdir))
             shutil.move(srcdir, 'src')
+            os.chdir('src')
         elif self.source_type == 'git':
             ctx.log.debug('cloning SPEC-CPU2006 repo')
             run(ctx, ['git', 'clone', '--depth', 1, self.source, 'src'])
