@@ -202,9 +202,12 @@ class SPEC2006(Target):
             os.chdir(self.source)
         elif self.source_type == 'tarfile':
             ctx.log.debug('extracting SPEC-CPU2006 source files')
-            os.makedirs('src', exist_ok=True)
-            os.chdir('src')
             run(ctx, ['tar', 'xf', self.source])
+            srcdir = re.sub(r'(\.tar\.gz|\.tgz)$', '', self.source)
+            if not os.path.exists(srcdir):
+                raise FatalError('extracted SPEC tarfile in %s, could not find '
+                                 '%s/ afterwards' % (os.getcwd(), srcdir))
+            shutil.move(srcdir, 'src')
         elif self.source_type == 'git':
             ctx.log.debug('cloning SPEC-CPU2006 repo')
             run(ctx, ['git', 'clone', '--depth', 1, self.source, 'src'])
@@ -219,7 +222,10 @@ class SPEC2006(Target):
 
         if self.source_type in ('tarfile', 'git'):
             ctx.log.debug('removing SPEC-CPU2006 source files to save disk space')
-            shutil.rmtree(self.path(ctx, 'src'))
+            # make removed files writable to avoid permission errors
+            srcdir = self.path(ctx, 'src')
+            run(ctx, ['chmod', '-R', 'u+w', srcdir])
+            shutil.rmtree(srcdir)
 
     def _install_path(self, ctx, *args):
         if self.source_type == 'installed':
