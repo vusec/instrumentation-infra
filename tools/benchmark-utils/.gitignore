@@ -1,5 +1,7 @@
 *.o
 *.so
 *.a
-hello
-plushello
+*.d
+test/hello
+test/fork
+test/plushello

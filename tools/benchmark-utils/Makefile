@@ -9,10 +9,11 @@ LIB      := libbenchutils.a
 SRCS     := stats.c
 OBJS     := $(patsubst %.c,$(OBJDIR)/%.o,$(SRCS))
 DEPS     := $(OBJS:%.o=%.d)
+BINS     := test/hello test/fork test/plushello
 
 .PHONY: all clean install uninstall
 
-all: hello plushello $(OBJDIR)/$(LIB)
+all: $(BINS) $(OBJDIR)/$(LIB)
 
 $(OBJDIR)/$(LIB): $(OBJS)
 	ar rcs $@ $^
@@ -31,7 +32,7 @@ $(OBJDIR)/%.o: %.c | $(OBJDIR)
 	    -l:libbenchutils.a -Wl,--no-whole-archive
 
 clean:
-	rm -f $(LIB) $(OBJS) $(DEPS)
+	rm -f $(LIB) $(BINS) $(OBJS) $(DEPS)
 
 install: $(INSTALLDIR)/lib/$(LIB)
 
