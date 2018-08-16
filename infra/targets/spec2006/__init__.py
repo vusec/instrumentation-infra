@@ -75,10 +75,15 @@ class SPEC2006(Target):
     the entire SPEC directory. The script depends on a couple of Python
     libraries for its output::
 
-        pip install [--user] terminaltables termcolor
+        pip3 install [--user] terminaltables termcolor
 
     Some useful command-line options change what is displayed by ``report``:
 
+    #. ``--fields`` changes which data fields are printed. A column is added
+       for each instance for each field. The options are autocompleted and
+       default to status, overheads, runtime, memory usage, stddevs and
+       iterations. Custom counter fields from runtime libraries can also be
+       specified (but are not autocompleted).
     #. ``--baseline`` changes the baseline for overhead computation. By
        default, the script looks for **baseline**, **clang-lto** and **clang**
        (in that order).
@@ -88,7 +93,6 @@ class SPEC2006(Target):
     #. ``--nodes`` adds a (possibly very large) table of runtimes of individual
        nodes. This is useful for identifying bad nodes on the DAS-5 when
        some standard deviations are high while using ``--parallel prun``.
-    #. ``--brief`` only prints the overhead columns of the table.
     #. ``--ascii`` disables UTF-8 output so that output can be saved to a log
        file or piped to ``less``.
 
@@ -164,11 +168,14 @@ class SPEC2006(Target):
                 help='additional arguments for runspec')
 
     def add_report_args(self, parser):
+        default_report_fields = (
+            'status', 'rt_median_overhead', 'maxrss_overhead', 'rt_median',
+            'rt_stdev', 'maxrss', 'maxrss_stdev', 'iters'
+        )
+
         self.butils.add_report_args(parser)
         parser.add_argument('--baseline', metavar='INSTANCE',
                 help='baseline instance for overheads')
-        parser.add_argument('--brief', action='store_true',
-                help='only show overhead numbers')
         parser.add_argument('--ascii', action='store_true',
                 help='print ASCII tables instead of UTF-8 formatted ones')
         parser.add_argument('--nodes', action='store_true',
@@ -176,11 +183,22 @@ class SPEC2006(Target):
         parser.add_argument('-x', '--exclude', action='append',
                 default=[], choices=self.benchmarks['all'],
                 help='benchmarks to exclude from results')
-        parser.add_argument('-f', '--field', nargs='+', metavar='FIELD',
-                dest='add_fields', default=[],
-                help='add column for result field (use to report counters), '
-                     'e.g.: _max_rss_kb, _sum_page_faults, _sum_io_operations, '
-                     '_sum_context_switches, _sum_estimated_runtime_sec')
+        fieldopt = parser.add_argument('-f', '--fields', nargs='+',
+                metavar='FIELD', default=default_report_fields,
+                help='set reported fields (default: status, overheads, '
+                     'runtime, memory usage, stddevs, iterations)')
+        parser.add_argument('--refresh', action='store_true',
+                help='refresh cached results by reparsing logs')
+
+        try:
+            # autocomplete fields but allow other options as well for custom
+            # counters reported in runtime libraries (otherwise we would pass
+            # the `choices` argument above)
+            from argcomplete.completers import ChoicesCompleter
+            fieldopt.completer = ChoicesCompleter(default_report_fields +
+                                                  self.butils.counter_fields)
+        except ImportError:
+            pass
 
         group = parser.add_mutually_exclusive_group()
         group.add_argument('--csv',
@@ -566,15 +584,21 @@ class SPEC2006(Target):
 
                 # merge counter results found in different invocations,
                 # computing aggregates based on keys
-                counters = BenchmarkUtils.merge_results(inputres)
+                counters = BenchmarkUtils.merge_results(inputres, False)
+                if '_max_maxrss' in counters:
+                    counters['_stdev_maxrss_stdev'] = counters['_max_maxrss']
 
+                runtime = float(runtime)
                 yield {
                     'benchmark': benchmark,
                     'success': status == 'Success',
                     'workload': workload,
-                    'runtime_sec': float(runtime),
                     'hostname': hostname,
-                    'inputs': len(errfiles),
+                    '_median_rt_median': runtime,
+                    '_mean_rt_mean': runtime,
+                    '_stdev_rt_stdev': runtime,
+                    '_same_inputs': len(errfiles),
+                    '_sum_iters': 1,
                     **counters
                 }
                 error_benchmarks.remove(benchmark)
@@ -604,8 +628,9 @@ class SPEC2006(Target):
             }
 
     def report(self, ctx, instances, outfile, args):
-        results = self.butils.parse_logs(ctx, instances, args.rundirs)
-        only_overhead = args.brief
+        results = self.butils.parse_logs(ctx, instances, args.rundirs,
+                                         write_cache=True,
+                                         read_cache=not args.refresh)
         show_nodes_table = args.nodes
 
         # in --nodes table, highlight runtimes whose deviation from the mean
@@ -634,31 +659,47 @@ class SPEC2006(Target):
             def colored(text, *args, **kwargs):
                 return text
 
-        # determine baseline
-        baseline = None
+        # check if there are any overhead columns ...
+        fields = list(args.fields)
+        ohsuffix = '_overhead'
+        ohkeys = [re.sub(ohsuffix + '$', '', field)
+                  for field in fields if field.endswith(ohsuffix)]
 
-        if args.baseline:
-            baseline = args.baseline
-        elif len(results) > 1:
-            default_baselines = ('baseline', 'clang-lto', 'clang')
+        # ... if so, determine the overhead baseline
+        if ohkeys:
+            baseline = None
 
-            for iname in default_baselines:
-                if iname in results:
-                    baseline = iname
-                    break
+            if args.baseline:
+                baseline = args.baseline
+            elif len(results) > 1:
+                default_baselines = ('baseline', 'clang-lto', 'clang')
 
-        else:
-            ctx.log.debug('no baseline found, not computing overheads')
+                for iname in default_baselines:
+                    if iname in results:
+                        if baseline:
+                            raise FatalError(
+                                    'multiple baselines found (%s and %s), '
+                                    'please select one with --baseline' %
+                                    (baseline, iname))
+                        baseline = iname
+
+            if baseline is None:
+                if fields == self.default_report_fields:
+                    ctx.log.debug('no baseline found, not computing overheads')
+                    fields = [f for f in fields if not f.endswith(ohsuffix)]
+                    ohkeys = []
+                else:
+                    raise FatalError('no baseline found, cannot compute overheads')
 
         # sort instance names to avoid random table order
         instances = sorted(results)
 
         # compute aggregates
         benchdata = defaultdict(lambda: defaultdict(Namespace))
-        have_memdata = False
         workload = None
         node_zscores = defaultdict(lambda: defaultdict(list))
         node_runtimes = defaultdict(list)
+        from pprint import pprint
 
         for iname, iresults in results.items():
             grouped = {}
@@ -678,48 +719,25 @@ class SPEC2006(Target):
 
                 assert len(bresults)
                 entry = benchdata[bench][iname]
+
                 if all(r['success'] for r in bresults):
                     entry.status = colored('OK', 'green')
 
-                    # runtime
-                    runtimes = [r['runtime_sec'] for r in bresults]
-                    entry.rt_median = statistics.median(runtimes)
-                    entry.rt_mean = statistics.mean(runtimes)
+                    # aggregate the different results using field prefixes
+                    # above and strip the prefixes for readability
+                    entry.update(BenchmarkUtils.merge_results(bresults, True))
 
-                    # memory usage
-                    if '_max_rss_kb' in bresults[0]:
-                        have_memdata = True
-                        memdata = [r['_max_rss_kb'] for r in bresults]
-                        entry.mem_max = max(memdata)
-
-                    # standard deviations
-                    if len(bresults) > 1:
-                        entry.rt_stdev = stdev = statistics.pstdev(runtimes)
+                    # z-score per node
+                    if show_nodes_table and len(bresults) > 1:
+                        runtimes = (r['_mean_rt_mean'] for r in bresults)
                         entry.rt_variance = statistics.pvariance(runtimes)
-                        if have_memdata:
-                            entry.mem_stdev = statistics.stdev(memdata)
-
-                        # z-score per node
-                        mean_rt = statistics.mean(runtimes)
                         for r in bresults:
                             node = r['hostname']
-                            runtime = r['runtime_sec']
-                            zscore = (runtime - mean_rt) / stdev
+                            runtime = r['_mean_rt_mean']
+                            zscore = (runtime - entry.mean_rt) / entry.rt_stdev
                             node_zscores[node][bench].append(zscore)
                             node_runtimes[(node, bench, iname)].append(
                                     (runtime, zscore, r['outfile']))
-                    else:
-                        entry.rt_stdev = '-'
-                        if have_memdata:
-                            entry.mem_stdev = '-'
-
-                    # custom counters
-                    for field in args.add_fields:
-                        field_data = (r[field] for r in bresults)
-                        entry[field] = BenchmarkUtils.aggregate_values(field_data, field)
-
-                    # benchmark iterations
-                    entry.iters = len(bresults)
 
                 elif any(r.get('timeout', False) for r in bresults):
                     entry.status = colored('TIMEOUT', 'red', attrs=['bold'])
@@ -729,70 +747,41 @@ class SPEC2006(Target):
         ctx.log.debug('all benchmarks used the %s workload' % workload)
 
         # compute overheads compared to baseline
-        if baseline:
-            overheads_rt = defaultdict(list)
-            overheads_mem = defaultdict(list)
+        if len(ohkeys) and not args.nonhuman:
+            if not baseline:
+                raise FatalError('cannot compute overhead without baseline')
 
+            overheads = defaultdict(lambda: defaultdict(list))
             for bench, index in benchdata.items():
                 for iname, entry in index.items():
-                    baseline_entry = benchdata.get(bench, {}).get(baseline, None)
-
-                    if not baseline_entry:
-                        entry.rt_overhead = '-'
-                        entry.mem_overhead = '-'
-                        continue
-
-                    if 'rt_median' in entry and 'rt_median' in baseline_entry:
-                        baseline_runtime = baseline_entry.rt_median
-                        rt_overhead = entry.rt_median / baseline_runtime
-                        entry.rt_overhead = rt_overhead
-                        overheads_rt[iname].append(rt_overhead)
-                    else:
-                        entry.rt_overhead = '-'
-
-                    if have_memdata:
-                        if 'mem_max' in entry and 'mem_max' in baseline_entry:
-                            baseline_mem = baseline_entry.mem_max
-                            mem_overhead = entry.mem_max / baseline_mem
-                            entry.mem_overhead = mem_overhead
-                            overheads_mem[iname].append(mem_overhead)
+                    base_entry = benchdata.get(bench, {}).get(baseline, None)
+                    for key in ohkeys:
+                        field = key + ohsuffix
+                        if base_entry and key in entry and key in base_entry:
+                            entry[field] = oh = entry[key] / base_entry[key]
+                            overheads[field][iname].append(oh)
                         else:
-                            entry.mem_overhead = '-'
+                            entry[field] = '-'
 
-            geomeans_rt = {iname: geomean(oh) for iname, oh in overheads_rt.items()}
-            geomeans_mem = {iname: geomean(oh) for iname, oh in overheads_mem.items()}
-
-        # build column list based on which data is present
-        columns = []
-        if not only_overhead:
-            columns.append('status')
-        if baseline:
-            columns.append('rt_overhead')
-            if have_memdata:
-                columns.append('mem_overhead')
-        if not only_overhead:
-            columns += ['rt_median', 'rt_stdev']
-            if have_memdata:
-                columns += ['mem_max', 'mem_stdev']
-            columns.append('iters')
-        for field in args.add_fields:
-            columns.append(field)
-
-        column_heads = {
-            'status': '\nstatus',
-            'rt_overhead': 'runtime\noverhead',
-            'mem_overhead': 'memory\noverhead',
-            'rt_median': 'runtime\nmedian',
-            'rt_stdev': 'runtime\nstdev',
-            'mem_max': 'memory\nmax',
-            'mem_stdev': 'memory\nstdev',
-            'iters': '\niters'
-        }
+            geomeans = {}
+            for field, ohs in overheads.items():
+                geomeans[field] = {i: geomean(oh) for i, oh in ohs.items()}
+        else:
+            geomeans = None
 
         # header row
+        column_heads = {
+            'rt_median': 'runtime\nmedian',
+            'rt_stdev': 'runtime\nstdev',
+            'rt_median_overhead': 'runtime\noverhead',
+            'maxrss_stdev': 'memory\nstdev',
+            'maxrss_overhead': 'memory\noverhead',
+        }
+        column_heads.update(self.butils.counter_column_heads)
+
         header_full = ['\n\nbenchmark']
         header_keys = ['benchmark']
-        for key in columns:
+        for key in args.fields:
             for iname in instances:
                 if not key.endswith('_overhead') or iname != baseline:
                     head = column_heads.get(key, '\n' + key)
@@ -808,22 +797,21 @@ class SPEC2006(Target):
         body = []
         for bench, index in sorted(benchdata.items()):
             row = [bench]
-            for key in columns:
+            for key in args.fields:
                 for iname in instances:
                     if not key.endswith('_overhead') or iname != baseline:
                         row.append(cell(index.get(iname, {}).get(key, '')))
             body.append(row)
 
         # geomean row
-        if baseline and not args.nonhuman:
+        if geomeans:
             lastrow = ['geomean:']
-            if not only_overhead:
-                lastrow += [''] * len(instances)
-            lastrow += [cell(geomeans_rt.get(iname, '-'))
-                        for iname in instances if iname != baseline]
-            lastrow += [cell(geomeans_mem.get(iname, '-'))
-                        for iname in instances if iname != baseline]
-            lastrow += [''] * (len(header_full) - len(lastrow))
+            for field in args.fields:
+                if field.endswith(ohsuffix):
+                    lastrow += [cell(geomeans.get(field, {}).get(iname, '-'))
+                                for iname in instances if iname != baseline]
+                else:
+                    lastrow += [''] * len(instances)
             body.append(lastrow)
 
         # write table
@@ -838,15 +826,19 @@ class SPEC2006(Target):
                 for row in body:
                     print('\t'.join(str(cell) for cell in row))
             else:
-                title = 'overheads-%s' if only_overhead \
-                        else 'aggregated data (%s workload)'
-                title = ' %s %s ' % (self.name, title % workload)
+                title = ' %s aggregated data (%s workload) ' % \
+                        (self.name, workload)
                 table = Table([header_full] + body, title)
                 table.inner_column_border = False
-                if baseline:
+                if geomeans:
                     table.inner_footing_row_border = True
-                for col in range(len(instances) + 1, len(header_full)):
-                    table.justify_columns[col] = 'right'
+                for i, field in enumerate(args.fields):
+                    # FIXME: this assumes everything except status is numeric,
+                    # better to actually check this
+                    if field != 'status':
+                        startcol = i * len(instances) + 1
+                        for col in range(startcol, startcol + len(instances)):
+                            table.justify_columns[col] = 'right'
                 print(table.table)
 
         if show_nodes_table:

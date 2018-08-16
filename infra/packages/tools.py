@@ -1,6 +1,8 @@
 import os
 import io
 import argparse
+import statistics
+import re
 from os.path import exists, join
 from abc import ABCMeta
 from collections import defaultdict
@@ -83,6 +85,18 @@ class BenchmarkUtils(Tool):
     #: :class:`str` prefix for metadata lines in output files
     prefix = '[setup-report]'
 
+    counter_column_heads = {
+        'maxrss': 'memory\nmax',
+        'page_faults': 'page\nfaults',
+        'io_operations': '\nI/O ops',
+        'context_switches': 'context\nswitches',
+        'estimated_runtime_sec': 'estimated\nruntime',
+    }
+
+    #: :class:`tuple` reported field names (for -f option of SPEC report)
+    counter_fields = tuple(counter_column_heads.keys())
+
+
     LoggedResult = Dict[str, Any]
     ParsedResult = Namespace
 
@@ -131,7 +145,8 @@ class BenchmarkUtils(Tool):
     def parse_logs(self, ctx: Namespace,
                    instances: List[Instance],
                    rundirs: Iterable[str],
-                   cache: bool = True
+                   write_cache: bool = True,
+                   read_cache: bool = True
                    ) -> Dict[str, List[ParsedResult]]:
         """
         Parse logs from specified run directories.
@@ -144,20 +159,22 @@ class BenchmarkUtils(Tool):
         benchmark runtime). The parsed results are grouped per instance and
         returned as an ``{<instance_name>: [<result>, ...]}`` dictionary.
 
-        If ``cache`` is true (which is the default), the results returned by
-        each invocation of :func:`Target.parse_outfile` are logged into the log
-        file itself, and read from there in the next invocation of the report
-        command. This means that expensive log file parsing is only done on the
-        first invocation, and also that the log files become portable across
-        systems without having to also copy any files referenced by the logs.
+        If ``write_cache`` is true (which is the default), the results returned
+        by each invocation of :func:`Target.parse_outfile` are logged into the
+        log file itself and, is ``read_cache is true`` (also default), read
+        from there in the next invocation of the report command. This means
+        that expensive log file parsing is only done on the first invocation,
+        and also that the log files become portable across systems without
+        having to also copy any files referenced by the logs.
 
         :param ctx: the configuration context
         :param instances: list of instances to filter from, leave empty to get
                           results for all instances in the logs
         :param rundirs: run directories to traverse
-        :param cache: whether to append log file results to the log file
-                      itself, and to read existing results from log files
-                      instead of calling ``Target.parse_outfile``
+        :param write_cache: whether to append log file results to the log file
+                            itself
+        :param read_cache: whether to read existing results from log files
+                           instead of calling ``Target.parse_outfile``
         """
         abs_rundirs = []
         for d in rundirs:
@@ -188,7 +205,7 @@ class BenchmarkUtils(Tool):
                 path = os.path.join(idir, filename)
                 cached = []
 
-                if cache:
+                if read_cache:
                     for result in self.parse_results(ctx, path):
                         if result.get('cached', False):
                             cached.append(result)
@@ -203,11 +220,28 @@ class BenchmarkUtils(Tool):
                         result['cached'] = False
                         fresults.append(result)
 
-                    if cache:
-                        ctx.log.debug('caching %d results' % len(fresults))
-                        with open(path, 'a') as f:
+                    if write_cache:
+                        try:
+                            if read_cache:
+                                # there were no previous results, just append
+                                f = open(path, 'a')
+                            else:
+                                # there may be previous results, strip them
+                                f = open(path, 'r+')
+                                line = f.readline()
+                                while line:
+                                    if line.startswith(self.prefix):
+                                        ctx.log.debug('removing cached results')
+                                        f.seek(f.tell() - len(line))
+                                        f.truncate()
+                                        break
+                                    line = f.readline()
+
+                            ctx.log.debug('caching %d results' % len(fresults))
                             for result in fresults:
                                 self._log_result({**result, 'cached': True}, f)
+                        finally:
+                            f.close()
 
                 for result in fresults:
                     result['outfile'] = path
@@ -269,41 +303,58 @@ class BenchmarkUtils(Tool):
 
     @staticmethod
     def aggregate_values(values: Iterable[Any], key: str) -> Any:
-        aggregators = {'_max': max, '_min': min, '_sum': sum,
-                       '_any': any, '_all': all}
+        def same(values):
+            s = set(values)
+            if len(s) > 1:
+                raise ValueError('different values for %s: %s' %
+                                 (key, tuple(s)))
+            return s.pop()
+
+        aggregators = {
+            'max': max, 'min': min, 'sum': sum, 'any': any, 'all': all,
+            'same': same, 'median': statistics.median, 'mean': statistics.mean,
+            'stdev': statistics.pstdev, 'variance': statistics.pvariance,
+        }
+
         if key.startswith('_'):
-            for aggrid, fn in aggregators.items():
-                if key.startswith(aggrid):
-                    return fn(values)
-            raise FatalError('unknown aggregator in ' + key)
+            aggrid = key.split('_', 2)[1]
+            if aggrid not in aggregators:
+                raise FatalError('unknown aggregator in ' + key)
+            aggregate = aggregators[aggrid]
         else:
-            values = list(values)
-            if len(values) == 1:
-                return values[0] # avoid string cast below
-            else:
+            def aggregate(values):
                 return ','.join(str(v) for v in values)
 
+        values = list(values)
+        assert len(values) > 0
+        return values[0] if len(values) == 1 else aggregate(values)
+
     @classmethod
-    def merge_results(cls, results: Iterable[ParsedResult]) -> ParsedResult:
+    def merge_results(cls, results: Iterable[ParsedResult],
+                           strip_prefix: bool) -> ParsedResult:
         """
         Merge several results into one (typically for the same benchmark).
 
         Duplicate keys are aggregated based on their names: keys starting with
-        an underscore are special. Values for keys starting with "_max",
-        "_min", "_sum", "_any" or "_all" are aggregated by the corresponding
-        built-in function.
+        an underscore are special. Values for keys starting with "_" such as
+        _min_/_max_/_sum_ are aggregated by the corresponding aggregator
+        function. These prefixes are stripped if ``strip_prefix`` is set to
+        true.
 
         Other duplicate keys (without leading underscore) are merged by joining
         all values in a comma-separated string.
 
         :param results: results to merge
+        :param strip_prefix: whether to strip aggregator prefixes from keys
         :returns: a single result with aggregated values
         """
         merged = defaultdict(list)
         for res in results:
             for k, v in res.items():
                 merged[k].append(v)
-        return {k: cls.aggregate_values(v, k) for k, v in merged.items()}
+        def strip(key):
+            return re.sub(r'^_[a-z]+_', '', key) if strip_prefix else key
+        return {strip(k): cls.aggregate_values(v, k) for k, v in merged.items()}
 
 
 def _box_value(value):
