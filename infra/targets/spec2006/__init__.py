@@ -85,8 +85,7 @@ class SPEC2006(Target):
        iterations. Custom counter fields from runtime libraries can also be
        specified (but are not autocompleted).
     #. ``--baseline`` changes the baseline for overhead computation. By
-       default, the script looks for **baseline**, **clang-lto** and **clang**
-       (in that order).
+       default, the script looks for **baseline**, **clang-lto** or **clang**.
     #. ``--csv``/``--tsv`` change the output from human-readable to
        comma/tab-separated for script processing. E.g., use in conjunction with
        ``cut`` to obtain a column of values.
