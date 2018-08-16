@@ -172,13 +172,15 @@ class SPEC2006(Target):
         parser.add_argument('--ascii', action='store_true',
                 help='print ASCII tables instead of UTF-8 formatted ones')
         parser.add_argument('--nodes', action='store_true',
-                help='show a table with performance per node')
+                help='show a table with performance per DAS-5 node')
         parser.add_argument('-x', '--exclude', action='append',
                 default=[], choices=self.benchmarks['all'],
                 help='benchmarks to exclude from results')
-        parser.add_argument('-f', '--add-field', action='append',
+        parser.add_argument('-f', '--field', nargs='+', metavar='FIELD',
                 dest='add_fields', default=[],
-                help='add column for result field (use to report counters)')
+                help='add column for result field (use to report counters), '
+                     'e.g.: _max_rss_kb, _sum_page_faults, _sum_io_operations, '
+                     '_sum_context_switches, _sum_estimated_runtime_sec')
 
         group = parser.add_mutually_exclusive_group()
         group.add_argument('--csv',
