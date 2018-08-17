@@ -125,6 +125,11 @@ class SPEC2006(Target):
 
     name = 'spec2006'
 
+    default_report_fields = (
+        'status', 'rt_median_overhead', 'maxrss_overhead', 'rt_median',
+        'rt_stdev', 'maxrss', 'maxrss_stdev', 'iters'
+    )
+
     def __init__(self, source_type: str,
                        source: str,
                        patches: List[str] = [],
@@ -167,11 +172,6 @@ class SPEC2006(Target):
                 help='additional arguments for runspec')
 
     def add_report_args(self, parser):
-        default_report_fields = (
-            'status', 'rt_median_overhead', 'maxrss_overhead', 'rt_median',
-            'rt_stdev', 'maxrss', 'maxrss_stdev', 'iters'
-        )
-
         self.butils.add_report_args(parser)
         parser.add_argument('--baseline', metavar='INSTANCE',
                 help='baseline instance for overheads')
@@ -183,7 +183,7 @@ class SPEC2006(Target):
                 default=[], choices=self.benchmarks['all'],
                 help='benchmarks to exclude from results')
         fieldopt = parser.add_argument('-f', '--fields', nargs='+',
-                metavar='FIELD', default=default_report_fields,
+                metavar='FIELD', default=self.default_report_fields,
                 help='set reported fields (default: status, overheads, '
                      'runtime, memory usage, stddevs, iterations)')
         parser.add_argument('--refresh', action='store_true',
@@ -194,7 +194,7 @@ class SPEC2006(Target):
             # counters reported in runtime libraries (otherwise we would pass
             # the `choices` argument above)
             from argcomplete.completers import ChoicesCompleter
-            fieldopt.completer = ChoicesCompleter(default_report_fields +
+            fieldopt.completer = ChoicesCompleter(self.default_report_fields +
                                                   self.butils.counter_fields)
         except ImportError:
             pass
