@@ -683,7 +683,7 @@ class SPEC2006(Target):
                         baseline = iname
 
             if baseline is None:
-                if fields == self.default_report_fields:
+                if args.fields == self.default_report_fields:
                     ctx.log.debug('no baseline found, not computing overheads')
                     fields = [f for f in fields if not f.endswith(ohsuffix)]
                     ohkeys = []
