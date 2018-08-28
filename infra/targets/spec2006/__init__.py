@@ -733,7 +733,7 @@ class SPEC2006(Target):
                         for r in bresults:
                             node = r['hostname']
                             runtime = r['_mean_rt_mean']
-                            zscore = (runtime - entry.mean_rt) / entry.rt_stdev
+                            zscore = (runtime - entry.rt_mean) / entry.rt_stdev
                             node_zscores[node][bench].append(zscore)
                             node_runtimes[(node, bench, iname)].append(
                                     (runtime, zscore, r['outfile']))
