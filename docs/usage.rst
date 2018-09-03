@@ -27,13 +27,16 @@ LLVM on a fresh Ubuntu 16.04 installation::
 For nicer command-line usage, install the following Python packages (optional)::
 
     pip3 install --user coloredlogs argcomplete
+    # OR, in user space (add to ~/.bashrc):
+    sudo pip3 install coloredlogs argcomplete
 
 ``argcomplete`` enables command-line argument completion, but it needs to be
 activated first (optional)::
 
+    # in user space (add to ~/.bashrc, works for files called "setup.py"):
+    eval "$(register-python-argcomplete --complete-arguments -o nospace -o default setup.py)"
+    # OR, use global activation (only needed once, works for any file/user):
     sudo activate-global-python-argcomplete --complete-arguments -o nospace -o default
-    # OR, in user space (add to ~/.bashrc):
-    eval "$(register-python-argcomplete setup.py --complete-arguments -o nospace -o default)"
 
 
 Cloning the framework in your project
