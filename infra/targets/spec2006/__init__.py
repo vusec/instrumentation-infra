@@ -24,6 +24,7 @@ class SPEC2006(Target):
     Since SPEC may not be redistributed, you need to provide your own copy in
     ``source``. We support the following types for ``source_type``:
 
+    - ``isofile``:    ISO file to mount (requires ``fuseiso`` to be installed)
     - ``mounted``:    mounted/extracted ISO directory
     - ``installed``:  pre-installed SPEC directory in another project
     - ``tarfile``:    compressed tarfile with ISO contents
@@ -135,7 +136,7 @@ class SPEC2006(Target):
                        patches: List[str] = [],
                        nothp: bool = True,
                        force_cpu: int = 0):
-        if source_type not in ('mounted', 'installed', 'tarfile', 'git'):
+        if source_type not in ('isofile', 'mounted', 'installed', 'tarfile', 'git'):
             raise FatalError('invalid source type "%s"' % source_type)
 
         if source_type == 'installed':
@@ -217,8 +218,27 @@ class SPEC2006(Target):
         return self.source_type == 'installed' or os.path.exists('install/shrc')
 
     def fetch(self, ctx):
-        if self.source_type == 'mounted':
-            os.chdir(self.source)
+        def do_install(srcdir):
+            os.chdir(srcdir)
+            install_path = self._install_path(ctx)
+            ctx.log.debug('installing SPEC-CPU2006 into ' + install_path)
+            run(ctx, ['./install.sh', '-f', '-d', install_path],
+                env={'PERL_TEST_NUMCONVERTS': 1})
+
+        if self.source_type == 'isofile':
+            mountdir = self.path(ctx, 'mount')
+            ctx.log.debug('mounting SPEC-CPU2006 ISO to ' + mountdir)
+            os.mkdir(mountdir)
+            run(ctx, ['fuseiso', self.source, mountdir])
+            do_install(mountdir)
+            ctx.log.debug('unmounting SPEC-CPU2006 ISO')
+            os.chdir(self.path(ctx))
+            run(ctx, ['fusermount', '-u', mountdir])
+            os.rmdir(mountdir)
+
+        elif self.source_type == 'mounted':
+            do_install(self.source)
+
         elif self.source_type == 'tarfile':
             ctx.log.debug('extracting SPEC-CPU2006 source files')
             run(ctx, ['tar', 'xf', self.source])
@@ -227,25 +247,17 @@ class SPEC2006(Target):
                 raise FatalError('extracted SPEC tarfile in %s, could not find '
                                  '%s/ afterwards' % (os.getcwd(), srcdir))
             shutil.move(srcdir, 'src')
-            os.chdir('src')
-        elif self.source_type == 'git':
-            ctx.log.debug('cloning SPEC-CPU2006 repo')
-            run(ctx, ['git', 'clone', '--depth', 1, self.source, 'src'])
-            os.chdir('src')
-        else:
-            assert False
-
-        install_path = self._install_path(ctx)
-        ctx.log.debug('installing SPEC-CPU2006 into ' + install_path)
-        run(ctx, ['./install.sh', '-f', '-d', install_path],
-            env={'PERL_TEST_NUMCONVERTS': 1})
-
-        if self.source_type in ('tarfile', 'git'):
+            do_install('src')
             ctx.log.debug('removing SPEC-CPU2006 source files to save disk space')
             # make removed files writable to avoid permission errors
             srcdir = self.path(ctx, 'src')
             run(ctx, ['chmod', '-R', 'u+w', srcdir])
             shutil.rmtree(srcdir)
+
+        elif self.source_type == 'git':
+            ctx.log.debug('cloning SPEC-CPU2006 repo')
+            run(ctx, ['git', 'clone', '--depth', 1, self.source, 'src'])
+            do_install('src')
 
     def _install_path(self, ctx, *args):
         if self.source_type == 'installed':
