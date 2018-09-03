@@ -34,9 +34,13 @@ For nicer command-line usage, install the following Python packages (optional)::
 activated first (optional)::
 
     # in user space (add to ~/.bashrc, works for files called "setup.py"):
-    eval "$(register-python-argcomplete --complete-arguments -o nospace -o default setup.py)"
+    eval "$(register-python-argcomplete --complete-arguments -o nospace -o default -- setup.py)"
     # OR, use global activation (only needed once, works for any file/user):
     sudo activate-global-python-argcomplete --complete-arguments -o nospace -o default
+
+**Note**: if you're using ``zsh`` you first need to load and run
+``bashcompinit`` as shown `here
+<https://stackoverflow.com/questions/3249432/can-a-bash-tab-completion-script-be-used-in-zsh>`_.
 
 
 Cloning the framework in your project
