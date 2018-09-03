@@ -7,6 +7,7 @@ import threading
 import select
 import inspect
 import functools
+import shutil
 from typing import Union, List, Dict, Iterable, Optional, Callable, Any
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
@@ -356,3 +357,24 @@ def param_attrs(constructor: Callable) -> Callable:
         constructor(self, *args, **kwargs)
 
     return wrapper
+
+
+def require_program(ctx: Namespace, name: str, error: Optional[str] = None):
+    """
+    Require a program to be available in ``PATH`` or ``ctx.runenv.PATH``.
+
+    :param ctx: the configuration context
+    :param name: name of required program
+    :param error: optional error message
+    :raises FatalError: if program is not found
+    """
+    if 'PATH' in ctx.runenv:
+        path = Namespace(PATH=ctx.runenv.PATH).join_paths().PATH
+    else:
+        path = os.getenv('PATH')
+
+    if shutil.which(name, path=path) is None:
+        msg = '"%s" not found in PATH' % name
+        if error:
+            msg += ': ' + error
+        raise FatalError(msg)

@@ -227,8 +227,8 @@ class SPEC2006(Target):
                 env={'PERL_TEST_NUMCONVERTS': 1})
 
         if self.source_type == 'isofile':
-            require_program('fuseiso', 'required to mount SPEC iso')
-            require_program('fusermount', 'required to mount SPEC iso')
+            require_program(ctx, 'fuseiso', 'required to mount SPEC iso')
+            require_program(ctx, 'fusermount', 'required to mount SPEC iso')
             mountdir = self.path(ctx, 'mount')
             ctx.log.debug('mounting SPEC-CPU2006 ISO to ' + mountdir)
             os.mkdir(mountdir)
@@ -258,7 +258,7 @@ class SPEC2006(Target):
             shutil.rmtree(srcdir)
 
         elif self.source_type == 'git':
-            require_program('git')
+            require_program(ctx, 'git')
             ctx.log.debug('cloning SPEC-CPU2006 repo')
             run(ctx, ['git', 'clone', '--depth', 1, self.source, 'src'])
             do_install('src')

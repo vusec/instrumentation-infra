@@ -138,6 +138,8 @@ class Setup:
         self.setup_path = os.path.abspath(setup_path)
         self.instances = OrderedDict()
         self.targets = OrderedDict()
+        self.ctx = Namespace()
+        self._init_context()
 
     def _parse_argv(self):
         parser = argparse.ArgumentParser(
@@ -797,8 +799,6 @@ class Setup:
         #. Create build directories and log files.
         #. Run the issued command.
         """
-        self.ctx = Namespace()
-        self._init_context()
         self._parse_argv()
         self._create_dirs()
         self._initialize_logger()
