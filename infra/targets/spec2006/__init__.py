@@ -10,7 +10,8 @@ import csv
 from contextlib import redirect_stdout
 from collections import defaultdict
 from typing import List
-from ...util import Namespace, FatalError, run, apply_patch, qjoin, geomean
+from ...util import Namespace, FatalError, run, apply_patch, qjoin, geomean, \
+                    require_program
 from ...target import Target
 from ...packages import Bash, Nothp, BenchmarkUtils
 from ...parallel import PrunPool
@@ -226,6 +227,8 @@ class SPEC2006(Target):
                 env={'PERL_TEST_NUMCONVERTS': 1})
 
         if self.source_type == 'isofile':
+            require_program('fuseiso', 'required to mount SPEC iso')
+            require_program('fusermount', 'required to mount SPEC iso')
             mountdir = self.path(ctx, 'mount')
             ctx.log.debug('mounting SPEC-CPU2006 ISO to ' + mountdir)
             os.mkdir(mountdir)
@@ -255,6 +258,7 @@ class SPEC2006(Target):
             shutil.rmtree(srcdir)
 
         elif self.source_type == 'git':
+            require_program('git')
             ctx.log.debug('cloning SPEC-CPU2006 repo')
             run(ctx, ['git', 'clone', '--depth', 1, self.source, 'src'])
             do_install('src')
@@ -710,7 +714,6 @@ class SPEC2006(Target):
         workload = None
         node_zscores = defaultdict(lambda: defaultdict(list))
         node_runtimes = defaultdict(list)
-        from pprint import pprint
 
         for iname, iresults in results.items():
             grouped = {}
