@@ -703,7 +703,6 @@ class Setup:
             self.args.force_rebuild_deps = False
             self.args.dry_run = False
             self.args.relink = False
-            self.ctx.jobs = min(cpu_count(), self._max_default_jobs)
             self._run_build()
 
         self._load_deps(target)
