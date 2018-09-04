@@ -1,5 +1,18 @@
+diff --git a/include/llvm/LTO/Config.h b/include/llvm/LTO/Config.h
+index 3aa48c9..d330804 100644
+--- a/include/llvm/LTO/Config.h
++++ b/include/llvm/LTO/Config.h
+@@ -68,7 +68,7 @@ struct Config {
+   /// Sample PGO profile path.
+   std::string SampleProfile;
+ 
+-  bool ShouldDiscardValueNames = true;
++  bool ShouldDiscardValueNames = false;
+   DiagnosticHandlerFunction DiagHandler;
+ 
+   /// If this field is set, LTO will write input file paths and symbol
 diff --git a/lib/LTO/LTOBackend.cpp b/lib/LTO/LTOBackend.cpp
-index 809db80..4fec4c8 100644
+index 809db80..b0a516a 100644
 --- a/lib/LTO/LTOBackend.cpp
 +++ b/lib/LTO/LTOBackend.cpp
 @@ -21,7 +21,9 @@
