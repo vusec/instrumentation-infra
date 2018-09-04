@@ -362,8 +362,8 @@ class Setup:
         self.ctx.cxxflags = []
         self.ctx.ldflags = []
 
-        self.ctx.starttime = datetime.datetime.now()
-        self.ctx.workdir = os.getcwd()
+        self.ctx.starttime = None
+        self.ctx.workdir = None
 
     def _create_dirs(self):
         os.makedirs(self.ctx.paths.log, exist_ok=True)
@@ -799,6 +799,9 @@ class Setup:
         #. Create build directories and log files.
         #. Run the issued command.
         """
+        self.ctx.starttime = datetime.datetime.now()
+        self.ctx.workdir = os.getcwd()
+
         self._parse_argv()
         self._create_dirs()
         self._initialize_logger()
