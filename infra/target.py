@@ -286,7 +286,7 @@ class Target(metaclass=ABCMeta):
         """
         shutil.rmtree(self.path(ctx))
 
-    def binary_paths(self, ctx: Namespace, instance: Instance) -> List[str]:
+    def binary_paths(self, ctx: Namespace, instance: Instance) -> Iterable[str]:
         """
         If implemented, this should return a list of absolute paths to binaries
         created by :func:`link` or :func:`build` for the given instance. This is
