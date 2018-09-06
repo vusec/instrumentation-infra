@@ -61,34 +61,34 @@ class Setup:
     will look like this after initialization::
 
         Namespace({
-            'log':      logging.Logger(...),
-            'args':     argparse.Namespace(...),
-            'jobs':     8,
-            'paths':    Namespace({
-                            'root':         '/project',
-                            'setup':        '/project/setup.py',
-                            'infra':        '/project/infra'
-                            'buildroot':    '/project/build',
-                            'log':          '/project/build/log',
-                            'debuglog':     '/project/build/log/debug.txt',
-                            'runlog':       '/project/build/log/commands.txt',
-                            'packages':     '/project/build/packages',
-                            'targets':      '/project/build/targets',
-                            'pool_results': '/project/results'
-                        }),
-            'runenv':   Namespace({}),
-            'cc':       'cc',
-            'cxx':      'c++',
-            'ar':       'ar',
-            'nm':       'nm',
-            'ranlib':   'ranlib',
-            'cflags':   [],
-            'cxxflags': [],
-            'ldflags':  [],
-            'hooks':    Namespace({
-                            'post_build': []
-                        }),
-            'datetime': datetime.datetime
+            'log':       logging.Logger(...),
+            'args':      argparse.Namespace(...),
+            'jobs':      8,
+            'paths':     Namespace({
+                             'root':         '/project',
+                             'setup':        '/project/setup.py',
+                             'infra':        '/project/infra'
+                             'buildroot':    '/project/build',
+                             'log':          '/project/build/log',
+                             'debuglog':     '/project/build/log/debug.txt',
+                             'runlog':       '/project/build/log/commands.txt',
+                             'packages':     '/project/build/packages',
+                             'targets':      '/project/build/targets',
+                             'pool_results': '/project/results'
+                         }),
+            'runenv':    Namespace({}),
+            'cc':        'cc',
+            'cxx':       'c++',
+            'ar':        'ar',
+            'nm':        'nm',
+            'ranlib':    'ranlib',
+            'cflags':    [],
+            'cxxflags':  [],
+            'ldflags':   [],
+            'hooks':     Namespace({
+                             'post_build': []
+                         }),
+            'starttime': datetime.datetime
         })
 
     The :class:`util.Namespace` class is simply a :class:`dict` whose members
