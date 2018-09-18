@@ -277,7 +277,7 @@ class _Tee(io.IOBase):
                     buf += os.read(fd, io.DEFAULT_BUFFER_SIZE)
                     nl = buf.find(b'\n') + 1
                     while nl > 0:
-                        self.write(buf[:nl].decode())
+                        self.write(buf[:nl].decode(errors='replace'))
                         self.flush()
                         buf = buf[nl:]
                         nl = buf.find(b'\n') + 1
