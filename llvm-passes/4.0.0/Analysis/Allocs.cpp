@@ -366,7 +366,11 @@ bool AllocsPass::runOnModule(Module &M) {
             if (A.isNew())         dbgs() << " (new)";
             if (A.isDelete())      dbgs() << " (delete)";
             if (A.isWrapper())     dbgs() << " (wrapper)";
-            dbgs() << ": " << *A.getValue() << "\n";
+
+            if (Instruction *I = dyn_cast<Instruction>(A.getValue()))
+                dbgs() << " in " << I->getParent()->getParent()->getName();
+
+            dbgs() << ":\n[" DEBUG_TYPE "]   alloc:     " << *A.getValue() << "\n";
 
             if (A.isAnyAlloc()) {
                 if (Value *Size = A.getOrInsertSize(&Changed))
@@ -377,8 +381,8 @@ bool AllocsPass::runOnModule(Module &M) {
         for (Function &F : M) {
             for (const MemAccess &MA : memaccesses(F)) {
                 if (isInBounds(MA)) {
-                    dbgs() << "[" DEBUG_TYPE "] in-bounds " << (MA.isRead() ? "read" : "write");
-                    dbgs() << ": " << *MA.getInstruction() << "\n";
+                    dbgs() << "[" DEBUG_TYPE "] in-bounds access: ";
+                    MA.dump();
                     dbgs() << "[" DEBUG_TYPE "]   pointer: " << *MA.getPointer() << "\n";
                 }
             }

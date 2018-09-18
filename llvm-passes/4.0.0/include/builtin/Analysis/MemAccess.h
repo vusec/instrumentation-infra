@@ -6,6 +6,7 @@
 #include <llvm/IR/IntrinsicInst.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Debug.h>
 #include <string>
@@ -23,10 +24,9 @@ protected:
     unsigned Alignment;
     bool IsRead;
 
+public:
     MemAccess(Instruction &I, Value *P, Value *L, unsigned A, bool R)
         : I(&I), Pointer(P), Length(L), Alignment(A), IsRead(R) {}
-
-public:
     MemAccess() : I(nullptr) {}
     MemAccess(const MemAccess&) = default;
     ~MemAccess() = default;
@@ -53,41 +53,38 @@ public:
     inline void dump()           const { print(dbgs()); dbgs() << '\n'; }
     const std::string toString() const { std::string s; raw_string_ostream ss(s); print(ss); return s; }
     void print(raw_ostream &O)   const;
+
+    static unsigned get(Instruction &I, SmallVectorImpl<MemAccess> &MA);
 };
 
 class MemRead : public MemAccess {
+    MemRead(Instruction &I, Value *P, Value *L, unsigned A)
+        : MemAccess(I, P, L, A, true) {}
 public:
     MemRead() : MemAccess() {}
     MemRead(const MemRead&) = default;
     ~MemRead() = default;
 
-    MemRead(LoadInst &LI);
-    MemRead(MemTransferInst &MT);
-    MemRead(AtomicCmpXchgInst &CX);
-    MemRead(AtomicRMWInst &RMW);
-    MemRead(Instruction &I);
-    static MemRead Create(Instruction &I);
+    static unsigned get(Instruction &I, SmallVectorImpl<MemAccess> &MA);
 };
 
 class MemWrite : public MemAccess {
+    MemWrite(Instruction &I, Value *P, Value *L, unsigned A)
+        : MemAccess(I, P, L, A, false) {}
 public:
     MemWrite() : MemAccess() {}
     MemWrite(const MemWrite&) = default;
     ~MemWrite() = default;
 
-    MemWrite(StoreInst &SI);
-    MemWrite(MemIntrinsic &MI);
-    MemWrite(AtomicCmpXchgInst &CX);
-    MemWrite(AtomicRMWInst &RMW);
-    MemWrite(Instruction &I);
-    static MemWrite Create(Instruction &I);
+    static unsigned get(Instruction &I, SmallVectorImpl<MemAccess> &MA);
 };
 
 template<typename inst_iterator>
 class MemAccessIterator {
+    typedef SmallVector<MemAccess, 4> MAVec;
     inst_iterator I, E;
-    bool triedRead;
-    MemAccess MA;
+    MAVec MA;
+    MAVec::iterator MAI;
 
 public:
     typedef std::input_iterator_tag iterator_category;
@@ -100,28 +97,24 @@ public:
 
     MemAccessIterator() = delete;
     MemAccessIterator(inst_iterator B, inst_iterator E)
-        : I(B), E(E) { advanceToFirstValidAccess(); }
+        : I(B), E(E), MAI(MA.begin()) { advanceToFirstValidAccess(); }
     MemAccessIterator(const MemAccessIterator &y)
-        : I(y.I), E(y.E), triedRead(y.triedRead), MA(y.MA) {}
+        : I(y.I), E(y.E), MA(y.MA), MAI(MA.begin() + y.offset()) {}
     ~MemAccessIterator() = default;
 
     inline bool operator==(const MemAccessIterator &y) const {
-        return I == y.I;
+        return I == y.I && offset() == y.offset();
     }
     inline bool operator!=(const MemAccessIterator &y) const {
         return !operator==(y);
     }
 
     MemAccessIterator& operator++() {
-        do {
-            if (triedRead) {
-                MA = MemWrite::Create(*I);
-                triedRead = false;
-            } else if (++I != E) {
-                MA = MemRead::Create(*I);
-                triedRead = true;
-            }
-        } while (!MA.isValid() && !atEnd());
+        if (++MAI == MA.end()) {
+            MA.clear();
+            while (++I != E && MemAccess::get(*I, MA) == 0);
+            MAI = MA.begin();
+        }
         return *this;
     }
     inline MemAccessIterator operator++(int) {
@@ -130,21 +123,15 @@ public:
         return tmp;
     }
 
-    inline reference       operator*()        { return MA; }
-    inline const_reference operator*()  const { return MA; }
-    inline pointer         operator->()       { return &operator*(); }
-    inline const_pointer   operator->() const { return &operator*(); }
-
-    inline bool atEnd() const { return I == E; }
+    inline reference operator*()  const { return *MAI; }
+    inline pointer   operator->() const { return &operator*(); }
+    inline signed offset()        const { return MAI - MA.begin(); }
+    inline bool atEnd()           const { return I == E && MAI == MA.end(); }
 
 private:
     void advanceToFirstValidAccess() {
-        if (!atEnd()) {
-            MA = MemRead::Create(*I);
-            triedRead = true;
-            if (!MA.isValid())
-                operator++();
-        }
+        while (I != E && MemAccess::get(*I, MA) == 0)
+            ++I;
     }
 };
 
