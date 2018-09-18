@@ -1,4 +1,5 @@
 #include <string>
+#include <llvm/IR/DebugInfo.h>
 #include <llvm/Support/raw_ostream.h>
 #include "Utils/NoInstrument.h"
 
@@ -18,17 +19,28 @@ Function *getNoInstrumentFunction(Module &M, StringRef Name, bool AllowMissing) 
     std::string FullName(NOINSTRUMENT_PREFIX);
     FullName += Name;
     Function *F = M.getFunction(FullName);
-    if (F == nullptr && !AllowMissing) {
+    if (!F && !AllowMissing) {
         errs() << "Error: could not find helper function " << FullName << "\n";
         exit(1);
     }
+    if (F)
+        stripDebugInfo(*F);
     return F;
 }
 
 Function *getOrInsertNoInstrumentFunction(Module &M, StringRef Name, FunctionType *Ty) {
     std::string FullName(NOINSTRUMENT_PREFIX);
     FullName += Name;
-    return cast<Function>(M.getOrInsertFunction(FullName, Ty));
+    if (Function *F = M.getFunction(FullName)) {
+        if (F->getFunctionType() != Ty) {
+            errs() << "unexpected type for helper function " << FullName << "\n";
+            errs() << "  expected: " << *Ty << "\n";
+            errs() << "  found:    " << *F->getFunctionType() << "\n";
+            exit(1);
+        }
+        return F;
+    }
+    return Function::Create(Ty, GlobalValue::ExternalLinkage, FullName, &M);
 }
 
 bool isNoInstrument(Value *V) {
