@@ -8,6 +8,7 @@ import datetime
 from inspect import signature
 from collections import OrderedDict
 from multiprocessing import cpu_count
+from typing import Optional
 from .util import FatalError, Namespace, qjoin
 from .instance import Instance
 from .target import Target
@@ -398,18 +399,21 @@ class Setup:
         except ImportError:
             pass
 
-    def add_instance(self, instance: Instance):
+    def add_instance(self, instance: Instance, name: Optional[str] = None):
         """
         Register an instance. Only registered instances can be referenced in
         commands, so also :doc:`built-in instances <instances>` must be
         registered.
 
         :param instance: The instance to register.
+        :param name: An optional name to access the instance through instead of
+                     its ``name`` method.
         """
-        if instance.name in self.instances:
-            raise FatalError('overwriting existing instance "%s"' %
-                             instance.name)
-        self.instances[instance.name] = instance
+        if name is None:
+            name = instance.name
+        if name in self.instances:
+            raise FatalError('overwriting existing instance "%s"' % name)
+        self.instances[name] = instance
 
     def _get_instance(self, name):
         if name not in self.instances:

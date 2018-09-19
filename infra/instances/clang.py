@@ -15,12 +15,11 @@ class Clang(Instance):
     tcmalloc hackery, overwrite the ``gperftools`` property of this package
     with a custom :class:`Gperftools` object.
 
-    :name: clang[-O<optlevel>][-lto][-tcmalloc] or custom name
+    :name: clang[-O<optlevel>][-lto][-tcmalloc]
     :param llvm: an LLVM package containing the relevant clang version
     :param optlevel: optimization level for ``-O`` (default: 2)
     :param lto: whether to apply link-time optimizations
     :param alloc: which allocator to use (default: system)
-    :param name: custom instance name (default: generate based on parameters)
     """
 
     def __init__(self,
@@ -28,14 +27,12 @@ class Clang(Instance):
                  *,
                  optlevel: Union[int, str] = 2,
                  lto = False,
-                 alloc = 'system',
-                 name: Optional[str] = None):
+                 alloc = 'system'):
         assert optlevel in (0, 1, 2, 3, 's'), 'invalid optimization level'
         assert not (lto and optlevel == 0), 'LTO needs compile-time opts'
         assert alloc in ('system', 'tcmalloc'), 'unsupported allocator'
 
         self.llvm = llvm
-        self.custom_name = name
         self.optflag = '-O' + str(optlevel)
         self.lto = lto
         self.alloc = alloc
@@ -45,9 +42,6 @@ class Clang(Instance):
 
     @property
     def name(self):
-        if self.custom_name:
-            return self.custom_name
-
         name = 'clang'
         if self.optflag != '-O2':
             name += self.optflag
