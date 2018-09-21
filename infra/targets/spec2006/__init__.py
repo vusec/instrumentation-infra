@@ -588,35 +588,50 @@ class SPEC2006(Target):
                 rundir, arglist = re.search(rpat, logcontents, re.M | re.S).groups()
                 errfiles = re.findall(r'-e ([^ ]+err) \.\./run_', arglist)
                 inputres = []
+                benchmark_error = False
                 for errfile in errfiles:
                     path = os.path.join(fix_specpath(rundir), errfile)
+                    if not os.path.exists(path):
+                        ctx.log.error('missing errfile %s, there was probably '
+                                      'an error' % path)
+                        benchmark_error = True
+                        continue
+
                     ctx.log.debug('fetching staticlib results from errfile ' + path)
                     res = list(BenchmarkUtils.parse_results(ctx, path))
                     if not res:
-                        ctx.log.warning('no staticlib results in %s, there '
-                                        'was probably an error' % path)
+                        ctx.log.error('no staticlib results in %s, there was '
+                                      'probably an error' % path)
+                        benchmark_error = True
+                        continue
+
                     inputres += res
 
-                # merge counter results found in different invocations,
-                # computing aggregates based on keys
-                counters = BenchmarkUtils.merge_results(inputres, False)
-                if '_max_maxrss' in counters:
-                    counters['_stdev_maxrss_stdev'] = counters['_max_maxrss']
+                if benchmark_error:
+                    ctx.log.warning('cancel processing benchmark %s in log file '
+                                    '%s because of errors' % (benchmark, logpath))
+                else:
+                    # merge counter results found in different invocations,
+                    # computing aggregates based on keys
+                    counters = BenchmarkUtils.merge_results(inputres, False)
+                    if '_max_maxrss' in counters:
+                        counters['_stdev_maxrss_stdev'] = counters['_max_maxrss']
 
-                runtime = float(runtime)
-                yield {
-                    'benchmark': benchmark,
-                    'success': status == 'Success',
-                    'workload': workload,
-                    'hostname': hostname,
-                    '_median_rt_median': runtime,
-                    '_mean_rt_mean': runtime,
-                    '_stdev_rt_stdev': runtime,
-                    '_same_inputs': len(errfiles),
-                    '_sum_iters': 1,
-                    **counters
-                }
-                error_benchmarks.remove(benchmark)
+                    runtime = float(runtime)
+                    yield {
+                        'benchmark': benchmark,
+                        'success': status == 'Success',
+                        'workload': workload,
+                        'hostname': hostname,
+                        '_median_rt_median': runtime,
+                        '_mean_rt_mean': runtime,
+                        '_stdev_rt_stdev': runtime,
+                        '_same_inputs': len(errfiles),
+                        '_sum_iters': 1,
+                        **counters
+                    }
+                    error_benchmarks.remove(benchmark)
+
                 m = pat.search(logcontents, m.end())
 
             for benchmark in error_benchmarks:
