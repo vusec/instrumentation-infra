@@ -38,6 +38,7 @@ Function *getOrInsertNoInstrumentFunction(Module &M, StringRef Name, FunctionTyp
             errs() << "  found:    " << *F->getFunctionType() << "\n";
             exit(1);
         }
+        stripDebugInfo(*F);
         return F;
     }
     return Function::Create(Ty, GlobalValue::ExternalLinkage, FullName, &M);
