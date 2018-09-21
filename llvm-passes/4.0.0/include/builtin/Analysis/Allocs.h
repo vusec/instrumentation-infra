@@ -182,7 +182,7 @@ public:
 
     // basic static bound analysis for constant GEPs
     SizeOffsetType computeSizeAndOffset(Value *Addr);
-    bool isInBoundsAccess(Value *Addr, uint64_t TypeSize);
+    bool isInBoundsAccess(Value *Addr, uint64_t AccessedBytes);
     bool isInBounds(LoadInst &LI);
     bool isInBounds(StoreInst &SI);
     bool isInBounds(AtomicCmpXchgInst &CX);

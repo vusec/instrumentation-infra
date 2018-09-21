@@ -427,9 +427,9 @@ bool AllocsPass::isInBoundsAccess(Value *Addr, uint64_t AccessedBytes) {
     uint64_t Size = SizeOffset.first.getZExtValue();
     int64_t Offset = SizeOffset.second.getSExtValue();
 
-    // zero-length memory intrinsics don't access any memory. We assume these to
-    // be safe, even if the pointer is out-of-bounds
-    if (Size == 0)
+    // Zero-length memory intrinsics don't access any memory. We consider these
+    // safe, even if the pointer is out-of-bounds
+    if (AccessedBytes == 0)
         return true;
 
     // Three checks are required to ensure safety:
