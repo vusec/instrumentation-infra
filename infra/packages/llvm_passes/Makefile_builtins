@@ -5,14 +5,12 @@ ifndef PREFIX
     $(error PREFIX is undefined)
 endif
 
-CXX         ?= g++
-CXXFLAGS    ?=
-CXXFLAGS    += -I. -Iinclude/builtin -Werror -Wall -std=c++0x -g -O2 \
-              `llvm-config --cxxflags`
-LDFLAGS        ?=
-LDFLAGS        += -g -shared
-LLVMLIB         = `llvm-config --prefix`/lib
-LDFLAGSGOLD     = -Wl,--no-undefined -L$(LLVMLIB) \
+CXX            := g++  # must be the same as used to compile LLVM
+CXXFLAGS       := -I. -Iinclude/builtin -Werror -Wall -std=c++0x -g -O2 \
+                  `llvm-config --cxxflags`
+LDFLAGS        := -g -shared `llvm-config --ldflags`
+LLVMLIB        := `llvm-config --libdir`
+LDFLAGSGOLD    := -Wl,--no-undefined -L$(LLVMLIB) \
                   -l:LLVMgold.so -Wl,--rpath=$(LLVMLIB)
 LINK_STATICLIB := -L$(OBJDIR) -Wl,-whole-archive \
                   -lpasses-builtin -Wl,-no-whole-archive
