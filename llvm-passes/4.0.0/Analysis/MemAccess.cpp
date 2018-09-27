@@ -90,71 +90,41 @@ static inline unsigned getAlign(const Instruction &I, const Value *V) {
 }
 
 unsigned MemAccess::get(Instruction &I, SmallVectorImpl<MemAccess> &MA) {
-    return MemRead::get(I, MA) + MemWrite::get(I, MA);
-}
+    unsigned OldSize = MA.size();
 
-unsigned MemRead::get(Instruction &I, SmallVectorImpl<MemAccess> &MA) {
     if (LoadInst *LI = dyn_cast<LoadInst>(&I)) {
         MA.emplace_back(I, LI->getPointerOperand(), getSize(I, LI), LI->getAlignment(), true);
-        return 1;
     }
-
-    if (MemTransferInst *MT = dyn_cast<MemTransferInst>(&I)) {
-        MA.emplace_back(I, MT->getRawSource(), MT->getLength(), MT->getAlignment(), true);
-        return 1;
+    else if (StoreInst *SI = dyn_cast<StoreInst>(&I)) {
+        Value *Len = getSize(I, SI->getValueOperand());
+        MA.emplace_back(I, SI->getPointerOperand(), Len, SI->getAlignment(), false);
     }
-
-    if (AtomicCmpXchgInst *CX = dyn_cast<AtomicCmpXchgInst>(&I)) {
+    else if (AtomicCmpXchgInst *CX = dyn_cast<AtomicCmpXchgInst>(&I)) {
+        Value *Ptr = CX->getPointerOperand();
         Value *Len = getSize(I, CX->getCompareOperand());
-        unsigned Align = getAlign(I, CX->getPointerOperand());
-        MA.emplace_back(I, CX->getPointerOperand(), Len, Align, true);
-        return 1;
+        unsigned Align = getAlign(I, Ptr);
+        MA.emplace_back(I, Ptr, Len, Align, true);
+        MA.emplace_back(I, Ptr, Len, Align, false);
     }
-
-    if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(&I)) {
+    else if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(&I)) {
+        Value *Ptr = RMW->getPointerOperand();
         Value *Len = getSize(I, RMW->getValOperand());
-        unsigned Align = getAlign(I, RMW->getPointerOperand());
-        MA.emplace_back(I, RMW->getPointerOperand(), Len, Align, true);
-        return 1;
+        unsigned Align = getAlign(I, Ptr);
+        MA.emplace_back(I, Ptr, Len, Align, true);
+        MA.emplace_back(I, Ptr, Len, Align, false);
     }
-
-    if (CallInst *CI = getMemCmp(I)) {
+    else if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I)) {
+        if (MemTransferInst *MT = dyn_cast<MemTransferInst>(&I))
+            MA.emplace_back(I, MT->getRawSource(), MT->getLength(), MT->getAlignment(), true);
+        MA.emplace_back(I, MI->getRawDest(), MI->getLength(), MI->getAlignment(), false);
+    }
+    else if (CallInst *CI = getMemCmp(I)) {
         Value *Len = CI->getArgOperand(2);
         for (unsigned i = 0; i < 2; ++i) {
             Value *Ptr = CI->getArgOperand(i);
-            MA.emplace_back(I, CI->getArgOperand(i), Len, getAlign(I, Ptr), true);
+            MA.emplace_back(I, Ptr, Len, getAlign(I, Ptr), true);
         }
-        return 2;
     }
 
-    return 0;
-}
-
-unsigned MemWrite::get(Instruction &I, SmallVectorImpl<MemAccess> &MA) {
-    if (StoreInst *SI = dyn_cast<StoreInst>(&I)) {
-        Value *Len = getSize(I, SI->getValueOperand());
-        MA.emplace_back(I, SI->getPointerOperand(), Len, SI->getAlignment(), false);
-        return 1;
-    }
-
-    if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(&I)) {
-        MA.emplace_back(I, MI->getRawDest(), MI->getLength(), MI->getAlignment(), false);
-        return 1;
-    }
-
-    if (AtomicCmpXchgInst *CX = dyn_cast<AtomicCmpXchgInst>(&I)) {
-        Value *Len = getSize(I, CX->getCompareOperand());
-        unsigned Align = getAlign(I, CX->getPointerOperand());
-        MA.emplace_back(I, CX->getPointerOperand(), Len, Align, false);
-        return 1;
-    }
-
-    if (AtomicRMWInst *RMW = dyn_cast<AtomicRMWInst>(&I)) {
-        Value *Len = getSize(I, RMW->getValOperand());
-        unsigned Align = getAlign(I, RMW->getPointerOperand());
-        MA.emplace_back(I, RMW->getPointerOperand(), Len, Align, false);
-        return 1;
-    }
-
-    return 0;
+    return MA.size() - OldSize;
 }

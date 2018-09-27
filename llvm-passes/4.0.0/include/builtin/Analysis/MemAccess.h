@@ -57,28 +57,6 @@ public:
     static unsigned get(Instruction &I, SmallVectorImpl<MemAccess> &MA);
 };
 
-class MemRead : public MemAccess {
-    MemRead(Instruction &I, Value *P, Value *L, unsigned A)
-        : MemAccess(I, P, L, A, true) {}
-public:
-    MemRead() : MemAccess() {}
-    MemRead(const MemRead&) = default;
-    ~MemRead() = default;
-
-    static unsigned get(Instruction &I, SmallVectorImpl<MemAccess> &MA);
-};
-
-class MemWrite : public MemAccess {
-    MemWrite(Instruction &I, Value *P, Value *L, unsigned A)
-        : MemAccess(I, P, L, A, false) {}
-public:
-    MemWrite() : MemAccess() {}
-    MemWrite(const MemWrite&) = default;
-    ~MemWrite() = default;
-
-    static unsigned get(Instruction &I, SmallVectorImpl<MemAccess> &MA);
-};
-
 template<typename inst_iterator>
 class MemAccessIterator {
     typedef SmallVector<MemAccess, 4> MAVec;
