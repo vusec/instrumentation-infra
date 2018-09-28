@@ -81,7 +81,7 @@ public:
     ~MemAccessIterator() = default;
 
     inline bool operator==(const MemAccessIterator &y) const {
-        return I == y.I && offset() == y.offset();
+        return I == y.I && E == y.E && offset() == y.offset();
     }
     inline bool operator!=(const MemAccessIterator &y) const {
         return !operator==(y);
@@ -110,6 +110,7 @@ private:
     void advanceToFirstValidAccess() {
         while (I != E && MemAccess::get(*I, MA) == 0)
             ++I;
+        MAI = MA.begin();
     }
 };
 
