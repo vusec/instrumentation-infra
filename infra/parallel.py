@@ -271,8 +271,6 @@ class PrunPool(Pool):
             def join(n, fmt):
                 if len(n) == 1:
                     return fmt % n[0]
-                elif len(n) == 2 and samecore:
-                    return fmt % n[0] + ',' + fmt % n[-1]
                 else:
                     return fmt % n[0] + '-' + fmt % n[-1]
 
