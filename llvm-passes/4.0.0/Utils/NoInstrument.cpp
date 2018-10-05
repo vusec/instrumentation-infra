@@ -1,9 +1,32 @@
 #include <string>
 #include <llvm/IR/DebugInfo.h>
+#include <llvm/IR/InstIterator.h>
+#include <llvm/IR/CallSite.h>
+#include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/Support/raw_ostream.h>
 #include "Utils/NoInstrument.h"
 
 using namespace llvm;
+
+static bool stripDebugInfoRecursive(Function &F, SmallPtrSetImpl<Function*> &Visited) {
+    if (Visited.count(&F))
+        return false;
+    Visited.insert(&F);
+    bool Changed = stripDebugInfo(F);
+    if (Changed) {
+        for (Instruction &I : instructions(F)) {
+            CallSite CS(&I);
+            if (CS && CS.getCalledFunction())
+                stripDebugInfoRecursive(*CS.getCalledFunction(), Visited);
+        }
+    }
+    return Changed;
+}
+
+static bool stripDebugInfoRecursive(Function &F) {
+    SmallPtrSet<Function*, 4> Visited;
+    return stripDebugInfoRecursive(F, Visited);
+}
 
 Function *createNoInstrumentFunction(Module &M, FunctionType *FnTy,
                                      StringRef Name, bool AlwaysInline) {
@@ -24,7 +47,7 @@ Function *getNoInstrumentFunction(Module &M, StringRef Name, bool AllowMissing) 
         exit(1);
     }
     if (F)
-        stripDebugInfo(*F);
+        stripDebugInfoRecursive(*F);
     return F;
 }
 
@@ -38,7 +61,7 @@ Function *getOrInsertNoInstrumentFunction(Module &M, StringRef Name, FunctionTyp
             errs() << "  found:    " << *F->getFunctionType() << "\n";
             exit(1);
         }
-        stripDebugInfo(*F);
+        stripDebugInfoRecursive(*F);
         return F;
     }
     return Function::Create(Ty, GlobalValue::ExternalLinkage, FullName, &M);
