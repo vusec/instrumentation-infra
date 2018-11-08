@@ -67,6 +67,17 @@ Function *getOrInsertNoInstrumentFunction(Module &M, StringRef Name, FunctionTyp
     return Function::Create(Ty, GlobalValue::ExternalLinkage, FullName, &M);
 }
 
+GlobalVariable *getNoInstrumentGlobal(Module &M, StringRef Name, bool AllowMissing) {
+    std::string FullName(NOINSTRUMENT_PREFIX);
+    FullName += Name;
+    GlobalVariable *GV = M.getGlobalVariable(FullName);
+    if (!GV && !AllowMissing) {
+        errs() << "Error: could not find helper global " << FullName << "\n";
+        exit(1);
+    }
+    return GV;
+}
+
 bool isNoInstrument(Value *V) {
     if (V && V->hasName()) {
         StringRef Name = V->getName();

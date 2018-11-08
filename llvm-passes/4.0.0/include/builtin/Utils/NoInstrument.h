@@ -19,17 +19,21 @@ static inline bool shouldInstrument(llvm::Function *F) {
     return !shouldInstrument(*F);
 }
 
-llvm::Function* createNoInstrumentFunction(llvm::Module &M,
+llvm::Function *createNoInstrumentFunction(llvm::Module &M,
                                            llvm::FunctionType *FnTy,
                                            llvm::StringRef Name,
                                            bool AlwaysInline=true);
 
-llvm::Function* getNoInstrumentFunction(llvm::Module &M,
+llvm::Function *getNoInstrumentFunction(llvm::Module &M,
                                         llvm::StringRef Name,
                                         bool AllowMissing=false);
 
-llvm::Function* getOrInsertNoInstrumentFunction(llvm::Module &M,
+llvm::Function *getOrInsertNoInstrumentFunction(llvm::Module &M,
                                                 llvm::StringRef Name,
                                                 llvm::FunctionType *Ty);
+
+llvm::GlobalVariable *getNoInstrumentGlobal(llvm::Module &M,
+                                            llvm::StringRef Name,
+                                            bool AllowMissing=false);
 
 #endif // BUILTIN_NO_INSTRUMENT_H
