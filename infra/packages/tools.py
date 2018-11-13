@@ -283,8 +283,11 @@ class BenchmarkUtils(Tool):
                     if statement == 'begin':
                         result = Namespace()
                     elif statement == 'end':
-                        yield result
-                        result = None
+                        if result is None:
+                            ctx.log.error('missing start for end statement in %s' % path)
+                        else:
+                            yield result
+                            result = None
                     elif result is None:
                         ctx.log.error('ignoring %s statement outside of begin-end '
                                     'in %s' % (cls.prefix, path))
