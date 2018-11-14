@@ -125,6 +125,8 @@ class Setup:
 
     ``ctx.workdir`` is set to the work directory from which the setup script is
     invoked.
+
+    ``ctx.log`` is set to a new ``logging.Logger`` object.
     """
 
     _max_default_jobs = 16
@@ -364,6 +366,7 @@ class Setup:
 
         self.ctx.starttime = None
         self.ctx.workdir = None
+        self.ctx.log = logging.getLogger('autosetup')
 
     def _create_dirs(self):
         os.makedirs(self.ctx.paths.log, exist_ok=True)
@@ -374,7 +377,7 @@ class Setup:
         fmt = '%(asctime)s [%(levelname)s] %(message)s'
         datefmt = '%H:%M:%S'
 
-        self.ctx.log = log = logging.getLogger('autosetup')
+        log = self.ctx.log
         log.setLevel(logging.DEBUG)
         log.propagate = False
         self.ctx.loglevel = getattr(logging, self.args.verbosity.upper())
