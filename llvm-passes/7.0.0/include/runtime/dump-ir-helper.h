@@ -3,18 +3,18 @@
 
 #include "noinstrument.h"
 
-/* For DumpIR pass output. */
-/* XXX could also use __FILE__? */
 #ifdef __cplusplus
-#define DEBUG_MODULE_NAME(n) \
-    extern "C" { \
-        __attribute__((used)) \
-        static const char NOINSTRUMENT(DEBUG_MODULE_NAME)[] = (n); \
-    }
-#else
+extern "C" {
+#endif
+
+// For DumpIR pass output
+// XXX could also use __FILE__?
 #define DEBUG_MODULE_NAME(n) \
     __attribute__((used)) \
     static const char NOINSTRUMENT(DEBUG_MODULE_NAME)[] = (n);
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif /* !_DUMP_IR_HELPER_H */
