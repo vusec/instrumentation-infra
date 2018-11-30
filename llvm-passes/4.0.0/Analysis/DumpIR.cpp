@@ -90,26 +90,13 @@ bool DumpIR::runOnModule(Module &M) {
     if (OutFile.getNumOccurrences()) {
         path = OutFile;
     } else {
-        StringRef ManualModName = getNameFromGlobal(M);
-        if (!ManualModName.empty()) {
-            path = ManualModName.str();
-        } else {
-            path = M.getModuleIdentifier();
-            replaceSuffix(path, ".c", "");
-            replaceSuffix(path, ".bc", "");
-
-#if 0
-            // XXX hack to not overwrite file (for sizetagstest now)
-            std::string suffix = "";
-            int cnt = 0;
-            while (file_exists((path + suffix + ".ll").c_str())) {
-                cnt++;
-                suffix = "-" + std::to_string(cnt);
-            }
-            path += suffix;
-#endif
-        }
-
+        StringRef ManualName = getNameFromGlobal(M);
+        path = ManualName.empty() ? M.getModuleIdentifier() : ManualName.str();
+        replaceSuffix(path, ".bc", "");
+        replaceSuffix(path, ".c", "");
+        replaceSuffix(path, ".cc", "");
+        replaceSuffix(path, ".cpp", "");
+        replaceSuffix(path, ".cxx", "");
         path += ".ll";
     }
 
