@@ -70,7 +70,7 @@ Function *getOrInsertNoInstrumentFunction(Module &M, StringRef Name, FunctionTyp
 GlobalVariable *getNoInstrumentGlobal(Module &M, StringRef Name, bool AllowMissing) {
     std::string FullName(NOINSTRUMENT_PREFIX);
     FullName += Name;
-    GlobalVariable *GV = M.getGlobalVariable(FullName);
+    GlobalVariable *GV = M.getNamedGlobal(FullName);
     if (!GV && !AllowMissing) {
         errs() << "Error: could not find helper global " << FullName << "\n";
         exit(1);
