@@ -397,7 +397,7 @@ class SPEC2006(Target):
                 # directory lock to avoid simultaneous writes and TOCTOU bugs
                 while ! mkdir "{specdir}/$benchdir/copylock" 2>/dev/null; do sleep 0.1; done
                 release_lock() {{{{
-                    rm -rf "{specdir}/$benchdir/copylock"
+                    rmdir "{specdir}/$benchdir/copylock" 2>/dev/null || true
                 }}}}
                 trap release_lock INT TERM EXIT
 
@@ -419,7 +419,7 @@ class SPEC2006(Target):
                     sed -i "s,{output_root}/,{specdir}/,g" "$scratchrun/list"
                 fi
 
-                rmdir "{specdir}/$benchdir/copylock"
+                release_lock
 
                 # clean up
                 rm -rf "{output_root}"
