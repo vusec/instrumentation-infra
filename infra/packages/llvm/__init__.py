@@ -43,7 +43,7 @@ class LLVM(Package):
     """
 
     #supported_versions = ('3.8.0', '3.9.1', '4.0.0', '5.0.0')
-    binutils = BinUtils('2.26.1', gold=True)
+    binutils = BinUtils('2.31.1', gold=True)
 
     def __init__(self, version: str,
                        compiler_rt: bool,
