@@ -480,25 +480,31 @@ class Setup:
 
     def _build_package(self, package, force_rebuild, *args):
         package.goto_rootdir(self.ctx)
+        built = package.is_built(self.ctx)
 
-        if not force_rebuild and package.is_built(self.ctx):
-            self.ctx.log.debug('%s already built, skip' % package.ident())
-            return
-        elif not force_rebuild and package.is_installed(self.ctx):
-            self.ctx.log.debug('%s already installed, skip building' % package.ident())
-        else:
-            self.ctx.log.info('building %s' % package.ident())
-            if not self.args.dry_run:
-                package.goto_rootdir(self.ctx)
-                package.build(self.ctx, *args)
+        if not force_rebuild:
+            if built:
+                self.ctx.log.debug('%s already built, skip' % package.ident())
+                return
+            if package.is_installed(self.ctx):
+                self.ctx.log.debug('%s already installed, skip building' % package.ident())
+                return
+
+        force = ' (forced rebuild)' if force_rebuild and built else ''
+        self.ctx.log.info('building %s' % package.ident() + force)
+        if not self.args.dry_run:
+            package.goto_rootdir(self.ctx)
+            package.build(self.ctx, *args)
 
     def _install_package(self, package, force_rebuild, *args):
         package.goto_rootdir(self.ctx)
+        installed = package.is_installed(self.ctx)
 
-        if not force_rebuild and package.is_installed(self.ctx):
+        if not force_rebuild and installed:
             self.ctx.log.debug('%s already installed, skip' % package.ident())
         else:
-            self.ctx.log.info('installing %s' % package.ident())
+            force = ' (forced reinstall)' if force_rebuild and installed else ''
+            self.ctx.log.info('installing %s' % package.ident() + force)
             if not self.args.dry_run:
                 package.goto_rootdir(self.ctx)
                 package.install(self.ctx, *args)
