@@ -214,3 +214,51 @@ class Package(metaclass=ABCMeta):
         yield ('--prefix',
                'absolute install path',
                self.path(ctx, 'install'))
+
+
+class NoEnvLoad(Package):
+    """
+    Wrapper class for packages that avoids them being loaded into PATH and
+    LD_LIBRARY_PATH by the default :func:`Package.install_env` method.
+
+    This is useful for packages that are used by referening direct paths,
+    instead of counting on their presence when calling :func:`util.run`.
+    """
+    def __init__(self, package: Package):
+        """
+        :param package: the package to wrap
+        """
+        self.package = package
+
+    def install_env(self, ctx: Namespace):
+        ctx.log.debug('cancel installation of %s in env' % self.ident())
+
+    def __eq__(self, other):
+        return self.package == other
+
+    def __hash__(self):
+        return hash(self.package)
+
+    def ident(self) -> str:
+        return self.package.ident()
+
+    def is_fetched(self, ctx: Namespace) -> bool:
+        return self.package.is_fetched(ctx)
+
+    def is_built(self, ctx: Namespace) -> bool:
+        return self.package.is_built(ctx)
+
+    def is_installed(self, ctx: Namespace) -> bool:
+        return self.package.is_installed(ctx)
+
+    def fetch(self, ctx: Namespace):
+        return self.package.fetch(ctx)
+
+    def build(self, ctx: Namespace):
+        return self.package.build(ctx)
+
+    def install(self, ctx: Namespace):
+        return self.package.install(ctx)
+
+    def __getattr__(self, key: str):
+        return getattr(self.package, key)

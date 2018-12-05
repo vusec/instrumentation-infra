@@ -1,7 +1,7 @@
 import os
 import shutil
 from typing import List, Iterable
-from ...package import Package
+from ...package import Package, NoEnvLoad
 from ...util import Namespace, FatalError, run, apply_patch, download
 from ..gnu import Bash, CoreUtils, BinUtils, Make, \
         M4, AutoConf, AutoMake, LibTool
@@ -68,9 +68,10 @@ class LLVM(Package):
         return os.path.join(ctx.paths.installroot, self.ident())
 
     def dependencies(self):
+        # TODO: prune these
         yield Bash('4.3')
         yield CoreUtils('8.22')
-        yield self.binutils
+        yield NoEnvLoad(self.binutils)
         yield Make('4.1')
         yield AutoMake.default()
         yield CMake('3.8.2')

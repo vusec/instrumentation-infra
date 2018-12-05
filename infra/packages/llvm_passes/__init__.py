@@ -77,6 +77,7 @@ class LLVMPasses(Package):
 
     def dependencies(self):
         yield self.llvm
+        yield self.llvm.binutils # for ld.gold
         if self.builtin_passes:
             yield self.builtin_passes
 
