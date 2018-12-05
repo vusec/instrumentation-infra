@@ -71,7 +71,7 @@ class LLVM(Package):
         # TODO: prune these
         yield Bash('4.3')
         yield CoreUtils('8.22')
-        yield NoEnvLoad(self.binutils)
+        yield self.binutils
         yield Make('4.1')
         yield AutoMake.default()
         yield CMake('3.8.2')
