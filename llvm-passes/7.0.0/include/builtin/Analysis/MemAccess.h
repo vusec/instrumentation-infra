@@ -57,6 +57,11 @@ public:
     static unsigned get(Instruction &I, SmallVectorImpl<MemAccess> &MA);
 };
 
+inline raw_ostream &operator<<(raw_ostream &OS, const MemAccess &MA) {
+    MA.print(OS);
+    return OS;
+}
+
 template<typename inst_iterator>
 class MemAccessIterator {
     typedef SmallVector<MemAccess, 4> MAVec;
