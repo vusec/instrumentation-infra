@@ -3,15 +3,24 @@
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/CallSite.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/CommandLine.h>
 #include "Analysis/MemAccess.h"
 
 using namespace llvm;
 
+static cl::opt<bool>
+OptDetectMemCmp("memaccess-memcmp",
+        cl::desc("Detect calls to memcmp when scanning for memory accesses"),
+        cl::init(false));
+
 static CallInst *getMemCmp(Instruction &I) {
-    if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-        Function *F = CI->getCalledFunction();
-        if (F && F->hasName() && F->getName() == "memcmp")
-            return CI;
+    if (OptDetectMemCmp) {
+        // FIXME: use TargetLibraryInfo
+        if (CallInst *CI = dyn_cast<CallInst>(&I)) {
+            Function *F = CI->getCalledFunction();
+            if (F && F->hasName() && F->getName() == "memcmp")
+                return CI;
+        }
     }
     return nullptr;
 }
