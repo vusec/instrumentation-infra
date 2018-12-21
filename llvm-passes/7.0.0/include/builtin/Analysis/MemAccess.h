@@ -13,6 +13,7 @@
 #include <iterator>
 
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Analysis/ScalarEvolution.h>
 
 using namespace llvm;
 
@@ -55,6 +56,10 @@ public:
     void print(raw_ostream &O)   const;
 
     static unsigned get(Instruction &I, SmallVectorImpl<MemAccess> &MA);
+
+    const SCEV *getStartSCEV(ScalarEvolution &SE) const;
+    const SCEV *getLengthSCEV(ScalarEvolution &SE) const;
+    const SCEV *getEndSCEV(ScalarEvolution &SE) const;
 };
 
 inline raw_ostream &operator<<(raw_ostream &OS, const MemAccess &MA) {

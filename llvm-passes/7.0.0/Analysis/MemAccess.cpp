@@ -137,3 +137,25 @@ unsigned MemAccess::get(Instruction &I, SmallVectorImpl<MemAccess> &MA) {
 
     return MA.size() - OldSize;
 }
+
+static inline const SCEV *getSCEV(ScalarEvolution &SE, Value *V) {
+    if (!SE.isSCEVable(V->getType()))
+        return nullptr;
+    return SE.getSCEV(V);
+}
+
+const SCEV *MemAccess::getStartSCEV(ScalarEvolution &SE) const {
+    return getSCEV(SE, Pointer->stripPointerCasts());
+}
+
+const SCEV *MemAccess::getLengthSCEV(ScalarEvolution &SE) const {
+    return getSCEV(SE, Length);
+}
+
+const SCEV *MemAccess::getEndSCEV(ScalarEvolution &SE) const {
+    if (const SCEV *S = getStartSCEV(SE)) {
+        if (const SCEV *L = getLengthSCEV(SE))
+            return SE.getAddExpr(S, L, SCEV::FlagNSW);
+    }
+    return nullptr;
+}
