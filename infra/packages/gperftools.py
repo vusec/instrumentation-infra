@@ -57,7 +57,7 @@ class Gperftools(Package):
     :param libunwind_version: libunwind version to use
     """
 
-    def __init__(self, commit: str, libunwind_version='1.2-rc1'):
+    def __init__(self, commit: str, libunwind_version='1.4-rc1'):
         self.commit = commit
         self.libunwind = LibUnwind(libunwind_version)
         # TODO patches
