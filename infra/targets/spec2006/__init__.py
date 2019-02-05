@@ -721,8 +721,12 @@ class SPEC2006(Target):
                 else:
                     raise FatalError('no baseline found, cannot compute overheads')
 
-        # sort instance names to avoid random table order
-        instances = sorted(results)
+        # take instance names from the command line if given, otherwise sort
+        # instance names from dictionary to avoid random table order
+        if instances:
+            instances = [instance.name for instance in instances]
+        else:
+            instances = sorted(results)
 
         # compute aggregates
         benchdata = defaultdict(lambda: defaultdict(Namespace))
