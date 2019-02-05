@@ -909,7 +909,7 @@ class SPEC2006(Target):
                             if deviation ** 2 > entry.rt_variance * highlight_variance_deviation and \
                                     deviation_ratio > highlight_percent_threshold:
                                 rt = colored(rt, 'red')
-                                high_devs.append((bench, iname, runtime, ofile))
+                                high_devs.append((bench, node, iname, runtime, ofile))
                             elif runtime == entry.rt_median:
                                 rt = colored(rt, 'blue', attrs=['bold'])
 
@@ -930,10 +930,11 @@ class SPEC2006(Target):
             # show measurements with high deviations in separate table with log
             # file paths for easy access
             if high_devs:
-                rows = [['benchmark', 'instance', 'runtime', 'log file']]
-                for bench, iname, runtime, ofile in high_devs:
+                rows = [['benchmark', 'node', 'instance', 'runtime', 'log file']]
+                for bench, node, iname, runtime, ofile in high_devs:
+                    nodename = node.replace('node', '')
                     opath = re.sub('^%s/' % ctx.workdir, '', ofile)
-                    rows.append([bench, iname, '%.3f' % runtime, opath])
+                    rows.append([bench, nodename, iname, '%.3f' % runtime, opath])
                 table = Table(rows, ' high deviations ')
                 table.inner_column_border = False
                 print('\n'+ table.table)
