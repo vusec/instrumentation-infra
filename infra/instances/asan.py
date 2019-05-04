@@ -64,6 +64,12 @@ class ASan(Clang):
         opts = {
             'alloc_dealloc_mismatch': 0,
             'detect_odr_violation': 0,
-            'detect_leaks': 0
+            'detect_leaks': 0,
+            # uncomment the following to disable quarantining, thus disabling
+            # temporal safety:
+            # TODO: make this a configuration option
+            #'detect_stack_use_after_return': 0,
+            #'thread_local_quarantine_size_kb': 0,
+            #'quarantine_size_mb': 0
         }
         ctx.runenv.ASAN_OPTIONS = ':'.join('%s=%s' % i for i in opts.items())
