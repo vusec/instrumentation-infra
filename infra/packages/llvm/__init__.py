@@ -188,3 +188,53 @@ class LLVM(Package):
         """
         for flag in flags:
             ctx.ldflags.append('-Wl,-plugin-opt=' + str(flag))
+
+
+class LLVMBinDist(Package):
+    """
+    LLVM + Clang binary distribution package.
+
+    Fetches and extracts a tarfile from http://releases.llvm.org.
+
+    :identifier: llvm-<version>
+    :param version: the full LLVM version to download, like X.Y.Z
+    :param target: target machine in tarfile name, e.g., "x86_64-linux-gnu-ubuntu-16.10"
+    :param suffix: if nonempty, create {clang,clang++,opt,llvm-config}<suffix> binaries
+    """
+    @param_attrs
+    def __init__(self, version, target, bin_suffix=''):
+        pass
+
+    def ident(self):
+        return 'llvmbin-' + self.version
+
+    def is_fetched(self, ctx):
+        return os.path.exists('src')
+
+    def fetch(self, ctx):
+        ident = 'clang+llvm-%s-%s' % (self.version, self.target)
+        tarname = ident + '.tar.xz'
+        download(ctx, 'http://releases.llvm.org/%s/%s' % (self.version, tarname))
+        run(ctx, ['tar', '-xf', tarname])
+        shutil.move(ident, 'src')
+        os.remove(tarname)
+
+    def is_built(self, ctx):
+        return True
+
+    def build(self, ctx):
+        pass
+
+    def is_installed(self, ctx):
+        return os.path.exists('install')
+
+    def install(self, ctx):
+        shutil.move('src', 'install')
+        os.chdir('install/bin')
+
+        if self.bin_suffix:
+            for src in ('clang', 'clang++', 'opt', 'llvm-config'):
+                tgt = src + self.bin_suffix
+                if os.path.exists(src) and not os.path.exists(tgt):
+                    ctx.log.debug('creating symlink %s -> %s' % (tgt, src))
+                    os.symlink(src, tgt)
