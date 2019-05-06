@@ -1,10 +1,9 @@
 import os
 import shutil
 from typing import List, Iterable
-from ...package import Package, NoEnvLoad
-from ...util import Namespace, FatalError, run, apply_patch, download
-from ..gnu import Bash, CoreUtils, BinUtils, Make, \
-        M4, AutoConf, AutoMake, LibTool
+from ...package import Package
+from ...util import Namespace, run, apply_patch, download
+from ..gnu import Bash, CoreUtils, BinUtils, Make, AutoMake
 from ..cmake import CMake
 from ..ninja import Ninja
 
