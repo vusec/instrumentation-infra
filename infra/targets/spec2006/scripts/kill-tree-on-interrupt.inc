@@ -1,5 +1,5 @@
 # This file is designed to be sourced by bash scripts that should be killable
-# by ctrl-C, it does not do anythnig on itself
+# by ctrl-C, it does not do anything on itself
 
 killtree() {
     pid=$1
