@@ -11,7 +11,7 @@ import logging
 from subprocess import Popen, STDOUT
 from abc import ABCMeta, abstractmethod
 from typing import Union, List, Optional, Iterator, Callable
-from .util import Namespace, run
+from .util import Namespace, run, require_program
 
 
 # TODO: rewrite this to use
@@ -218,6 +218,7 @@ class PrunPool(Pool):
         self.prun_opts = prun_opts
 
     def make_jobs(self, ctx, cmd, jobid, outfile, nnodes, **kwargs):
+        require_program(ctx, 'prun')
         self._wait_for_queue_space(nnodes)
         ctx.log.info('scheduling ' + jobid)
         cmd = ['prun', '-v', '-np', '%d' % nnodes, '-1',
