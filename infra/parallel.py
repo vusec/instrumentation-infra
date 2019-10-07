@@ -198,7 +198,7 @@ class ProcessPool(Pool):
     def process_job_output(self, job):
         buf = job.stdout.read(io.DEFAULT_BUFFER_SIZE)
         if buf is not None:
-            job.output += buf.decode('ascii')
+            job.output += buf.decode('ascii', errors='replace')
             job.outfile_handle.write(buf)
 
     def onsuccess(self, job):
