@@ -9,4 +9,4 @@ SPEC
 
 Web servers
 ===========
-No web servers have been added yet, this is on the TODO list.
+.. autoclass:: infra.targets.Nginx
