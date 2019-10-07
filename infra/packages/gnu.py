@@ -4,7 +4,7 @@ from glob import glob
 from abc import ABCMeta, abstractmethod
 from typing import Optional
 from ..package import Package
-from ..util import run, download, FatalError
+from ..util import run, require_program, download, FatalError
 
 
 class GNUTarPackage(Package, metaclass=ABCMeta):
@@ -35,6 +35,7 @@ class GNUTarPackage(Package, metaclass=ABCMeta):
         return '%s-%s' % (self.name, self.version)
 
     def fetch(self, ctx):
+        require_program(ctx, 'tar', 'required to unpack source tarfile')
         ident = '%s-%s' % (self.name, self.version)
         tarname = ident + '.tar.' + self.tar_compression
         download(ctx, 'http://ftp.gnu.org/gnu/%s/%s' % (self.name, tarname))
