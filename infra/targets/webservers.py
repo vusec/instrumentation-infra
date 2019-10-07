@@ -159,6 +159,15 @@ class Nginx(WebServer):
     name = 'nginx'
     config_file = 'config.conf'
 
+    #: :class:`list` Command line arguments for the built-in ``-allocs`` pass;
+    #: Registers custom allocation function wrappers in Nginx.
+    custom_allocs_flags = ['-allocs-custom-funcs=' + '.'.join((
+        'ngx_alloc'        ':malloc' ':0',
+        'ngx_palloc'       ':malloc' ':1',
+        'ngx_palloc_small' ':malloc' ':1',
+        'ngx_palloc_large' ':malloc' ':1',
+    ))]
+
     def __init__(self, version):
         self.version = version
 
