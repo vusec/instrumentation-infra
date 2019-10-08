@@ -8,6 +8,8 @@ import select
 import inspect
 import functools
 import shutil
+import argparse
+import csv
 from typing import Union, List, Dict, Iterable, Optional, Callable, Any
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
@@ -378,3 +380,66 @@ def require_program(ctx: Namespace, name: str, error: Optional[str] = None):
         if error:
             msg += ': ' + error
         raise FatalError(msg)
+
+
+def add_table_report_args(parser: argparse.ArgumentParser):
+    """
+    TODO: docs
+    """
+    can_fancy = sys.stdout.encoding == 'UTF-8' and sys.stdout.name == '<stdout>'
+    parser.add_argument('--table',
+            choices=('fancy', 'ascii', 'csv', 'tsv'),
+            default='fancy' if can_fancy else 'ascii-table',
+            help='output mode for tables: UTF-8 formatted (default) / '
+                 'ASCII tables / comma-saparated / tab-separated')
+
+    quickset_group = parser.add_mutually_exclusive_group()
+    for mode in ('ascii', 'csv', 'tsv'):
+        quickset_group.add_argument('--' + mode,
+                action='store_const', const=mode, dest='table',
+                help='short for --table=' + mode)
+
+
+def report_table(ctx: Namespace,
+                 nonhuman_header: List[str],
+                 human_header: List[str],
+                 data_rows: List[List[Any]],
+                 title: str,
+                 **kwargs):
+    """
+    TODO: docs
+    """
+    if ctx.args.table == 'csv':
+        writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(nonhuman_header)
+        for row in data_rows:
+            writer.writerow(row)
+    elif ctx.args.table == 'tsv':
+        print('\t'.join(nonhuman_header))
+        for row in data_rows:
+            print('\t'.join(str(cell) for cell in row))
+    else:
+        if ctx.args.table == 'fancy':
+            from terminaltables import SingleTable as Table
+        else:
+            assert ctx.args.table == 'ascii'
+            from terminaltables import AsciiTable as Table
+
+        table = Table([human_header] + data_rows, title)
+        table.inner_column_border = False
+        table.padding_left = 0
+
+        for kw, val in kwargs:
+            if isinstance(val, dict):
+                attr = getattr(table, kw)
+                if isinstance(val, dict):
+                    attr.update(val)
+                else:
+                    assert isinstance(attr, list)
+                    for index, elem in val.items():
+                        attr[index] = elem
+            else:
+                setattr(table, kw, val)
+
+        print(table.table)
+        return table

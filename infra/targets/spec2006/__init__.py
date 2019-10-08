@@ -6,12 +6,11 @@ import argparse
 import getpass
 import re
 import statistics
-import csv
 from contextlib import redirect_stdout
 from collections import defaultdict
 from typing import List
 from ...util import Namespace, FatalError, run, apply_patch, qjoin, geomean, \
-                    require_program
+                    require_program, add_table_report_args, report_table
 from ...target import Target
 from ...packages import Bash, Nothp, BenchmarkUtils
 from ...parallel import PrunPool
@@ -80,6 +79,8 @@ class SPEC2006(Target):
         pip3 install [--user] terminaltables termcolor
 
     Some useful command-line options change what is displayed by ``report``:
+
+    TODO: move some of these from below to general report command docs
 
     #. ``--fields`` changes which data fields are printed. A column is added
        for each instance for each field. The options are autocompleted and
@@ -175,10 +176,9 @@ class SPEC2006(Target):
 
     def add_report_args(self, parser):
         self.butils.add_report_args(parser)
+        add_table_report_args(parser)
         parser.add_argument('--baseline', metavar='INSTANCE',
                 help='baseline instance for overheads')
-        parser.add_argument('--ascii', action='store_true',
-                help='print ASCII tables instead of UTF-8 formatted ones')
         parser.add_argument('--nodes', action='store_true',
                 help='show a table with performance per DAS-5 node')
         parser.add_argument('-x', '--exclude', action='append',
@@ -200,14 +200,6 @@ class SPEC2006(Target):
                                                   self.butils.counter_fields)
         except ImportError:
             pass
-
-        group = parser.add_mutually_exclusive_group()
-        group.add_argument('--csv',
-                action='store_const', const='csv', dest='nonhuman',
-                help='print table in CSV format')
-        group.add_argument('--tsv',
-                action='store_const', const='tsv', dest='nonhuman',
-                help='print table as tab-separated values')
 
     def dependencies(self):
         yield Bash('4.3')
@@ -849,30 +841,22 @@ class SPEC2006(Target):
 
         # write table
         with redirect_stdout(outfile):
-            if args.nonhuman == 'csv':
-                writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL)
-                writer.writerow(header_keys)
-                for row in body:
-                    writer.writerow(row)
-            elif args.nonhuman == 'tsv':
-                print('\t'.join(header_keys))
-                for row in body:
-                    print('\t'.join(str(cell) for cell in row))
-            else:
-                title = ' %s aggregated data (%s workload) ' % \
-                        (self.name, workload)
-                table = Table([header_full] + body, title)
-                table.inner_column_border = False
-                if geomeans:
-                    table.inner_footing_row_border = True
-                for i, field in enumerate(args.fields):
-                    # FIXME: this assumes everything except status is numeric,
-                    # better to actually check this
-                    if field != 'status':
-                        startcol = i * len(instances) + 1
-                        for col in range(startcol, startcol + len(instances)):
-                            table.justify_columns[col] = 'right'
-                print(table.table)
+            justify = {}
+            for i, field in enumerate(args.fields):
+                # FIXME: this assumes everything except status is numeric,
+                # better to actually check this
+                if field != 'status':
+                    startcol = i * len(instances) + 1
+                    for col in range(startcol, startcol + len(instances)):
+                        justify[col] = 'right'
+
+            table_options = {}
+            table_options['inner_footing_row_border'] = bool(geomeans)
+            table_options['justify_columns'] = justify
+
+            title = ' %s aggregated data (%s workload) ' % (self.name, workload)
+            report_table(ctx, header_keys, header_full, body, title,
+                         **table_options)
 
         if show_nodes_table:
             # order nodes such that the one with the highest z-scores (the most

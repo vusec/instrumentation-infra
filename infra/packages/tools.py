@@ -205,6 +205,9 @@ class BenchmarkUtils(Tool):
                 path = os.path.join(idir, filename)
                 cached = []
 
+                if not os.path.isfile(path):
+                    continue
+
                 if read_cache:
                     for result in self.parse_results(ctx, path):
                         if result.get('cached', False):

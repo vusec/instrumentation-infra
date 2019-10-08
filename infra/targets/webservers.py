@@ -2,14 +2,17 @@ import os
 import shutil
 import random
 import time
+import re
+from contextlib import redirect_stdout
 from abc import ABCMeta, abstractmethod
 from hashlib import md5
 from urllib.request import urlretrieve
+from statistics import mean
 from ..packages import Bash, BenchmarkUtils, ApacheBench
 from ..parallel import ProcessPool, PrunPool
 from ..target import Target
 from ..util import run, require_program, download, qjoin, param_attrs, \
-                   FatalError
+                   FatalError, add_table_report_args, report_table
 
 
 class WebServer(Target, metaclass=ABCMeta):
@@ -48,7 +51,7 @@ class WebServer(Target, metaclass=ABCMeta):
 
     def add_report_args(self, parser):
         self.butils.add_report_args(parser)
-        # TODO
+        add_table_report_args(parser)
 
     def run(self, ctx, instance, pool=None):
         runner = WebServerRunner(self, ctx, instance, pool)
@@ -72,20 +75,77 @@ class WebServer(Target, metaclass=ABCMeta):
     def stop_script(self, ctx, instance):
         pass
 
+    def report(self, ctx, instances, outfile, args):
+        # collect results: {instance: [{nthreads:x, throughput:x, latency:x}]}
+        results = self.butils.parse_logs(ctx, instances, args.rundirs)
+
+        # group results by nthreads
+        instances = sorted(results.keys())
+        all_nthreads = sorted(set(result['nthreads']
+                              for instance_results in results.values()
+                               for result in instance_results))
+        grouped = {}
+        for instance, instance_results in results.items():
+            for result in instance_results:
+                key = result['nthreads'], instance
+                grouped.setdefault((key, 'tp'), []).append(result['throughput'])
+                grouped.setdefault((key, 'lt'), []).append(result['latency'])
+
+        # Print a table with throughput+latency columns for each instance, and a
+        # row for each distinct nthreads. If there are multiple results for the
+        # same value of nthreads, compute the mean throughput and latency.
+        header = ['threads']
+        human_header = ['\n\nthreads']
+        for instance in instances:
+            header += ['throughput_' + instance, 'latency_' + instance]
+            human_header += ['throughput\n[#req/sec]\n' + instance,
+                             'latency\n[ms]\n' + instance]
+
+        data = []
+        for nthreads in all_nthreads:
+            row = [nthreads]
+            for instance in instances:
+                key = nthreads, instance
+                throughput = mean(grouped.get((key, 'tp'), [-1]))
+                latency = mean(grouped.get((key, 'lt'), [-1]))
+                row += ['%.3f' % throughput, '%.3f' % latency]
+            data.append(row)
+
+        title = ' %s ' % self.name
+        with redirect_stdout(outfile):
+            report_table(ctx, header, human_header, data, title)
+
+
+    def parse_outfile(self, ctx, instance_name, outfile):
+        if not os.path.basename(outfile).startswith('ab'):
+            ctx.log.debug('ignoring non-benchmark file')
+            return
+
+        with open(outfile) as f:
+            outfile_contents = f.read()
+
+        def search(regex):
+            m = re.search(regex, outfile_contents, re.M)
+            assert m, 'regex not found in outfile'
+            return m.group(1)
+
+        yield {
+            'duration': float(search(r'^Time taken for tests::\s+([^ ]+)')),
+            'nthreads': int(search(r'^Concurrency Level:\s+(\d+)')),
+            'throughput': float(search(r'^Requests per second:\s+([^ ]+)')),
+            'latency': float(search(r'^Time per request:\s+([^ ]+)')),
+        }
+
 
 class WebServerRunner:
     @param_attrs
     def __init__(self, server, ctx, instance, pool):
-        if self.pool:
-            self.rundir = self.server.butils.outfile_path(ctx, instance, 'tmp')
-        else:
-            self.rundir = self.server.path(ctx, instance.name, 'run')
+        self.rundir = server.path(ctx, instance.name, 'run')
         self.rootdir = os.path.join(self.rundir, 'www')
 
     def outfile_path(self, outfile):
-        if self.pool:
-            return self.server.butils.outfile_path(self.ctx, self.instance, outfile)
-        return self.server.path(self.ctx, self.instance.name, outfile)
+        assert self.pool
+        return self.server.butils.outfile_path(self.ctx, self.instance, outfile)
 
     def run_serve(self):
         if self.pool:
@@ -211,38 +271,42 @@ class WebServerRunner:
     def server_script(self):
         start_script = self.server.start_script(self.ctx, self.instance)
         stop_script = self.server.stop_script(self.ctx, self.instance)
-
         if isinstance(self.pool, PrunPool):
-            domain_command = 'hostname'
+            # get the infiniband network IP
+            host_command = 'ifconfig ib0 2>/dev/null | grep -Po "(?<=inet )[^ ]+"'
         else:
-            domain_command = 'echo localhost'
-
+            host_command = 'echo localhost'
+        port = self.ctx.args.port
         return '''
-        {domain_command} > domain
         {start_script}
 
-        echo "waiting for another process to create stop_server file"
-        while [ ! -e stop_server ]; do sleep 0.2; done
+        {host_command} > host
+        sync
+        echo "=== serving at $(cat host):{port}"
 
-        echo "stopping server"
+        echo "=== waiting for another process to create stop_server file"
+        while [ ! -e stop_server ]; do sleep 0.1; sync; done
+
+        echo "=== stopping server"
         {stop_script}
         '''.format(**locals())
 
     def test_client_script(self):
         port = self.ctx.args.port
         return '''
-        while [ ! -e nginx.pid ]; do sleep 0.1; done
-        url="http://$(cat domain):{port}/index.html"
-        echo "requesting $url"
+        while [ ! -e nginx.pid ]; do sleep 0.1; sync; done
+        url="http://$(cat host):{port}/index.html"
+        echo "=== requesting $url"
         wget -q -O requested_index.html "$url"
 
-        echo "creating stop_server to stop web server"
+        echo "=== creating stop_server to stop web server"
         touch stop_server
+        sync
 
         if diff -q requested_index.html {self.rootdir}/index.html; then
-            echo "contents of index.html are correct"
+            echo "=== contents of index.html are correct"
         else
-            echo "ERROR: fetched content does not match generated index.html"
+            echo "=== ERROR: fetched content does not match generated index.html"
             exit 1
         fi
         '''.format(**locals())
@@ -252,10 +316,13 @@ class WebServerRunner:
         duration = self.ctx.args.ab_duration
         concurrencies = ' '.join(map(str, self.ctx.args.ab_concurrencies))
         num_reqs = 100000000  # something high so that ab always times out
-        outfile = self.outfile_path('ab.out')
+        outfile = self.outfile_path('ab')
         return '''
-        while [ ! -e nginx.pid ]; do sleep 0.1; done
-        url="http://$(cat domain):{port}/index.html"
+        while [ ! -e host ]; do sleep 0.1; sync; done
+        url="http://$(cat host):{port}/index.html"
+
+        echo "=== 1 second warmup run with 32 threads"
+        ab -k -t 1 -c 32 "$url"
 
         echo "=== Benchmarking $url for {duration} seconds for threads {concurrencies}\n"
 
@@ -266,6 +333,7 @@ class WebServerRunner:
 
         echo "=== creating stop_server to stop web server"
         touch stop_server
+        sync
         '''.format(**locals())
 
 
