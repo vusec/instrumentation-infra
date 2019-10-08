@@ -145,6 +145,10 @@ class WebServerRunner:
         run(self.ctx, self.bash_command(script), teeout=True)
 
     def bash_command(self, script):
+        if isinstance(self.pool, PrunPool):
+            # escape for passing as: prun ... bash -c '<script>'
+            script = script.replace('$', '\$').replace('"', '\\"')
+
         return ['bash', '-c', 'set -e; cd %s; %s' % (self.rundir, script)]
 
     def create_rundir(self):
@@ -199,7 +203,6 @@ class WebServerRunner:
             domain_command = 'echo localhost'
 
         return '''
-        set -x
         {domain_command} > domain
         {start_script}
 
@@ -214,9 +217,8 @@ class WebServerRunner:
         domain = 'localhost'
         port = self.ctx.args.port
 
-
         return '''
-        while [ ! -e {self.rundir}/nginx.pid ]; do sleep 0.1; done
+        while [ ! -e nginx.pid ]; do sleep 0.1; done
         url="http://$(cat domain):{port}/index.html"
         echo "requesting $url"
         wget -q -O requested_index.html "$url"
