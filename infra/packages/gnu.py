@@ -81,6 +81,19 @@ class Bash(GNUTarPackage):
         return proc and proc.returncode == 0 and \
                 'version ' + self.version in proc.stdout
 
+    def install_env(self, ctx):
+        super().install_env(ctx)
+
+        # Bash allows functions to be defined in the environment, which leads to
+        # incmopatibility problems (e.g., on DAS-5) because syntax differs
+        # accross versions. We preemptively remove functions from the
+        # environment and expect build scripts to source files instead.
+        funcvars = [var for var in os.environ if var.startswith('BASH_FUNC_')]
+        for funcvar in funcvars:
+            ctx.log.debug('removing %s from environment to avoid '
+                          'potential errors' % funcvar)
+            del os.environ[funcvar]
+
 
 class Make(GNUTarPackage):
     """
