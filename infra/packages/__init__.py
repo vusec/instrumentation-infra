@@ -1,5 +1,5 @@
 from .gnu import Bash, CoreUtils, BinUtils, Make, \
-        M4, AutoConf, AutoMake, LibTool
+                 M4, AutoConf, AutoMake, LibTool
 from .cmake import CMake
 from .llvm import LLVM, LLVMBinDist
 from .patchelf import PatchElf
@@ -11,3 +11,4 @@ from .perl import Perl, SPECPerl, Perlbrew
 from .tools import Nothp, BenchmarkUtils
 from .ninja import Ninja
 from .gperftools import Gperftools, LibUnwind
+from .apache import ApacheBench, APR, APRUtil
