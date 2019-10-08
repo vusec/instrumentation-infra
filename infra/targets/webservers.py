@@ -5,12 +5,11 @@ import time
 from abc import ABCMeta, abstractmethod
 from hashlib import md5
 from urllib.request import urlretrieve
-from ..packages import Bash, BenchmarkUtils
+from ..packages import Bash, BenchmarkUtils, ApacheBench
 from ..parallel import ProcessPool, PrunPool
 from ..target import Target
 from ..util import run, require_program, download, qjoin, param_attrs, \
                    FatalError
-
 
 
 class WebServer(Target, metaclass=ABCMeta):
@@ -20,6 +19,7 @@ class WebServer(Target, metaclass=ABCMeta):
     def dependencies(self):
         yield Bash('4.3')
         yield self.butils
+        yield ApacheBench.default()
 
     def add_run_args(self, parser):
         parser.add_argument('-t', '-type',
@@ -31,17 +31,17 @@ class WebServer(Target, metaclass=ABCMeta):
 
         # common options
         parser.add_argument('--port', type=int,
-                default=random.randint(20000, 30000),
+                default=random.randint(10000, 30000),
                 help='web server port (random by default)')
-        parser.add_argument('--filesize', type=str, default='64K',
-                help='filesize for generated index.html '
-                     '(supports suffixes compatible with dd)')
+        parser.add_argument('--filesize', type=str, default='64',
+                help='filesize for generated index.html in bytes '
+                     '(supports suffixes compatible with dd, default 64)')
 
         # ApacheBench options
         parser.add_argument('--ab-duration',
                 metavar='SECONDS', default=10, type=int,
                 help='ab test duration in seconds (default 10)')
-        parser.add_argument('--ab-concurrency',
+        parser.add_argument('--ab-concurrencies',
                 nargs='+', type=int, metavar='N',
                 help='a list of concurrency levels to run ab with (ab -c); '
                      'start low and increment until the server is saturated')
@@ -83,7 +83,9 @@ class WebServerRunner:
         self.rootdir = os.path.join(self.rundir, 'www')
 
     def outfile_path(self, outfile):
-        return self.server.butils.outfile_path(self.ctx, self.instance, outfile)
+        if self.pool:
+            return self.server.butils.outfile_path(self.ctx, self.instance, outfile)
+        return self.server.path(self.ctx, self.instance.name, outfile)
 
     def run_serve(self):
         if self.pool:
@@ -130,9 +132,22 @@ class WebServerRunner:
             self.ctx.log.warn('ab should not run on the same machine as the '
                               'server, use prun instead for benchmarking')
 
-        self.ctx.log.info('running ab test on two separate nodes')
-        require_program('ab', 'ApacheBench is not installed')
-        raise NotImplementedError
+        if not self.ctx.args.ab_concurrencies:
+            raise FatalError('need --ab-concurrencies')
+
+        self.create_rundir()
+
+        server_command = self.bash_command(self.server_script())
+        outfile = self.outfile_path('server.out')
+        self.ctx.log.debug('server will log to ' + outfile)
+        self.pool.run(self.ctx, server_command, jobid='server', nnodes=1,
+                        outfile=outfile)
+
+        client_command = self.bash_command(self.ab_client_script())
+        outfile = self.outfile_path('client.out')
+        self.ctx.log.debug('client will log to ' + outfile)
+        self.pool.run(self.ctx, client_command, jobid='client', nnodes=1,
+                        outfile=outfile)
 
     def start_server(self):
         self.ctx.log.info('starting server')
@@ -214,9 +229,7 @@ class WebServerRunner:
         '''.format(**locals())
 
     def test_client_script(self):
-        domain = 'localhost'
         port = self.ctx.args.port
-
         return '''
         while [ ! -e nginx.pid ]; do sleep 0.1; done
         url="http://$(cat domain):{port}/index.html"
@@ -232,6 +245,27 @@ class WebServerRunner:
             echo "ERROR: fetched content does not match generated index.html"
             exit 1
         fi
+        '''.format(**locals())
+
+    def ab_client_script(self):
+        port = self.ctx.args.port
+        duration = self.ctx.args.ab_duration
+        concurrencies = ' '.join(map(str, self.ctx.args.ab_concurrencies))
+        num_reqs = 100000000  # something high so that ab always times out
+        outfile = self.outfile_path('ab.out')
+        return '''
+        while [ ! -e nginx.pid ]; do sleep 0.1; done
+        url="http://$(cat domain):{port}/index.html"
+
+        echo "=== Benchmarking $url for {duration} seconds for threads {concurrencies}\n"
+
+        for n in {concurrencies}; do
+            echo "=== $n threads, writing to {outfile}.$n"
+            ab -k -t {duration} -n {num_reqs} -c $n "$url" > "{outfile}.$n"
+        done
+
+        echo "=== creating stop_server to stop web server"
+        touch stop_server
         '''.format(**locals())
 
 
@@ -327,20 +361,22 @@ class Nginx(WebServer):
         rundir = os.getcwd()
         ctx.log.debug('writing config to nginx.conf')
         config_template = '''
-lock_file {rundir}/nginx.lock;
-pid {rundir}/nginx.pid;
-worker_processes {ctx.args.workers};
-events {{ }}
-http {{
-    server {{
-        listen {port};
-        server_name localhost;
-        location / {{
-        root {rundir}/www;
+        lock_file {rundir}/nginx.lock;
+        pid {rundir}/nginx.pid;
+        worker_processes {ctx.args.workers};
+        events {{
+            worker_connections 1024;
         }}
-    }}
-}}
-'''
+        http {{
+            server {{
+                listen {port};
+                server_name localhost;
+                location / {{
+                    root {rundir}/www;
+                }}
+            }}
+        }}
+        '''
         with open('nginx.conf', 'w') as f:
             f.write(config_template.format(**locals()))
 
