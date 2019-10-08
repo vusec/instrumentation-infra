@@ -85,13 +85,13 @@ class Bash(GNUTarPackage):
         super().install_env(ctx)
 
         # Bash allows functions to be defined in the environment, which leads to
-        # incmopatibility problems (e.g., on DAS-5) because syntax differs
+        # incompatibility problems (e.g., on DAS-5) because syntax differs
         # accross versions. We preemptively remove functions from the
         # environment and expect build scripts to source files instead.
         funcvars = [var for var in os.environ if var.startswith('BASH_FUNC_')]
         for funcvar in funcvars:
             ctx.log.debug('removing %s from environment to avoid '
-                          'potential errors' % funcvar)
+                          'potential syntax errors' % funcvar)
             del os.environ[funcvar]
 
 
