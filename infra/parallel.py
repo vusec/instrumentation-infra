@@ -85,8 +85,15 @@ class Pool(metaclass=ABCMeta):
                     self.onerror(job)
 
                 if flags & select.EPOLLHUP:
+                    job = self.jobs[fd]
+                    if job.poll() is None:
+                        self.log.debug('job %s hung up but does not yet have a '
+                                       'return code, check later' % job.jobid)
+                        continue
+
                     self.poller.unregister(fd)
-                    job = self.jobs.pop(fd)
+                    del self.jobs[fd]
+
                     if job.poll() == 0:
                         self.onsuccess(job)
                     else:
