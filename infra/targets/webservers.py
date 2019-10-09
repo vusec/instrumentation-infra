@@ -130,7 +130,7 @@ class WebServer(Target, metaclass=ABCMeta):
             return m.group(1)
 
         yield {
-            'duration': float(search(r'^Time taken for tests::\s+([^ ]+)')),
+            'duration': float(search(r'^Time taken for tests:\s+([^ ]+)')),
             'nthreads': int(search(r'^Concurrency Level:\s+(\d+)')),
             'throughput': float(search(r'^Requests per second:\s+([^ ]+)')),
             'latency': float(search(r'^Time per request:\s+([^ ]+)')),
