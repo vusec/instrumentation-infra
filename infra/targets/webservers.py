@@ -442,11 +442,13 @@ class Nginx(WebServer):
         worker_processes {ctx.args.workers};
         events {{
             worker_connections 1024;
+            use epoll;
         }}
         http {{
             server {{
                 listen {port};
                 server_name localhost;
+                sendfile on;
                 location / {{
                     root {rundir}/www;
                 }}
