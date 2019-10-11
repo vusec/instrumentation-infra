@@ -3,11 +3,12 @@ import shutil
 import random
 import time
 import re
+from itertools import chain, zip_longest
 from contextlib import redirect_stdout
 from abc import ABCMeta, abstractmethod
 from hashlib import md5
 from urllib.request import urlretrieve
-from statistics import mean
+from statistics import median, pstdev, mean
 from ..packages import Bash, BenchmarkUtils, ApacheBench
 from ..parallel import ProcessPool, PrunPool
 from ..target import Target
@@ -53,6 +54,19 @@ class WebServer(Target, metaclass=ABCMeta):
         self.butils.add_report_args(parser)
         add_table_report_args(parser)
 
+        parser.add_argument('--columns', nargs='+',
+                choices=['nthreads', 'throughput', 'latency', 'duration'],
+                default=['throughput', 'latency'],
+                help='columns to show (default throughput,latency)')
+
+        report_modes = parser.add_mutually_exclusive_group()
+        report_modes.add_argument('--aggregate', nargs='+',
+                choices=['mean', 'median', 'stdev', 'mad', 'min', 'max', 'sum'],
+                default=['median'],
+                help='aggregation methods for columns')
+        report_modes.add_argument('--raw', action='store_true',
+                help='output all data points instead of aggregates')
+
     def run(self, ctx, instance, pool=None):
         runner = WebServerRunner(self, ctx, instance, pool)
 
@@ -79,41 +93,81 @@ class WebServer(Target, metaclass=ABCMeta):
         # collect results: {instance: [{nthreads:x, throughput:x, latency:x}]}
         results = self.butils.parse_logs(ctx, instances, args.rundirs)
 
+        with redirect_stdout(outfile):
+            if ctx.args.raw:
+                self.report_raw(ctx, results)
+            else:
+                self.report_aggregate(ctx, results)
+
+    def report_raw(self, ctx, results):
+        columns = ctx.args.columns
+        instances = sorted(results.keys())
+
+        header = []
+        human_header = []
+        for instance in instances:
+            prefix = instance + '\n'
+            for col in columns:
+                header.append('%s_%s' % (instance, col))
+                human_header.append(prefix + col)
+                prefix = '\n'
+
+        rows = {}
+        for instance in instances:
+            rows[instance] = sorted(tuple(r[col] for col in columns)
+                                    for r in results[instance])
+
+        instance_rows = [rows[i] for i in instances]
+        joined_rows = []
+        for parts in zip_longest(*instance_rows, fillvalue=['', '']):
+            joined_rows.append(list(chain.from_iterable(parts)))
+
+        title = ' %s raw data ' % self.name
+        report_table(ctx, header, human_header, joined_rows, title)
+
+    def report_aggregate(self, ctx, results):
+        columns = [col for col in ctx.args.columns if col != 'nthreads']
+
         # group results by nthreads
         instances = sorted(results.keys())
         all_nthreads = sorted(set(result['nthreads']
-                              for instance_results in results.values()
-                               for result in instance_results))
+                                  for instance_results in results.values()
+                                  for result in instance_results))
         grouped = {}
         for instance, instance_results in results.items():
             for result in instance_results:
                 key = result['nthreads'], instance
-                grouped.setdefault((key, 'tp'), []).append(result['throughput'])
-                grouped.setdefault((key, 'lt'), []).append(result['latency'])
+                for col in columns:
+                    grouped.setdefault((key, col), []).append(result[col])
 
-        # Print a table with throughput+latency columns for each instance, and a
-        # row for each distinct nthreads. If there are multiple results for the
-        # same value of nthreads, compute the mean throughput and latency.
+        # print a table with selected aggregate columns for each instance,
+        # grouped by the number of threads
         header = ['threads']
         human_header = ['\n\nthreads']
         for instance in instances:
-            header += ['throughput_' + instance, 'latency_' + instance]
-            human_header += ['throughput\n[#req/sec]\n' + instance,
-                             'latency\n[ms]\n' + instance]
+            for i, col in enumerate(columns):
+                prefix = '%s\n%s\n' % ('' if i else instance, col)
+                for aggr_mode in ctx.args.aggregate:
+                    header += ['%s_%s_%s' % (instance, col, aggr_mode)]
+                    human_header += [prefix + aggr_mode]
+                    prefix = '\n\n'
 
+        aggregate_fns = {'mean': mean, 'median': median,
+                         'stdev': pstdev, 'mad': median_absolute_deviation,
+                         'min': min, 'max': max, 'sum': sum}
         data = []
         for nthreads in all_nthreads:
             row = [nthreads]
             for instance in instances:
                 key = nthreads, instance
-                throughput = mean(grouped.get((key, 'tp'), [-1]))
-                latency = mean(grouped.get((key, 'lt'), [-1]))
-                row += ['%.3f' % throughput, '%.3f' % latency]
+                for col in columns:
+                    series = grouped.get((key, col), [-1])
+                    for aggr_mode in ctx.args.aggregate:
+                        row.append('%.3f' % aggregate_fns[aggr_mode](series))
             data.append(row)
 
-        title = ' %s ' % self.name
-        with redirect_stdout(outfile):
-            report_table(ctx, header, human_header, data, title)
+        title = ' %s aggregated data ' % self.name
+        report_table(ctx, header, human_header, data, title)
 
 
     def parse_outfile(self, ctx, instance_name, outfile):
@@ -126,7 +180,7 @@ class WebServer(Target, metaclass=ABCMeta):
 
         def search(regex):
             m = re.search(regex, outfile_contents, re.M)
-            assert m, 'regex not found in outfile'
+            assert m, 'regex not found in outfile ' + outfile
             return m.group(1)
 
         yield {
@@ -476,3 +530,9 @@ class Nginx(WebServer):
         return '''
         {objdir}/nginx -p {rundir} -c nginx.conf -s quit
         '''.format(**locals())
+
+
+def median_absolute_deviation(numbers):
+    assert len(numbers) > 0
+    med = median(numbers)
+    return median(abs(x - med) for x in numbers)
