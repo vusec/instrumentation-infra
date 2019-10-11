@@ -197,17 +197,23 @@ class WebServerRunner:
 
         self.create_rundir()
 
-        server_command = self.bash_command(self.server_script())
-        outfile = self.outfile_path('server.out')
-        self.ctx.log.debug('server will log to ' + outfile)
-        self.pool.run(self.ctx, server_command, jobid='server', nnodes=1,
-                        outfile=outfile)
+        for i in range(self.ctx.args.iterations):
+            id_suffix = '%d/%d' % (i + 1, self.ctx.args.iterations)
 
-        client_command = self.bash_command(self.ab_client_script())
-        outfile = self.outfile_path('client.out')
-        self.ctx.log.debug('client will log to ' + outfile)
-        self.pool.run(self.ctx, client_command, jobid='client', nnodes=1,
-                        outfile=outfile)
+            server_script = self.server_script(i)
+            server_command = self.bash_command(server_script)
+            outfile = self.outfile_path('server.out.%d' % i)
+            self.ctx.log.debug('server will log to ' + outfile)
+            self.pool.run(self.ctx, server_command, outfile=outfile,
+                          jobid='server-' + id_suffix, nnodes=1)
+
+            client_command = self.bash_command(self.ab_client_script(i))
+            outfile = self.outfile_path('client.out.%d' % i)
+            self.ctx.log.debug('client will log to ' + outfile)
+            self.pool.run(self.ctx, client_command, outfile=outfile,
+                          jobid='ab-client-' + id_suffix, nnodes=1)
+
+            self.pool.wait_all()
 
     def start_server(self):
         self.ctx.log.info('starting server')
@@ -268,7 +274,7 @@ class WebServerRunner:
             raise FatalError('content does not match generated index.html')
         self.ctx.log.info('contents of index.html are correct')
 
-    def server_script(self):
+    def server_script(self, iteration=None):
         start_script = self.server.start_script(self.ctx, self.instance)
         stop_script = self.server.stop_script(self.ctx, self.instance)
         if isinstance(self.pool, PrunPool):
@@ -276,16 +282,17 @@ class WebServerRunner:
             host_command = 'ifconfig ib0 2>/dev/null | grep -Po "(?<=inet )[^ ]+"'
         else:
             host_command = 'echo localhost'
+        suffix = '' if iteration is None else '.%d' % iteration
         port = self.ctx.args.port
         return '''
         {start_script}
 
-        {host_command} > host
+        {host_command} > host{suffix}
         sync
-        echo "=== serving at $(cat host):{port}"
+        echo "=== serving at $(cat host{suffix}):{port}"
 
-        echo "=== waiting for another process to create stop_server file"
-        while [ ! -e stop_server ]; do sleep 0.1; sync; done
+        echo "=== waiting for another process to create stop_server{suffix} file"
+        while [ ! -e stop_server{suffix} ]; do sleep 0.1; sync; done
 
         echo "=== stopping server"
         {stop_script}
@@ -311,28 +318,29 @@ class WebServerRunner:
         fi
         '''.format(**locals())
 
-    def ab_client_script(self):
+    def ab_client_script(self, iteration):
         port = self.ctx.args.port
         duration = self.ctx.args.ab_duration
         concurrencies = ' '.join(map(str, self.ctx.args.ab_concurrencies))
         num_reqs = 100000000  # something high so that ab always times out
         outfile = self.outfile_path('ab')
+        suffix = '.%d' % iteration
         return '''
-        while [ ! -e host ]; do sleep 0.1; sync; done
-        url="http://$(cat host):{port}/index.html"
+        while [ ! -e host{suffix} ]; do sleep 0.1; sync; done
+        url="http://$(cat host{suffix}):{port}/index.html"
 
         echo "=== 1 second warmup run with 32 threads"
         ab -k -t 1 -c 32 "$url"
 
-        echo "=== Benchmarking $url for {duration} seconds for threads {concurrencies}\n"
-
+        echo "=== Benchmarking $url for {duration} seconds for threads {concurrencies}"
+        echo ""
         for n in {concurrencies}; do
-            echo "=== $n threads, writing to {outfile}.$n"
-            ab -k -t {duration} -n {num_reqs} -c $n "$url" > "{outfile}.$n"
+            echo "=== $n threads, writing to {outfile}.$n{suffix}"
+            ab -k -t {duration} -n {num_reqs} -c $n "$url" > "{outfile}.$n{suffix}"
         done
 
-        echo "=== creating stop_server to stop web server"
-        touch stop_server
+        echo "=== creating stop_server{suffix} to stop web server"
+        touch stop_server{suffix}
         sync
         '''.format(**locals())
 
