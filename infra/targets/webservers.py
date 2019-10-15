@@ -1,4 +1,5 @@
 import os
+
 import shutil
 import random
 import time
@@ -41,7 +42,7 @@ class WebServer(Target, metaclass=ABCMeta):
                 help='filesize for generated index.html in bytes '
                      '(supports suffixes compatible with dd, default 64)')
 
-        # wrk options
+        # bench options
         parser.add_argument('--duration',
                 metavar='SECONDS', default=10, type=int,
                 help='ab test duration in seconds (default 10)')
@@ -52,7 +53,7 @@ class WebServer(Target, metaclass=ABCMeta):
                 type=int, default=1,
                 help='concurrent wrk connections (simulates concurrent clients)')
         parser.add_argument('--rates',
-                nargs='+', type=int, metavar='N', required=True,
+                nargs='+', type=int, metavar='N',
                 help='a list of throughputs to generate in 1000 reqs/sec; '
                      'start low and increment until the server is saturated')
 
@@ -92,15 +93,35 @@ class WebServer(Target, metaclass=ABCMeta):
             runner.run_bench()
 
     @abstractmethod
-    def populate_rundir(self, ctx, instance):
+    def populate_logdir(self, runner: 'WebServerRunner'):
+        """
+        Populate the run directory which will be mounted on both server and
+        the client. E.g., write the server configuration file here. The
+        configuration should store temporary files, such as access logs, in
+        `runner.rundir` which will be private to each host in the run pool.
+
+        :param runner: the web server runner instance calling this function
+        """
         pass
 
     @abstractmethod
-    def start_script(self, ctx, instance):
+    def start_script(self, runner: 'WebServerRunner'):
+        """
+        Generate a bash script that starts the server daemon.
+
+        :param runner: the web server runner instance calling this function
+        :returns: a bash script that starts the server daemon
+        """
         pass
 
     @abstractmethod
-    def stop_script(self, ctx, instance):
+    def stop_script(self, runner: 'WebServerRunner'):
+        """
+        Generate a bash script that stops the server daemon after benchmarking.
+
+        :param runner: the web server runner instance calling this function
+        :returns: a bash script that stops the server daemon
+        """
         pass
 
     def report(self, ctx, instances, outfile, args):
@@ -251,22 +272,22 @@ class WebServerRunner:
 
     @param_attrs
     def __init__(self, server, ctx, instance, pool):
-        self.rundir = server.path(ctx, instance.name, 'run')
-        self.rootdir = os.path.join(self.rundir, 'www')
+        localdir = '/tmp/infra-%s-%s' % (server.name, instance.name)
+        self.rundir = os.path.join(localdir, 'run')
         if self.pool:
-            self.logdir = os.path.dirname(server.butils.outfile_path(ctx, instance, 'x'))
+            self.logdir = server.butils.outfile_path(ctx, instance)
         else:
-            self.logdir = self.rundir
+            self.logdir = os.path.join(localdir, 'log')
 
-    def outfile_path(self, outfile):
-        assert self.pool
+    def logfile(self, outfile):
         return os.path.join(self.logdir, outfile)
 
     def run_serve(self):
         if self.pool:
             raise FatalError('can not serve interactively in parallel mode')
 
-        self.create_rundir()
+        self.create_logdir()
+        self.populate_logdir()
         self.start_server()
 
         try:
@@ -277,28 +298,28 @@ class WebServerRunner:
             pass
 
         self.stop_server()
-        self.remove_rundir()
 
     def run_test(self):
-        self.create_rundir()
-
         if self.pool:
+            self.populate_logdir()
+
             server_command = self.bash_command(self.test_server_script())
-            outfile = self.outfile_path('server.out')
+            outfile = self.logfile('server.out')
             self.ctx.log.debug('server will log to ' + outfile)
             self.pool.run(self.ctx, server_command, jobid='server', nnodes=1,
                           outfile=outfile)
 
             client_command = self.bash_command(self.test_client_script())
-            outfile = self.outfile_path('client.out')
+            outfile = self.logfile('client.out')
             self.ctx.log.debug('client will log to ' + outfile)
             self.pool.run(self.ctx, client_command, jobid='client', nnodes=1,
                           outfile=outfile)
         else:
+            self.create_logdir()
+            self.populate_logdir()
             self.start_server()
             self.request_and_check_index()
             self.stop_server()
-            self.remove_rundir()
 
     def run_bench(self):
         if not self.pool:
@@ -307,33 +328,42 @@ class WebServerRunner:
             self.ctx.log.warn('the client should not run on the same machine '
                               'as the server, use prun for benchmarking')
 
+        if not self.ctx.args.rates:
+            raise FatalError('bench run need --rates argument')
+
         if self.ctx.args.connections < self.ctx.args.threads:
             raise FatalError('#connections must be >= #threads')
 
+        self.populate_logdir()
 
-        self.create_rundir()
+        with open(self.logfile('config.txt'), 'w') as f:
+            with redirect_stdout(f):
+                print('server workers:    ', self.ctx.args.workers)
+                print('client threads:    ', self.ctx.args.threads)
+                print('client connections:', self.ctx.args.connections)
+                print('benchmark duration:', self.ctx.args.duration, 'seconds')
 
         server_script = self.wrk_server_script()
         server_command = self.bash_command(server_script)
-        outfile = self.outfile_path('server.out')
+        outfile = self.logfile('server.out')
         self.ctx.log.debug('server will log to ' + outfile)
         self.pool.run(self.ctx, server_command, outfile=outfile,
                         jobid='server', nnodes=1)
 
         client_command = self.bash_command(self.wrk_client_script())
-        outfile = self.outfile_path('client.out')
+        outfile = self.logfile('client.out')
         self.ctx.log.debug('client will log to ' + outfile)
         self.pool.run(self.ctx, client_command, outfile=outfile,
                         jobid='wrk-client', nnodes=1)
 
     def start_server(self):
         self.ctx.log.info('starting server')
-        script = self.server.start_script(self.ctx, self.instance)
+        script = self.wrap_start_script()
         run(self.ctx, self.bash_command(script), teeout=True)
 
     def stop_server(self):
         self.ctx.log.info('stopping server')
-        script = self.server.stop_script(self.ctx, self.instance)
+        script = self.wrap_stop_script()
         run(self.ctx, self.bash_command(script), teeout=True)
 
     def bash_command(self, script):
@@ -341,41 +371,29 @@ class WebServerRunner:
             # escape for passing as: prun ... bash -c '<script>'
             script = script.replace('$', '\$').replace('"', '\\"')
 
-        return ['bash', '-c', 'set -e; cd %s; %s' % (self.rundir, script)]
+        return ['bash', '-c', 'set -e; cd %s; %s' % (self.logdir, script)]
 
-    def create_rundir(self):
-        if os.path.exists(self.rundir):
-            self.ctx.log.debug('removing old run directory ' + self.rundir)
-            shutil.rmtree(self.rundir)
-
-        self.ctx.log.debug('creating temporary run directory ' + self.rundir)
-        os.makedirs(self.rundir)
-        os.chdir(self.rundir)
-
-        self.ctx.log.debug('populating run directory')
-        self.server.populate_rundir(self.ctx, self.instance)
-        self.populate_rootdir()
-
-    def remove_rundir(self):
+    def create_logdir(self):
         assert not self.pool
-        self.ctx.log.debug('removing run directory ' + self.rundir)
-        shutil.rmtree(self.rundir)
+        if os.path.exists(self.logdir):
+            self.ctx.log.debug('removing old log directory ' + self.logdir)
+            shutil.rmtree(self.logdir)
+        self.ctx.log.debug('creating log directory ' + self.logdir)
+        os.makedirs(self.logdir)
 
-    def populate_rootdir(self):
-        require_program(self.ctx, 'dd', 'required to generate index.html')
-        self.ctx.log.info('creating index.html of size %s with random '
-                          'contents' % self.ctx.args.filesize)
-        os.makedirs(self.rootdir, exist_ok=True)
-        run(self.ctx, ['dd', 'if=/dev/urandom', 'bs=1',
-                       'of=%s/index.html' % self.rootdir,
-                       'count=' + self.ctx.args.filesize])
+    def populate_logdir(self):
+        self.ctx.log.debug('populating log directory')
+        os.makedirs(self.logdir, exist_ok=True)
+        os.chdir(self.logdir)
+        self.server.populate_logdir(self)
 
     def request_and_check_index(self):
+        assert not self.pool
         url = 'http://localhost:%d/index.html' % self.ctx.args.port
         self.ctx.log.info('requesting ' + url)
         urlretrieve(url, 'requested_index.html')
 
-        with open(os.path.join(self.rootdir, 'index.html'), 'rb') as f:
+        with open(os.path.join(self.rundir, 'www', 'index.html'), 'rb') as f:
             expected = f.read()
         with open('requested_index.html', 'rb') as f:
             got = f.read()
@@ -385,122 +403,118 @@ class WebServerRunner:
             raise FatalError('content does not match generated index.html')
         self.ctx.log.info('contents of index.html are correct')
 
-    def test_server_script(self):
-        start_script = self.server.start_script(self.ctx, self.instance)
-        stop_script = self.server.stop_script(self.ctx, self.instance)
+    def wrap_start_script(self):
+        start_script = self.server.start_script(self)
+        host_command = 'echo localhost'
         if isinstance(self.pool, PrunPool):
             # get the infiniband network IP
             host_command = 'ifconfig ib0 2>/dev/null | grep -Po "(?<=inet )[^ ]+"'
-        else:
-            host_command = 'echo localhost'
-        serve_port = self.ctx.args.port
-        hostfile = self.outfile_path('server_host')
         return '''
-        comm_recv() {{ nc -l {self.comm_port}; }}
+        echo "=== creating local run directory with index.html"
+        rm -rf "{self.rundir}"
+        mkdir -p "{self.rundir}/www"
+        dd if=/dev/urandom bs=1 count={filesize} of="{self.rundir}/www/index.html"
 
         echo "=== starting web server"
         {start_script}
         server_host="$({host_command})"
-        echo "=== serving at $server_host:{serve_port}"
+        echo "=== serving at $server_host:{port}"
+        '''.format(**vars(self.ctx.args), **locals())
 
-        echo "=== writing hostname to file"
-        echo $server_host > {hostfile}
-        sync
-
-        echo "=== waiting for stop signal from client"
-        comm_recv
-
+    def wrap_stop_script(self):
+        stop_script = self.server.stop_script(self)
+        return '''
         echo "=== received stop signal, stopping web server"
         {stop_script}
-        '''.format(**locals())
 
-    def test_client_script(self):
-        serve_port = self.ctx.args.port
-        hostfile = self.outfile_path('server_host')
-        return '''
-        comm_send() {{ nc $server_host {self.comm_port}; }}
+        echo "=== removing local run directory"
+        rm -rf "{self.rundir}"
+        '''.format(**vars(self.ctx.args), **locals())
+
+    def server_script(self, body_template, **format_args):
+        start_script = self.wrap_start_script()
+        stop_script = self.wrap_stop_script()
+        return ('''
+        comm_recv() {{ nc -l {self.comm_port}; }}
+
+        {start_script}
+
+        echo "=== writing hostname to file"
+        echo "$server_host" > server_host
+        sync
+
+        ''' + body_template + '''
+
+        {stop_script}
+        ''').format(**vars(self.ctx.args), **locals(), **format_args)
+
+    def client_script(self, body_template, **format_args):
+        return ('''
+        comm_send() {{ nc "$server_host" {self.comm_port}; }}
 
         echo "=== waiting for server to write its IP to file"
-        while [ ! -e {hostfile} ]; do sleep 0.1; sync; done
-        server_host=$(cat {hostfile})
+        while [ ! -e server_host ]; do sleep 0.1; sync; done
+        server_host="$(cat server_host)"
 
-        url="http://$server_host:{serve_port}/index.html"
-        echo "=== requesting $url"
-        wget -q -O requested_index.html "$url"
+        ''' + body_template + '''
 
         echo "=== sending stop signal to server"
         comm_send <<< stop
+        ''').format(**vars(self.ctx.args), **locals(), **format_args)
 
-        if diff -q requested_index.html {self.rootdir}/index.html; then
+    def test_server_script(self):
+        return self.server_script('''
+        echo "=== copying index.html to log directory for client"
+        cp "{self.rundir}/www/index.html" .
+
+        echo "=== waiting for stop signal from client"
+        comm_recv
+        ''')
+
+    def test_client_script(self):
+        return self.client_script('''
+        url="http://$server_host:{port}/index.html"
+        echo "=== requesting $url"
+        wget -q -O requested_index.html "$url"
+        ''') + \
+        '''
+        if diff -q index.html requested_index.html; then
             echo "=== contents of index.html are correct"
         else
-            echo "=== ERROR: fetched content does not match generated index.html"
+            echo "=== ERROR: content mismatch:"
+            echo "  $(pwd)/requested_index.html"
+            echo "does not match:"
+            echo "  $(pwd)/index.html"
             exit 1
         fi
         '''.format(**locals())
 
     def wrk_server_script(self):
-        start_script = self.server.start_script(self.ctx, self.instance)
-        stop_script = self.server.stop_script(self.ctx, self.instance)
-        if isinstance(self.pool, PrunPool):
-            # get the infiniband network IP
-            host_command = 'ifconfig ib0 2>/dev/null | grep -Po "(?<=inet )[^ ]+"'
-        else:
-            host_command = 'echo localhost'
-        serve_port = self.ctx.args.port
-        hostfile = self.outfile_path('server_host')
-        return '''
-        comm_recv() {{ nc -l {self.comm_port}; }}
-
-        echo "=== starting web server"
-        {start_script}
-        server_host="$({host_command})"
-        echo "=== serving at $server_host:{serve_port}"
-
-        echo "=== writing hostname to file"
-        echo $server_host > "{hostfile}"
-        sync
-
+        return self.server_script('''
         echo "=== waiting for first work rate"
         rate=$(comm_recv)
         while [ x$rate != xstop ]; do
-            mpstat 1 | awk '/^[0-9].+all/ {{print 100-$13; fflush()}}' \\
-                    > {self.logdir}/cpu.$rate &
+            echo "=== logging cpu usage for {duration} seconds"
+            mpstat 1 {duration} | \\
+                    awk '/^[0-9].+all/ {{print 100-$13; fflush()}}' \\
+                    > cpu.$rate
 
             echo "=== waiting for next work rate"
             rate=$(comm_recv)
-
-            jobs -l | awk '/^\\[/{{print $2}} /^ /{{print $1}}' | xargs kill
-            jobs
         done
-
-        echo "=== received stop signal, stopping web server"
-        {stop_script}
-        '''.format(**locals())
+        ''')
 
     def wrk_client_script(self):
-        serve_port = self.ctx.args.port
-        iterations = self.ctx.args.iterations
-        threads = self.ctx.args.threads
-        duration = self.ctx.args.duration
-        connections = self.ctx.args.connections
         rates = ' '.join(str(c) for c in self.ctx.args.rates)
-        hostfile = self.outfile_path('server_host')
-        return '''
-        comm_send() {{ nc "$server_host" {self.comm_port}; }}
-
-        echo "=== waiting for server to write its IP to file"
-        while [ ! -e "{hostfile}" ]; do sleep 0.1; sync; done
-        server_host="$(cat {hostfile})"
-
-        url="http://$server_host:{serve_port}/index.html"
+        return self.client_script('''
+        url="http://$server_host:{port}/index.html"
         echo "=== will benchmark $url for {duration} seconds for each work rate"
 
         echo "=== 2 second warmup run"
         wrk -d 2 -c 8 -R 1000k "$url"
 
         for i in $(seq 1 1 {iterations}); do
-            for rate in {rates}; do
+            for rate in {spaced_rates}; do
                 echo "=== sending work rate $rate.$i to server"
                 comm_send <<< "$rate.$i"
 
@@ -509,14 +523,11 @@ class WebServerRunner:
                 echo "=== starting benchmark"
                 set -x
                 wrk -d {duration}s -c {connections} -R "$rate"k "$url" --latency \\
-                        > {self.logdir}/bench.$rate.$i
+                        > bench.$rate.$i
                 set +x
             done
         done
-
-        echo "=== sending stop signal to server"
-        comm_send <<< stop
-        '''.format(**locals())
+        ''', spaced_rates=rates)
 
 
 class Nginx(WebServer):
@@ -605,26 +616,28 @@ class Nginx(WebServer):
         super().add_run_args(parser)
         parser.add_argument('--workers', type=int, default=1,
                 help='number of worker processes')
+        parser.add_argument('--worker-connections', type=int, default=1024,
+                help='number of connections per worker process')
 
-    def populate_rundir(self, ctx, instance):
-        port = ctx.args.port
-        rundir = os.getcwd()
-        ctx.log.debug('writing config to nginx.conf')
+    def populate_logdir(self, runner):
+        runner.ctx.log.debug('creating nginx.conf')
         config_template = '''
-        lock_file {rundir}/nginx.lock;
-        pid {rundir}/nginx.pid;
-        worker_processes {ctx.args.workers};
+        error_log {runner.rundir}/error.log error;
+        lock_file {runner.rundir}/nginx.lock;
+        pid {runner.rundir}/nginx.pid;
+        worker_processes {runner.ctx.args.workers};
         events {{
-            worker_connections 1024;
+            worker_connections {runner.ctx.args.worker_connections};
             use epoll;
         }}
         http {{
             server {{
-                listen {port};
+                listen {runner.ctx.args.port};
                 server_name localhost;
                 sendfile on;
+                access_log off;
                 location / {{
-                    root {rundir}/www;
+                    root {runner.rundir}/www;
                 }}
             }}
         }}
@@ -632,23 +645,29 @@ class Nginx(WebServer):
         with open('nginx.conf', 'w') as f:
             f.write(config_template.format(**locals()))
 
-        # need logs/ directory for error+access logs
-        os.mkdir('logs')
-
-    def start_script(self, ctx, instance):
-        rundir = os.getcwd()
-        objdir = self.path(ctx, instance.name, 'objs')
+    def start_script(self, runner):
+        objdir = self.path(runner.ctx, runner.instance.name, 'objs')
         return '''
-        {objdir}/nginx -p {rundir} -c nginx.conf
-        echo "started server on port {ctx.args.port}, pid $(cat nginx.pid)"
+        # create logs/ dir, nginx needs it to create the default error log
+        # before processing the error_logs directive
+        mkdir -p "{runner.rundir}/logs"
+
+        cp nginx.conf "{runner.rundir}"
+
+        {objdir}/nginx -p "{runner.rundir}" -c nginx.conf
+        echo -n "=== started server on port {runner.ctx.args.port}, "
+        echo "pid $(cat {runner.rundir}/nginx.pid)"
         '''.format(**locals())
 
-    def stop_script(self, ctx, instance):
-        rundir = os.getcwd()
-        objdir = self.path(ctx, instance.name, 'objs')
-        #return objdir + '/nginx -c nginx.conf -s quit'
+    def stop_script(self, runner):
+        objdir = self.path(runner.ctx, runner.instance.name, 'objs')
         return '''
-        {objdir}/nginx -p {rundir} -c nginx.conf -s quit
+        {objdir}/nginx -p "{runner.rundir}" -c nginx.conf -s quit
+
+        if [ -s "{runner.rundir}/error.log" ]; then
+            echo "=== there were errors, copying log to {runner.logdir}/error.log"
+            cp "{runner.rundir}/error.log" .
+        fi
         '''.format(**locals())
 
 

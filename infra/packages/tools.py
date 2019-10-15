@@ -125,22 +125,22 @@ class BenchmarkUtils(Tool):
         yield from super().pkg_config_options(ctx)
 
     def outfile_path(self, ctx: Namespace, instance: Instance,
-                     benchmark: str) -> str:
+                     *args: Optional[Iterable[str]]) -> str:
         """
-        Returns the path to a log file for tha benchmark of a particular
+        Returns the path to a log file for the benchmark of a particular
         instance, after creating the instance directory if it did not exist
         yet.
 
         :param ctx: the configuration context
         :param instance: instance to which the benchmark belongs
-        :param benchmark: benchmark name (log file name)
-        :returns: ``results/run.YY-MM-DD.HH-MM-SS/<target>/<instance>/<benchmark>``
+        :param args: log file name, optionally preceded by nested directory names
+        :returns: ``results/run.YY-MM-DD.HH-MM-SS/<target>/<instance>[/<arg>...]``
         """
         rundir = ctx.starttime.strftime('run.%Y-%m-%d.%H-%M-%S')
-        instancedir = os.path.join(ctx.paths.pool_results, rundir,
-                                   self.target.name, instance.name)
-        os.makedirs(instancedir, exist_ok=True)
-        return os.path.join(instancedir, benchmark)
+        path = os.path.join(ctx.paths.pool_results, rundir, self.target.name,
+                            instance.name, *args)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        return path
 
     def parse_logs(self, ctx: Namespace,
                    instances: List[Instance],
