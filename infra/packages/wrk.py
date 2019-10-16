@@ -4,21 +4,25 @@ from ..package import Package
 from ..util import run, download, require_program, param_attrs
 
 
-class Wrk2(Package):
+class Wrk(Package):
     """
-    The wrk2 benchmark.
+    The wrk benchmark.
 
-    :identifier: wrk2-<version>
+    :identifier: wrk-<version>
     :param version: version to download
     """
+
+    name = 'wrk'
+    gitrepo = 'https://github.com/wg/wrk.git'
+
     def __init__(self, version='master'):
         self.version = version
 
     def ident(self):
-        return 'wrk2-' + self.version
+        return self.name + '-' + self.version
 
     def fetch(self, ctx):
-        run(ctx, 'git clone https://github.com/giltene/wrk2.git src')
+        run(ctx, ['git', 'clone', self.gitrepo, 'src'])
         os.chdir('src')
         run(ctx, ['git', 'checkout', self.version])
 
@@ -41,3 +45,14 @@ class Wrk2(Package):
 
     def is_installed(self, ctx):
         return os.path.exists('install/bin/wrk')
+
+
+class Wrk2(Wrk):
+    """
+    The wrk2 benchmark.
+
+    :identifier: wrk2-<version>
+    :param version: version to download
+    """
+    name = 'wrk2'
+    gitrepo = 'https://github.com/giltene/wrk2.git'

@@ -12,4 +12,4 @@ from .tools import Nothp, BenchmarkUtils
 from .ninja import Ninja
 from .gperftools import Gperftools, LibUnwind
 from .apache import ApacheBench, APR, APRUtil
-from .wrk2 import Wrk2
+from .wrk import Wrk, Wrk2
