@@ -522,7 +522,8 @@ class WebServerRunner:
 
                 echo "=== starting benchmark"
                 set -x
-                wrk -d {duration}s -c {connections} -R "$rate"k "$url" --latency \\
+                wrk --duration {duration}s --connections {connections} \\
+                        --rate "$rate"k "$url" --threads {threads} --latency \\
                         > bench.$rate.$i
                 set +x
             done
@@ -626,6 +627,7 @@ class Nginx(WebServer):
         lock_file {runner.rundir}/nginx.lock;
         pid {runner.rundir}/nginx.pid;
         worker_processes {runner.ctx.args.workers};
+        worker_cpu_affinity auto;
         events {{
             worker_connections {runner.ctx.args.worker_connections};
             use epoll;
