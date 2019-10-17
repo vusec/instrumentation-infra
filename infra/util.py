@@ -388,13 +388,13 @@ def add_table_report_args(parser: argparse.ArgumentParser):
     """
     can_fancy = sys.stdout.encoding == 'UTF-8' and sys.stdout.name == '<stdout>'
     parser.add_argument('--table',
-            choices=('fancy', 'ascii', 'csv', 'tsv'),
+            choices=('fancy', 'ascii', 'csv', 'tsv', 'ssv'),
             default='fancy' if can_fancy else 'ascii-table',
             help='output mode for tables: UTF-8 formatted (default) / '
-                 'ASCII tables / comma-saparated / tab-separated')
+                 'ASCII tables / {comma,tab,space}-separated')
 
     quickset_group = parser.add_mutually_exclusive_group()
-    for mode in ('ascii', 'csv', 'tsv'):
+    for mode in ('ascii', 'csv', 'tsv', 'ssv'):
         quickset_group.add_argument('--' + mode,
                 action='store_const', const=mode, dest='table',
                 help='short for --table=' + mode)
@@ -409,15 +409,13 @@ def report_table(ctx: Namespace,
     """
     TODO: docs
     """
-    if ctx.args.table == 'csv':
-        writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL)
+    if ctx.args.table in ('csv', 'tsv', 'ssv'):
+        delim = {'csv': ',', 'tsv': '\t', 'ssv': ' '}[ctx.args.table]
+        writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL,
+                            delimiter=delim)
         writer.writerow(nonhuman_header)
         for row in data_rows:
             writer.writerow(row)
-    elif ctx.args.table == 'tsv':
-        print('\t'.join(nonhuman_header))
-        for row in data_rows:
-            print('\t'.join(str(cell) for cell in row))
     else:
         if ctx.args.table == 'fancy':
             from terminaltables import SingleTable as Table

@@ -10,7 +10,7 @@ from abc import ABCMeta, abstractmethod
 from hashlib import md5
 from urllib.request import urlretrieve
 from statistics import median, pstdev, mean
-from ..packages import Bash, BenchmarkUtils, Wrk2
+from ..packages import Bash, BenchmarkUtils, Wrk
 from ..parallel import ProcessPool, PrunPool
 from ..target import Target
 from ..util import run, require_program, download, qjoin, param_attrs, \
@@ -24,7 +24,7 @@ class WebServer(Target, metaclass=ABCMeta):
     def dependencies(self):
         yield Bash('4.3')
         yield self.butils
-        yield Wrk2()
+        yield Wrk()
 
     def add_run_args(self, parser):
         parser.add_argument('-t', '-type',
@@ -50,29 +50,26 @@ class WebServer(Target, metaclass=ABCMeta):
                 type=int, default=1,
                 help='concurrent wrk threads (distributes client load)')
         parser.add_argument('--connections',
-                type=int, default=1,
-                help='concurrent wrk connections (simulates concurrent clients)')
-        parser.add_argument('--rates',
-                nargs='+', type=int, metavar='N',
-                help='a list of throughputs to generate in 1000 reqs/sec; '
+                nargs='+', type=int,
+                help='a list of concurrent wrk connections; '
                      'start low and increment until the server is saturated')
 
     def add_report_args(self, parser):
         self.butils.add_report_args(parser)
         add_table_report_args(parser)
 
-        parser.add_argument('-c', '--columns', nargs='+',
-                choices=['rate', 'throughput', 'avg_latency', '99p_latency',
-                         'transferrate', 'duration', 'cpu'],
+        parser.add_argument('-c', '--columns', nargs='+', metavar='COL',
+                choices=['connections', 'throughput', 'avg_latency',
+                         '99p_latency', 'transferrate', 'duration', 'cpu'],
                 default=['throughput', '99p_latency'],
                 help='''columns to show:
-                    rate:         Desired throughput (reqs/s),
+                    connections:  Concurrent client connections,
                     throughput:   Attained throughput (reqs/s),
                     avg_latency:  Average latency (ms),
                     99p_latency:  99th percentile latency (ms),
                     transferrate: Network traffic (KB/s),
                     duration:     Benchmark duration (s),
-                    cpu:          Maximum server CPU load during benchmark (%%)''')
+                    cpu:          Median server CPU load during benchmark (%%)''')
 
         report_modes = parser.add_mutually_exclusive_group()
         report_modes.add_argument('--aggregate', nargs='+',
@@ -81,6 +78,9 @@ class WebServer(Target, metaclass=ABCMeta):
                 help='aggregation methods for columns')
         report_modes.add_argument('--raw', action='store_true',
                 help='output all data points instead of aggregates')
+
+        parser.add_argument('--refresh', action='store_true',
+                help='refresh cached results by reparsing logs')
 
     def run(self, ctx, instance, pool=None):
         runner = WebServerRunner(self, ctx, instance, pool)
@@ -127,10 +127,10 @@ class WebServer(Target, metaclass=ABCMeta):
     def report(self, ctx, instances, outfile, args):
         # collect results: {instance: [{connections:x, throughput:x, latency:x}]}
         results = self.butils.parse_logs(ctx, instances, args.rundirs,
-                read_cache=False)
+                                         read_cache=not args.refresh)
 
         with redirect_stdout(outfile):
-            if ctx.args.raw:
+            if args.raw:
                 self.report_raw(ctx, results)
             else:
                 self.report_aggregate(ctx, results)
@@ -162,24 +162,24 @@ class WebServer(Target, metaclass=ABCMeta):
         report_table(ctx, header, human_header, joined_rows, title)
 
     def report_aggregate(self, ctx, results):
-        columns = [col for col in ctx.args.columns if col != 'rate']
+        columns = [col for col in ctx.args.columns if col != 'connections']
 
         # group results by connections
         instances = sorted(results.keys())
-        all_rates = sorted(set(result['rate']
+        all_conns = sorted(set(result['connections']
                                for instance_results in results.values()
                                for result in instance_results))
         grouped = {}
         for instance, instance_results in results.items():
             for result in instance_results:
-                key = result['rate'], instance
+                key = result['connections'], instance
                 for col in columns:
                     grouped.setdefault((key, col), []).append(result[col])
 
         # print a table with selected aggregate columns for each instance,
-        # grouped by the rate
-        header = ['rate']
-        human_header = ['\n\nrate']
+        # grouped by the number of connections
+        header = ['connections']
+        human_header = ['\n\nconnections']
         for instance in instances:
             for i, col in enumerate(columns):
                 prefix = '%s\n%s\n' % ('' if i else instance, col)
@@ -192,7 +192,7 @@ class WebServer(Target, metaclass=ABCMeta):
                          'stdev': pstdev, 'mad': median_absolute_deviation,
                          'min': min, 'max': max, 'sum': sum}
         data = []
-        for connections in all_rates:
+        for connections in all_conns:
             row = [connections]
             for instance in instances:
                 key = connections, instance
@@ -246,24 +246,22 @@ class WebServer(Target, metaclass=ABCMeta):
                 size *= 1000000
             return size
 
-        rate = int(filename.split('.')[1])
         cpu_outfile = os.path.join(dirname, filename.replace('bench', 'cpu'))
-        max_cpu_usage = 0.0
-        for line in open(cpu_outfile):
+        with open(cpu_outfile) as f:
             try:
-                max_cpu_usage = max(max_cpu_usage, float(line))
+                cpu_usages = [float(line) for line in f]
             except ValueError:
-                raise FatalError('%s countains invalid lines' % cpu_outfile)
+                raise FatalError('%s contains invalid lines' % cpu_outfile)
+
         yield {
-            'rate': rate,
             'threads': int(search(r'(\d+) threads and \d+ connections')),
             'connections': int(search(r'\d+ threads and (\d+) connections')),
             'avg_latency': parse_latency(search(r'^    Latency\s+([^ ]+)')),
-            '99p_latency': parse_latency(search(r'^ *99\.000%\s+(.+)')),
+            '99p_latency': parse_latency(search(r'^\s+99%\s+(.+)')),
             'throughput': float(search(r'^Requests/sec:\s+([0-9.]+)')),
             'transferrate': parse_bytesize(search(r'^Transfer/sec:\s+(.+)')),
             'duration': float(search(r'\d+ requests in ([\d.]+)s,')),
-            'cpu': max_cpu_usage
+            'cpu': median(sorted(cpu_usages))
         }
 
 
@@ -284,20 +282,29 @@ class WebServerRunner:
 
     def run_serve(self):
         if self.pool:
-            raise FatalError('can not serve interactively in parallel mode')
+            if not self.ctx.args.duration:
+                raise FatalError('need --duration argument')
 
-        self.create_logdir()
-        self.populate_logdir()
-        self.start_server()
+            self.populate_logdir()
 
-        try:
-            self.ctx.log.info('press ctrl-C to kill the server')
-            while True:
-                time.sleep(100000)
-        except KeyboardInterrupt:
-            pass
+            server_command = self.bash_command(self.standalone_server_script())
+            outfile = self.logfile('server.out')
+            self.ctx.log.debug('server will log to ' + outfile)
+            self.pool.run(self.ctx, server_command, jobid='server', nnodes=1,
+                          outfile=outfile)
+        else:
+            self.create_logdir()
+            self.populate_logdir()
+            self.start_server()
 
-        self.stop_server()
+            try:
+                self.ctx.log.info('press ctrl-C to kill the server')
+                while True:
+                    time.sleep(100000)
+            except KeyboardInterrupt:
+                pass
+
+            self.stop_server()
 
     def run_test(self):
         if self.pool:
@@ -328,11 +335,16 @@ class WebServerRunner:
             self.ctx.log.warn('the client should not run on the same machine '
                               'as the server, use prun for benchmarking')
 
-        if not self.ctx.args.rates:
-            raise FatalError('bench run need --rates argument')
+        if not self.ctx.args.duration:
+            raise FatalError('need --duration argument')
 
-        if self.ctx.args.connections < self.ctx.args.threads:
-            raise FatalError('#connections must be >= #threads')
+        if not self.ctx.args.connections:
+            raise FatalError('need --connections argument')
+
+        for conn in self.ctx.args.connections:
+            if conn < self.ctx.args.threads:
+                raise FatalError('#connections must be >= #threads (%d < %d)' %
+                                 (conn, self.ctx.args.threads))
 
         self.populate_logdir()
 
@@ -431,7 +443,7 @@ class WebServerRunner:
         rm -rf "{self.rundir}"
         '''.format(**vars(self.ctx.args), **locals())
 
-    def server_script(self, body_template, **format_args):
+    def server_script(self, body_template, **fmt_args):
         start_script = self.wrap_start_script()
         stop_script = self.wrap_stop_script()
         return ('''
@@ -446,11 +458,14 @@ class WebServerRunner:
         ''' + body_template + '''
 
         {stop_script}
-        ''').format(**vars(self.ctx.args), **locals(), **format_args)
+        ''').format(**vars(self.ctx.args), **locals(), **fmt_args)
 
-    def client_script(self, body_template, **format_args):
+    def client_script(self, body_template, **fmt_args):
         return ('''
-        comm_send() {{ nc "$server_host" {self.comm_port}; }}
+        comm_send() {{
+            read msg
+            while ! nc "$server_host" {self.comm_port} <<< "$msg" 2>/dev/null; do :; done
+        }}
 
         echo "=== waiting for server to write its IP to file"
         while [ ! -e server_host ]; do sleep 0.1; sync; done
@@ -460,7 +475,7 @@ class WebServerRunner:
 
         echo "=== sending stop signal to server"
         comm_send <<< stop
-        ''').format(**vars(self.ctx.args), **locals(), **format_args)
+        ''').format(**vars(self.ctx.args), **locals(), **fmt_args)
 
     def test_server_script(self):
         return self.server_script('''
@@ -468,7 +483,7 @@ class WebServerRunner:
         cp "{self.rundir}/www/index.html" .
 
         echo "=== waiting for stop signal from client"
-        comm_recv
+        test "$(comm_recv)" = stop
         ''')
 
     def test_client_script(self):
@@ -492,43 +507,49 @@ class WebServerRunner:
     def wrk_server_script(self):
         return self.server_script('''
         echo "=== waiting for first work rate"
-        rate=$(comm_recv)
-        while [ x$rate != xstop ]; do
-            echo "=== logging cpu usage for {duration} seconds"
-            mpstat 1 {duration} | \\
+        rate="$(comm_recv)"
+        while [ "$rate" != stop ]; do
+            echo "=== logging cpu usage to cpu.$rate for {duration} seconds"
+            {{ timeout {duration} mpstat 1 {duration} || true; }} | \\
                     awk '/^[0-9].+all/ {{print 100-$13; fflush()}}' \\
-                    > cpu.$rate
+                    > "cpu.$rate"
 
             echo "=== waiting for next work rate"
-            rate=$(comm_recv)
+            rate="$(comm_recv)"
         done
         ''')
 
     def wrk_client_script(self):
-        rates = ' '.join(str(c) for c in self.ctx.args.rates)
+        conns = ' '.join(str(c) for c in self.ctx.args.connections)
         return self.client_script('''
         url="http://$server_host:{port}/index.html"
         echo "=== will benchmark $url for {duration} seconds for each work rate"
 
-        echo "=== 2 second warmup run"
-        wrk -d 2 -c 8 -R 1000k "$url"
+        echo "=== 3 second warmup run"
+        wrk --duration 3s --threads {threads} --connections 400 "$url"
 
         for i in $(seq 1 1 {iterations}); do
-            for rate in {spaced_rates}; do
-                echo "=== sending work rate $rate.$i to server"
-                comm_send <<< "$rate.$i"
-
-                sleep 0.1  # wait for server to start logging cpu usage
+            for connections in {conns}; do
+                echo "=== sending work rate $connections.$i to server"
+                comm_send <<< "$connections.$i"
 
                 echo "=== starting benchmark"
                 set -x
-                wrk --duration {duration}s --connections {connections} \\
-                        --rate "$rate"k "$url" --threads {threads} --latency \\
-                        > bench.$rate.$i
+                wrk --duration {duration}s --connections $connections \\
+                        --threads {threads} --latency "$url" \\
+                        > bench.$connections.$i
                 set +x
             done
         done
-        ''', spaced_rates=rates)
+        ''', conns=conns)
+
+    def standalone_server_script(self):
+        return self.server_script('''
+        echo "=== logging cpu usage to cpu for {duration} seconds"
+        {{ timeout {duration} mpstat 1 {duration} || true; }} | \\
+                awk '/^[0-9].+all/ {{print 100-$13; fflush()}}' \\
+                > cpu
+        ''')
 
 
 class Nginx(WebServer):
@@ -616,9 +637,9 @@ class Nginx(WebServer):
     def add_run_args(self, parser):
         super().add_run_args(parser)
         parser.add_argument('--workers', type=int, default=1,
-                help='number of worker processes')
+                help='number of worker processes (default 1)')
         parser.add_argument('--worker-connections', type=int, default=1024,
-                help='number of connections per worker process')
+                help='number of connections per worker process (default 1024)')
 
     def populate_logdir(self, runner):
         runner.ctx.log.debug('creating nginx.conf')
