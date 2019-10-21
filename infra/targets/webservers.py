@@ -10,7 +10,7 @@ from abc import ABCMeta, abstractmethod
 from hashlib import md5
 from urllib.request import urlretrieve
 from statistics import median, pstdev, mean
-from ..packages import Bash, BenchmarkUtils, Wrk
+from ..packages import Bash, BenchmarkUtils, Wrk, Netcat
 from ..parallel import ProcessPool, PrunPool
 from ..target import Target
 from ..util import run, require_program, download, qjoin, param_attrs, \
@@ -25,6 +25,7 @@ class WebServer(Target, metaclass=ABCMeta):
         yield Bash('4.3')
         yield self.butils
         yield Wrk()
+        yield Netcat('0.7.1')
 
     def add_run_args(self, parser):
         parser.add_argument('-t', '-type',
@@ -501,7 +502,8 @@ class WebServerRunner:
         start_script = self.wrap_start_script()
         stop_script = self.wrap_stop_script()
         return ('''
-        comm_recv() {{ nc -l {self.comm_port}; }}
+        which netcat
+        comm_recv() {{ netcat --close -l -p {self.comm_port}; }}
 
         {start_script}
 
@@ -518,7 +520,8 @@ class WebServerRunner:
         return ('''
         comm_send() {{
             read msg
-            while ! nc "$server_host" {self.comm_port} <<< "$msg" 2>/dev/null; do :; done
+            while ! netcat --close "$server_host" {self.comm_port} \\
+                    <<< "$msg" 2>/dev/null; do :; done
         }}
 
         echo "=== waiting for server to write its IP to file"

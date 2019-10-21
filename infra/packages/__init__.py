@@ -1,5 +1,5 @@
 from .gnu import Bash, CoreUtils, BinUtils, Make, \
-                 M4, AutoConf, AutoMake, LibTool
+                 M4, AutoConf, AutoMake, LibTool, Netcat
 from .cmake import CMake
 from .llvm import LLVM, LLVMBinDist
 from .patchelf import PatchElf

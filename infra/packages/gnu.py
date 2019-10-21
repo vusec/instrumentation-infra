@@ -289,3 +289,22 @@ class BinUtils(Package):
     def _bison_installed(self, ctx):
         proc = run(ctx, ['bison', '--version'], allow_error=True, silent=True)
         return proc and proc.returncode == 0
+
+
+class Netcat(GNUTarPackage):
+    """
+    :identifier: netcat-<version>
+    :param version: version to download
+    """
+    name = 'netcat'
+    built_path = 'src/netcat'
+    installed_path = 'bin/netcat'
+    tar_compression = 'bz2'
+
+    def fetch(self, ctx):
+        tarname = 'netcat-%s.tar.bz2' % self.version
+        url = 'http://sourceforge.net/projects/netcat/files/netcat/%s/%s'
+        download(ctx, url % (self.version, tarname))
+        run(ctx, ['tar', '-xf', tarname])
+        shutil.move('netcat-' + self.version, 'src')
+        os.remove(tarname)
