@@ -377,7 +377,8 @@ class WebServerRunner:
             raise FatalError('cannot run this command with --parallel')
 
         self.ctx.log.warn('another machine should run a matching bench-client')
-        self.ctx.log.warn('server/client log directories should be merged')
+        self.ctx.log.info('will log to %s (merge with client log)'
+                          % self.logdir)
 
         self.populate_logdir()
         self.write_config()
@@ -403,7 +404,8 @@ class WebServerRunner:
 
         self.ctx.log.warn('matching bench-server should be running at %s'
                           % self.ctx.args.server_ip)
-        self.ctx.log.warn('server/client log directories should be merged')
+        self.ctx.log.info('will log to %s (merge with server log)'
+                          % self.logdir)
 
         self.ctx.log.debug('creating log directory')
         os.makedirs(self.logdir, exist_ok=True)
@@ -502,8 +504,7 @@ class WebServerRunner:
         start_script = self.wrap_start_script()
         stop_script = self.wrap_stop_script()
         return ('''
-        which netcat
-        comm_recv() {{ netcat --close -l -p {self.comm_port}; }}
+        comm_recv() {{ netcat --close -l -p {self.comm_port} || true; }}
 
         {start_script}
 
