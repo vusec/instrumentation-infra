@@ -28,7 +28,8 @@ class WebServer(Target, metaclass=ABCMeta):
 
     def add_run_args(self, parser):
         parser.add_argument('-t', '-type',
-                dest='run_type', required=True, choices=('serve', 'test', 'bench'),
+                dest='run_type', required=True,
+                choices=('serve', 'test', 'bench', 'bench-server', 'bench-client'),
                 help='serve: just run the web server until it is killed\n'
                      'test: test a single fetch of randomized index.html\n'
                      'bench: run server and wrk client on separate nodes '
@@ -53,6 +54,10 @@ class WebServer(Target, metaclass=ABCMeta):
                 nargs='+', type=int,
                 help='a list of concurrent wrk connections; '
                      'start low and increment until the server is saturated')
+
+        # bench-client options
+        parser.add_argument('--server-ip',
+                help='IP of machine running matching bench-server')
 
     def add_report_args(self, parser):
         self.butils.add_report_args(parser)
@@ -91,6 +96,10 @@ class WebServer(Target, metaclass=ABCMeta):
             runner.run_test()
         elif ctx.args.run_type == 'bench':
             runner.run_bench()
+        elif ctx.args.run_type == 'bench-server':
+            runner.run_bench_server()
+        elif ctx.args.run_type == 'bench-client':
+            runner.run_bench_client()
 
     @abstractmethod
     def populate_logdir(self, runner: 'WebServerRunner'):
@@ -336,10 +345,10 @@ class WebServerRunner:
                               'as the server, use prun for benchmarking')
 
         if not self.ctx.args.duration:
-            raise FatalError('need --duration argument')
+            raise FatalError('need --duration')
 
         if not self.ctx.args.connections:
-            raise FatalError('need --connections argument')
+            raise FatalError('need --connections')
 
         for conn in self.ctx.args.connections:
             if conn < self.ctx.args.threads:
@@ -347,13 +356,7 @@ class WebServerRunner:
                                  (conn, self.ctx.args.threads))
 
         self.populate_logdir()
-
-        with open(self.logfile('config.txt'), 'w') as f:
-            with redirect_stdout(f):
-                print('server workers:    ', self.ctx.args.workers)
-                print('client threads:    ', self.ctx.args.threads)
-                print('client connections:', self.ctx.args.connections)
-                print('benchmark duration:', self.ctx.args.duration, 'seconds')
+        self.write_config()
 
         server_script = self.wrk_server_script()
         server_command = self.bash_command(server_script)
@@ -367,6 +370,65 @@ class WebServerRunner:
         self.ctx.log.debug('client will log to ' + outfile)
         self.pool.run(self.ctx, client_command, outfile=outfile,
                         jobid='wrk-client', nnodes=1)
+
+    def run_bench_server(self):
+        if not isinstance(self.pool, ProcessPool):
+            raise FatalError('need --parallel=proc')
+
+        self.ctx.log.warn('another machine should run a matching bench-client')
+        self.ctx.log.warn('server/client log directories should be merged')
+
+        self.populate_logdir()
+        self.write_config()
+
+        server_script = self.wrk_server_script()
+        server_command = self.bash_command(server_script)
+        outfile = self.logfile('server.out')
+        self.ctx.log.debug('server will log to ' + outfile)
+        self.pool.run(self.ctx, server_command, outfile=outfile,
+                        jobid='server', nnodes=1)
+
+    def run_bench_client(self):
+        if not isinstance(self.pool, ProcessPool):
+            raise FatalError('need --parallel=proc')
+
+        if not self.ctx.args.duration:
+            raise FatalError('need --duration')
+
+        if not self.ctx.args.connections:
+            raise FatalError('need --connections')
+
+        if not self.ctx.args.server_ip:
+            raise FatalError('need --server-ip and --port')
+
+        for conn in self.ctx.args.connections:
+            if conn < self.ctx.args.threads:
+                raise FatalError('#connections must be >= #threads (%d < %d)' %
+                                 (conn, self.ctx.args.threads))
+
+        self.ctx.log.warn('matching bench-server should be running at %s'
+                          % self.ctx.args.server_ip)
+        self.ctx.log.warn('server/client log directories should be merged')
+
+        self.write_config()
+
+        with open(self.logfile('server_host'), 'w') as f:
+            f.write(self.ctx.args.server_ip + '\n')
+
+        client_command = self.bash_command(self.wrk_client_script())
+        outfile = self.logfile('client.out')
+        self.ctx.log.debug('client will log to ' + outfile)
+        self.pool.run(self.ctx, client_command, outfile=outfile,
+                        jobid='wrk-client', nnodes=1)
+
+    def write_config(self):
+        with open(self.logfile('config.txt'), 'w') as f:
+            with redirect_stdout(f):
+                print('server workers:    ', self.ctx.args.workers)
+                print('client threads:    ', self.ctx.args.threads)
+                print('client connections:', self.ctx.args.connections)
+                print('benchmark duration:', self.ctx.args.duration, 'seconds')
+
 
     def start_server(self):
         self.ctx.log.info('starting server')
