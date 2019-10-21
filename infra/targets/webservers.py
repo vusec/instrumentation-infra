@@ -372,25 +372,19 @@ class WebServerRunner:
                         jobid='wrk-client', nnodes=1)
 
     def run_bench_server(self):
-        if not isinstance(self.pool, ProcessPool):
-            raise FatalError('need --parallel=proc')
+        if self.pool:
+            raise FatalError('cannot run this command with --parallel')
 
         self.ctx.log.warn('another machine should run a matching bench-client')
         self.ctx.log.warn('server/client log directories should be merged')
 
         self.populate_logdir()
         self.write_config()
-
-        server_script = self.wrk_server_script()
-        server_command = self.bash_command(server_script)
-        outfile = self.logfile('server.out')
-        self.ctx.log.debug('server will log to ' + outfile)
-        self.pool.run(self.ctx, server_command, outfile=outfile,
-                        jobid='server', nnodes=1)
+        run(self.ctx, self.bash_command(self.wrk_server_script()), teeout=True)
 
     def run_bench_client(self):
-        if not isinstance(self.pool, ProcessPool):
-            raise FatalError('need --parallel=proc')
+        if self.pool:
+            raise FatalError('cannot run this command with --parallel')
 
         if not self.ctx.args.duration:
             raise FatalError('need --duration')
@@ -410,16 +404,15 @@ class WebServerRunner:
                           % self.ctx.args.server_ip)
         self.ctx.log.warn('server/client log directories should be merged')
 
-        self.write_config()
+        self.ctx.log.debug('creating log directory')
+        os.makedirs(self.logdir, exist_ok=True)
+        os.chdir(self.logdir)
 
         with open(self.logfile('server_host'), 'w') as f:
             f.write(self.ctx.args.server_ip + '\n')
 
-        client_command = self.bash_command(self.wrk_client_script())
-        outfile = self.logfile('client.out')
-        self.ctx.log.debug('client will log to ' + outfile)
-        self.pool.run(self.ctx, client_command, outfile=outfile,
-                        jobid='wrk-client', nnodes=1)
+        self.write_config()
+        run(self.ctx, self.bash_command(self.wrk_client_script()), teeout=True)
 
     def write_config(self):
         with open(self.logfile('config.txt'), 'w') as f:
@@ -428,7 +421,6 @@ class WebServerRunner:
                 print('client threads:    ', self.ctx.args.threads)
                 print('client connections:', self.ctx.args.connections)
                 print('benchmark duration:', self.ctx.args.duration, 'seconds')
-
 
     def start_server(self):
         self.ctx.log.info('starting server')
