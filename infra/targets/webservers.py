@@ -57,7 +57,7 @@ class WebServer(Target, metaclass=ABCMeta):
                 help='a list of concurrent wrk connections; '
                      'start low and increment until the server is saturated')
         parser.add_argument('--cleanup-time',
-                metavar='SECONDS', default=3, type=int,
+                metavar='SECONDS', default=0, type=int,
                 help='time to wait between benchmarks (default 3)')
 
         # bench-client options
@@ -597,9 +597,10 @@ class WebServerRunner:
 
         for i in $(seq 1 1 {iterations}); do
             for connections in {conns}; do
-                # give the server some time to clean up connections
-                echo "=== waiting for {cleanup_time} seconds"
-                sleep {cleanup_time}
+                if [ {cleanup_time} -gt 0 ]; then
+                    echo "=== waiting {cleanup_time} seconds for server to clean up"
+                    sleep {cleanup_time}
+                fi
 
                 echo "=== sending work rate $connections.$i to server"
                 comm_send <<< "$connections.$i"
@@ -731,7 +732,8 @@ class Nginx(WebServer):
                 server_name localhost;
                 sendfile on;
                 access_log off;
-                keepalive_timeout 500ms;
+                # TODO:test keepalive_requests 500;
+                # TODO:test keepalive_timeout 500ms;
                 location / {{
                     root {runner.rundir}/www;
                 }}
@@ -887,11 +889,12 @@ class ApacheHttpd(WebServer):
         ThreadsPerChild {a.worker_threads}
         ThreadLimit {a.worker_threads}
         MaxRequestWorkers {total_threads}
-        MinSpareThreads {total_threads}
         MaxSpareThreads {total_threads}
         KeepAlive On
         KeepAliveTimeout 500ms
+        MaxKeepAliveRequests 500
         EnableSendfile On
+        Timeout 1
         '''
         with open('httpd.conf', 'w') as f:
             f.write(config_template.format(**locals()))
