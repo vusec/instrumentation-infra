@@ -48,7 +48,7 @@ class WebServer(Target, metaclass=ABCMeta):
         # bench options
         parser.add_argument('--duration',
                 metavar='SECONDS', default=10, type=int,
-                help='ab test duration in seconds (default 10)')
+                help='benchmark duration in seconds (default 10)')
         parser.add_argument('--threads',
                 type=int, default=1,
                 help='concurrent wrk threads (distributes client load)')
@@ -56,6 +56,9 @@ class WebServer(Target, metaclass=ABCMeta):
                 nargs='+', type=int,
                 help='a list of concurrent wrk connections; '
                      'start low and increment until the server is saturated')
+        parser.add_argument('--cleanup-time',
+                metavar='SECONDS', default=3, type=int,
+                help='time to wait between benchmarks (default 3)')
 
         # bench-client options
         parser.add_argument('--server-ip',
@@ -594,6 +597,10 @@ class WebServerRunner:
 
         for i in $(seq 1 1 {iterations}); do
             for connections in {conns}; do
+                # give the server some time to clean up connections
+                echo "=== waiting for {cleanup_time} seconds"
+                sleep {cleanup_time}
+
                 echo "=== sending work rate $connections.$i to server"
                 comm_send <<< "$connections.$i"
 
@@ -707,22 +714,24 @@ class Nginx(WebServer):
 
     def populate_logdir(self, runner):
         runner.ctx.log.debug('creating nginx.conf')
+        a = runner.ctx.args
         config_template = '''
         error_log {runner.rundir}/error.log error;
         lock_file {runner.rundir}/nginx.lock;
         pid {runner.rundir}/nginx.pid;
-        worker_processes {runner.ctx.args.workers};
+        worker_processes {a.workers};
         worker_cpu_affinity auto;
         events {{
-            worker_connections {runner.ctx.args.worker_connections};
+            worker_connections {a.worker_connections};
             use epoll;
         }}
         http {{
             server {{
-                listen {runner.ctx.args.port};
+                listen {a.port};
                 server_name localhost;
                 sendfile on;
                 access_log off;
+                keepalive_timeout 500ms;
                 location / {{
                     root {runner.rundir}/www;
                 }}
@@ -881,6 +890,7 @@ class ApacheHttpd(WebServer):
         MinSpareThreads {total_threads}
         MaxSpareThreads {total_threads}
         KeepAlive On
+        KeepAliveTimeout 500ms
         EnableSendfile On
         '''
         with open('httpd.conf', 'w') as f:
