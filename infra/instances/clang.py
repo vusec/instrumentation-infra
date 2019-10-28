@@ -71,3 +71,4 @@ class Clang(Instance):
             ctx.cflags += ['-flto']
             ctx.cxxflags += ['-flto']
             ctx.ldflags += ['-flto']
+            ctx.lib_ldflags += ['-flto']

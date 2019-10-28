@@ -61,34 +61,35 @@ class Setup:
     will look like this after initialization::
 
         Namespace({
-            'log':       logging.Logger(...),
-            'args':      argparse.Namespace(...),
-            'jobs':      8,
-            'paths':     Namespace({
-                             'root':         '/project',
-                             'setup':        '/project/setup.py',
-                             'infra':        '/project/infra'
-                             'buildroot':    '/project/build',
-                             'log':          '/project/build/log',
-                             'debuglog':     '/project/build/log/debug.txt',
-                             'runlog':       '/project/build/log/commands.txt',
-                             'packages':     '/project/build/packages',
-                             'targets':      '/project/build/targets',
-                             'pool_results': '/project/results'
-                         }),
-            'runenv':    Namespace({}),
-            'cc':        'cc',
-            'cxx':       'c++',
-            'ar':        'ar',
-            'nm':        'nm',
-            'ranlib':    'ranlib',
-            'cflags':    [],
-            'cxxflags':  [],
-            'ldflags':   [],
-            'hooks':     Namespace({
-                             'post_build': []
-                         }),
-            'starttime': datetime.datetime
+            'log':         logging.Logger(...),
+            'args':        argparse.Namespace(...),
+            'jobs':        8,
+            'paths':       Namespace({
+                               'root':         '/project',
+                               'setup':        '/project/setup.py',
+                               'infra':        '/project/infra'
+                               'buildroot':    '/project/build',
+                               'log':          '/project/build/log',
+                               'debuglog':     '/project/build/log/debug.txt',
+                               'runlog':       '/project/build/log/commands.txt',
+                               'packages':     '/project/build/packages',
+                               'targets':      '/project/build/targets',
+                               'pool_results': '/project/results'
+                           }),
+            'runenv':      Namespace({}),
+            'cc':          'cc',
+            'cxx':         'c++',
+            'ar':          'ar',
+            'nm':          'nm',
+            'ranlib':      'ranlib',
+            'cflags':      [],
+            'cxxflags':    [],
+            'ldflags':     [],
+            'lib_ldflags': [],
+            'hooks':       Namespace({
+                               'post_build': []
+                           }),
+            'starttime':   datetime.datetime
         })
 
     The :class:`util.Namespace` class is simply a :class:`dict` whose members
@@ -117,6 +118,14 @@ class Setup:
     scripts. ``ctx.{c,cxx,ld}flags`` similarly define build flags for targets
     in a list and should be joined into a string using :func:`util.qjoin` when
     being passed as a string to a build script by a target definition.
+
+    ``ctx.{c,cxx,ld}flags`` should be set by instances to define flags for
+    compiling targets.
+
+    ``ctx.lib_ldflags`` is a special set of linker flags set by some packages,
+    and is passed when linking target libraries that will later be (statically)
+    linked into the binary. In practice it is either empty or ``['-flto']`` when
+    compiling with LLVM.
 
     ``ctx.hooks.post_build`` defines a list of post-build hooks, which are
     python functions called with the path to the binary as the only parameter.
@@ -363,6 +372,7 @@ class Setup:
         self.ctx.cflags = []
         self.ctx.cxxflags = []
         self.ctx.ldflags = []
+        self.ctx.lib_ldflags = []
 
         self.ctx.starttime = None
         self.ctx.workdir = None

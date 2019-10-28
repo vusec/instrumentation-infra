@@ -142,6 +142,7 @@ class LLVMPasses(Package):
             ctx.cflags += ['-flto']
             ctx.cxxflags += ['-flto']
             ctx.ldflags += ['-flto', '-Wl,-plugin-opt=-load=' + libpath]
+            ctx.lib_ldflags += ['-flto']
 
     def runtime_cflags(self, ctx: Namespace) -> List[str]:
         """
