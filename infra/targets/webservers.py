@@ -10,6 +10,7 @@ from abc import ABCMeta, abstractmethod
 from hashlib import md5
 from urllib.request import urlretrieve
 from statistics import median, pstdev, mean
+from multiprocessing import cpu_count
 from ..packages import Bash, BenchmarkUtils, Wrk, Netcat
 from ..parallel import ProcessPool, PrunPool
 from ..target import Target
@@ -496,6 +497,11 @@ class WebServerRunner:
         echo "=== received stop signal, stopping web server"
         {stop_script}
 
+        if [ -s "{self.rundir}/error.log" ]; then
+            echo "=== there were errors, copying log to {self.logdir}/error.log"
+            cp "{self.rundir}/error.log" .
+        fi
+
         echo "=== removing local run directory"
         rm -rf "{self.rundir}"
         '''.format(**vars(self.ctx.args), **locals())
@@ -744,11 +750,157 @@ class Nginx(WebServer):
         objdir = self.path(runner.ctx, runner.instance.name, 'objs')
         return '''
         {objdir}/nginx -p "{runner.rundir}" -c nginx.conf -s quit
+        '''.format(**locals())
 
-        if [ -s "{runner.rundir}/error.log" ]; then
-            echo "=== there were errors, copying log to {runner.logdir}/error.log"
-            cp "{runner.rundir}/error.log" .
-        fi
+
+class ApacheHttpd(WebServer):
+    """
+    Apache web server. Builds APR and APR Util libraries as binary dependencies.
+
+    :name: apache
+    :param version: apache httpd version
+    :param apr_version: APR version
+    :param apr_util_version: APR Util version
+    :param module: a list of modules to enable (default: "few", any modules will
+                   be statically linked)
+    """
+
+    name = 'apache'
+
+    #: :class:`list` Command line arguments for the built-in ``-allocs`` pass;
+    #: Registers custom allocation function wrappers in Apache.
+    custom_allocs_flags = ['-allocs-custom-funcs=' + '.'.join((
+        'apr_palloc'        ':malloc' ':1',
+        'apr_palloc_debug'  ':malloc' ':1',
+        'apr_pcalloc'       ':calloc' ':1',
+        'apr_pcalloc_debug' ':calloc' ':1',
+    ))]
+
+    @param_attrs
+    def __init__(self, version: str, apr_version: str, apr_util_version: str,
+                 modules=['few']):
+        super().__init__()
+
+    def fetch(self, ctx):
+        _fetch_apache(ctx, 'httpd', 'httpd-' + self.version, 'src')
+        _fetch_apache(ctx, 'apr', 'apr-' + self.apr_version, 'src/srclib/apr')
+        _fetch_apache(ctx, 'apr', 'apr-util-' + self.apr_util_version,
+                      'src/srclib/apr-util')
+
+    def is_fetched(self, ctx):
+        return os.path.exists('src')
+
+    def build(self, ctx, instance):
+        # create build directory
+        objdir = os.path.join(instance.name, 'obj')
+        if os.path.exists(objdir):
+            ctx.log.debug('removing old object directory ' + objdir)
+            shutil.rmtree(objdir)
+        ctx.log.debug('creating object directory ' + objdir)
+        os.makedirs(objdir)
+        os.chdir(objdir)
+
+        # set environment for configure scripts
+        prefix = self.path(ctx, instance.name, 'install')
+        env = {
+            'CC': ctx.cc,
+            'CFLAGS': qjoin(ctx.cflags),
+            'LDFLAGS': qjoin(ctx.lib_ldflags),
+            'HTTPD_LDFLAGS': qjoin(ctx.ldflags),
+            'AR': ctx.ar,
+            'RANLIB': ctx.ranlib,
+        }
+
+        # build APR
+        ctx.log.info('building %s-%s-apr' % (self.name, instance.name))
+        os.mkdir('apr')
+        os.chdir('apr')
+        run(ctx, ['../../../src/srclib/apr/configure',
+                  '--prefix=' + prefix,
+                  '--enable-static',
+                  '--enable-shared=no'], env=env)
+        run(ctx, 'make -j%d' % ctx.jobs)
+        run(ctx, 'make install')
+        os.chdir('..')
+
+        # build APR-Util
+        ctx.log.info('building %s-%s-apr-util' % (self.name, instance.name))
+        os.mkdir('apr-util')
+        os.chdir('apr-util')
+        run(ctx, ['../../../src/srclib/apr-util/configure',
+                  '--prefix=' + prefix,
+                  '--with-apr=' + prefix], env=env)
+        run(ctx, 'make -j%d' % ctx.jobs)
+        run(ctx, 'make install')
+        os.chdir('..')
+
+        # build httpd web server
+        ctx.log.info('building %s-%s-httpd' % (self.name, instance.name))
+        os.mkdir('httpd')
+        os.chdir('httpd')
+        run(ctx, ['../../../src/configure',
+                  '--prefix=' + prefix,
+                  '--with-apr=' + prefix,
+                  '--with-apr-util=' + prefix,
+                  '--enable-modules=none',
+                  '--enable-mods-static=' + qjoin(self.modules)], env=env)
+        run(ctx, 'make -j%d' % ctx.jobs)
+        run(ctx, 'make install')
+        os.chdir('..')
+
+    def server_bin(self, ctx, instance):
+        return self.path(ctx, instance.name, 'install', 'bin', 'httpd')
+
+    def binary_paths(self, ctx, instance):
+        yield self.server_bin(ctx, instance)
+
+    def add_run_args(self, parser):
+        super().add_run_args(parser)
+        nproc = cpu_count()
+        parser.add_argument('--workers', type=int, default=nproc,
+                help='number of worker processes '
+                     '(ServerLimit, default %d)' % nproc)
+        parser.add_argument('--worker-threads', type=int, default=25,
+                help='number of connection threads per worker process '
+                     '(ThreadsPerChild, default 25)')
+
+    def populate_logdir(self, runner):
+        runner.ctx.log.debug('creating httpd.conf')
+        a = runner.ctx.args
+        total_threads = a.workers * a.worker_threads
+        config_template = '''
+        Listen {a.port}
+        ErrorLog error.log
+        PidFile apache.pid
+        DocumentRoot www
+        ServerLimit {a.workers}
+        StartServers {a.workers}
+        ThreadsPerChild {a.worker_threads}
+        ThreadLimit {a.worker_threads}
+        MaxRequestWorkers {total_threads}
+        MinSpareThreads {total_threads}
+        MaxSpareThreads {total_threads}
+        KeepAlive On
+        EnableSendfile On
+        '''
+        with open('httpd.conf', 'w') as f:
+            f.write(config_template.format(**locals()))
+
+    def start_script(self, runner):
+        rootdir = self.path(runner.ctx, runner.instance.name, 'install')
+        return '''
+        cp -r "{rootdir}/conf" "{runner.rundir}"
+        cp httpd.conf "{runner.rundir}"/conf
+
+        {rootdir}/bin/httpd -d "{runner.rundir}" -k start
+        echo -n "=== started server on port {runner.ctx.args.port}, "
+        echo "pid $(cat "{runner.rundir}/apache.pid")"
+        '''.format(**locals())
+
+    def stop_script(self, runner):
+        rootdir = self.path(runner.ctx, runner.instance.name, 'install')
+        return '''
+        {rootdir}/bin/httpd -d "{runner.rundir}" -k stop
         '''.format(**locals())
 
 
@@ -756,3 +908,12 @@ def median_absolute_deviation(numbers):
     assert len(numbers) > 0
     med = median(numbers)
     return median(abs(x - med) for x in numbers)
+
+
+def _fetch_apache(ctx, repo, basename, dest):
+    require_program(ctx, 'tar', 'required to unpack source tarfile')
+    tarname = basename + '.tar.bz2'
+    download(ctx, 'http://apache.cs.uu.nl/%s/%s' % (repo, tarname))
+    run(ctx, ['tar', '-xf', tarname])
+    shutil.move(basename, dest)
+    os.remove(tarname)
