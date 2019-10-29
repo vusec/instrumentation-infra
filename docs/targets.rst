@@ -10,3 +10,4 @@ SPEC
 Web servers
 ===========
 .. autoclass:: infra.targets.Nginx
+.. autoclass:: infra.targets.ApacheHttpd
