@@ -5,7 +5,7 @@
 
 import inspect
 from importlib import import_module
-from typing import _ForwardRef, Any
+from typing import ForwardRef, Any
 
 
 def typestr(obj):
@@ -20,11 +20,11 @@ def typestr(obj):
 
     assert hasattr(obj, '__module__')
 
-    if isinstance(obj, _ForwardRef):
+    if isinstance(obj, ForwardRef):
         # Cannot evaluate in current namespace, just return the string literal
         # instead
         #obj = obj._eval_type(globals(), locals())
-        return str(obj)[len("_ForwardRef('"):-len("')")]
+        return str(obj)[len("ForwardRef('"):-len("')")]
 
     if obj is Any:
         return 'Any'
