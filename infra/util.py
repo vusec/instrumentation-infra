@@ -10,6 +10,7 @@ import functools
 import shutil
 import argparse
 import csv
+import re
 from typing import Union, List, Dict, Iterable, Optional, Callable, Any
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
@@ -441,3 +442,18 @@ def report_table(ctx: Namespace,
 
         print(table.table)
         return table
+
+
+def untar(ctx: Namespace, tarname: str, dest: Optional[str] = None, *,
+          remove=True, basename: Optional[str] = None):
+    """
+    TODO: docs
+    """
+    if basename is None:
+        basename = re.sub(r'\.tar(\.\w+)?', '', tarname)
+    require_program(ctx, 'tar', 'required to unpack source tarfile')
+    run(ctx, ['tar', '-xf', tarname])
+    if dest:
+        shutil.move(basename, dest)
+    if remove:
+        os.remove(tarname)

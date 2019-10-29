@@ -22,9 +22,6 @@ Dependencies
 .. autoclass:: infra.packages.M4
 .. autoclass:: infra.packages.Make
 .. autoclass:: infra.packages.Ninja
-.. autoclass:: infra.packages.ApacheBench
-.. autoclass:: infra.packages.APR
-.. autoclass:: infra.packages.APRUtil
 
 
 LLVM passes
@@ -65,3 +62,27 @@ Tools
 .. autoclass:: infra.packages.Nothp
 .. autoclass:: infra.packages.BenchmarkUtils
    :members:
+
+
+Apache benchmark (ab)
+=====================
+
+.. autoclass:: infra.packages.ApacheBench
+
+Dependencies
+------------
+.. autoclass:: infra.packages.APR
+.. autoclass:: infra.packages.APRUtil
+
+
+Wrk benchmark
+=============
+
+.. autoclass:: infra.packages.Wrk
+.. autoclass:: infra.packages.Wrk2
+
+
+Scons
+=====
+
+.. autoclass:: infra.packages.Scons

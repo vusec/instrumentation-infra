@@ -11,3 +11,4 @@ Web servers
 ===========
 .. autoclass:: infra.targets.Nginx
 .. autoclass:: infra.targets.ApacheHttpd
+.. autoclass:: infra.targets.Lighttpd

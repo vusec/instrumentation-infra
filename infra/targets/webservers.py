@@ -1,5 +1,4 @@
 import os
-
 import shutil
 import random
 import time
@@ -11,11 +10,11 @@ from hashlib import md5
 from urllib.request import urlretrieve
 from statistics import median, pstdev, mean
 from multiprocessing import cpu_count
-from ..packages import Bash, BenchmarkUtils, Wrk, Netcat
+from ..packages import Bash, BenchmarkUtils, Wrk, Netcat, Scons
 from ..parallel import ProcessPool, PrunPool
 from ..target import Target
-from ..util import run, require_program, download, qjoin, param_attrs, \
-                   FatalError, add_table_report_args, report_table
+from ..util import run, download, qjoin, param_attrs, FatalError, \
+                   add_table_report_args, report_table, untar
 
 
 class WebServer(Target, metaclass=ABCMeta):
@@ -658,12 +657,9 @@ class Nginx(WebServer):
 
     def build(self, ctx, instance):
         if not os.path.exists(instance.name):
-            require_program(ctx, 'tar', 'required to unpack source tarfile')
-            ident = 'nginx-' + self.version
-            ctx.log.debug('unpacking ' + ident)
-            shutil.rmtree(ident, ignore_errors=True)
-            run(ctx, ['tar', '-xf', self.tar_name()])
-            shutil.move(ident, instance.name)
+            ctx.log.debug('unpacking nginx-' + self.version)
+            shutil.rmtree('nginx-' + self.version, ignore_errors=True)
+            untar(ctx, self.tar_name(), instance.name, remove=False)
 
         # Configure if there is no Makefile or if flags changed
         os.chdir(instance.name)
@@ -917,6 +913,112 @@ class ApacheHttpd(WebServer):
         '''.format(**locals())
 
 
+class Lighttpd(WebServer):
+    """
+    TODO: docs
+    """
+
+    name = 'lighttpd'
+
+    @param_attrs
+    def __init__(self, version):
+        super().__init__()
+
+    def dependencies(self):
+        yield from super().dependencies()
+        yield Scons.default()
+
+    def fetch(self, ctx):
+        minor_version = re.match(r'(\d+\.\d+)\.\d+', self.version).group(1)
+        download(ctx, 'https://download.lighttpd.net/lighttpd/releases-%s.x/%s' %
+                      (minor_version, self.tar_name()))
+
+    def is_fetched(self, ctx):
+        return os.path.exists(self.tar_name())
+
+    def tar_name(self):
+        return 'lighttpd-' + self.version + '.tar.gz'
+
+    def build(self, ctx, instance):
+        if not os.path.exists(instance.name):
+            ctx.log.debug('unpacking lighttpd-' + self.version)
+            shutil.rmtree('lighttpd-' + self.version, ignore_errors=True)
+            untar(ctx, self.tar_name(), instance.name, remove=False)
+
+        os.chdir(instance.name)
+
+        # remove old build directory to force a rebuild
+        if os.path.exists('sconsbuild'):
+            ctx.log.debug('removing old sconsbuild directory')
+            shutil.rmtree('sconsbuild')
+
+        path = ctx.runenv.join_paths().get('PATH', [])
+        cc = shutil.which(ctx.cc, path=path)
+        env = {
+            'CFLAGS': qjoin(ctx.cflags),
+            'LDFLAGS': qjoin(ctx.ldflags),
+        }
+        run(ctx, ['scons', '-j', ctx.jobs,
+                  'CC=' + cc,
+                  'with_pcre=no',
+                  'build_static=yes',
+                  'build_dynamic=no'], env=env)
+
+    def server_bin(self, ctx, instance):
+        return self.path(ctx, instance.name,
+                         'sconsbuild', 'static', 'build', 'lighttpd')
+
+    def binary_paths(self, ctx, instance):
+        yield self.server_bin(ctx, instance)
+
+    def add_run_args(self, parser):
+        super().add_run_args(parser)
+        parser.add_argument('--workers', type=int, default=1,
+                help='number of worker processes (default 1)')
+        parser.add_argument('--server-connections', type=int, default=2048,
+                help='number of concurrent connections to the server (default 2048)')
+
+    def populate_logdir(self, runner):
+        runner.ctx.log.debug('creating nginx.conf')
+        a = runner.ctx.args
+        max_fds = 2 * a.server_connections
+        config_template = '''
+        var.rundir             = "{runner.rundir}"
+
+        server.port            = {a.port}
+        server.document-root   = var.rundir + "/www"
+        server.errorlog        = var.rundir + "/error.log"
+        server.pid-file        = var.rundir + "/lighttpd.pid"
+        server.event-handler   = "linux-sysepoll"
+        server.network-backend = "sendfile"
+
+        server.max-worker              = {a.workers}
+        server.max-connections         = {a.server_connections}
+        server.max-fds                 = {max_fds}
+        server.max-keep-alive-requests = 500
+        server.max-keep-alive-idle     = 1
+        server.max-read-idle           = 1
+        server.max-write-idle          = 1
+        '''
+        with open('lighttpd.conf', 'w') as f:
+            f.write(config_template.format(**locals()))
+
+    def start_script(self, runner):
+        server_bin = self.server_bin(runner.ctx, runner.instance)
+        return '''
+        cp lighttpd.conf "{runner.rundir}"
+
+        {server_bin} -f "{runner.rundir}"/lighttpd.conf
+        echo -n "=== started server on port {runner.ctx.args.port}, "
+        echo "pid $(cat "{runner.rundir}/lighttpd.pid")"
+        '''.format(**locals())
+
+    def stop_script(self, runner):
+        return '''
+        kill $(cat "{runner.rundir}/lighttpd.pid")
+        '''.format(**locals())
+
+
 def median_absolute_deviation(numbers):
     assert len(numbers) > 0
     med = median(numbers)
@@ -924,9 +1026,6 @@ def median_absolute_deviation(numbers):
 
 
 def _fetch_apache(ctx, repo, basename, dest):
-    require_program(ctx, 'tar', 'required to unpack source tarfile')
     tarname = basename + '.tar.bz2'
     download(ctx, 'http://apache.cs.uu.nl/%s/%s' % (repo, tarname))
-    run(ctx, ['tar', '-xf', tarname])
-    shutil.move(basename, dest)
-    os.remove(tarname)
+    untar(ctx, tarname, dest)
