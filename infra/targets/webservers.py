@@ -86,9 +86,11 @@ class WebServer(Target, metaclass=ABCMeta):
 
         report_modes = parser.add_mutually_exclusive_group()
         report_modes.add_argument('--aggregate', nargs='+',
-                choices=['mean', 'median', 'stdev', 'mad', 'min', 'max', 'sum'],
+                choices=['mean', 'median', 'stdev', 'stdev_percent', 'mad',
+                         'min', 'max', 'sum'],
                 default=['median'],
-                help='aggregation methods for columns')
+                help='aggregation methods for columns, stdev_percent = '
+                     '100*stdev/mean, mad = median absolute deviation')
         report_modes.add_argument('--raw', action='store_true',
                 help='output all data points instead of aggregates')
 
@@ -206,7 +208,8 @@ class WebServer(Target, metaclass=ABCMeta):
                     prefix = '\n\n'
 
         aggregate_fns = {'mean': mean, 'median': median,
-                         'stdev': pstdev, 'mad': median_absolute_deviation,
+                         'stdev': pstdev, 'stdev_percent': stdev_percent,
+                         'mad': median_absolute_deviation,
                          'min': min, 'max': max, 'sum': sum}
         data = []
         for connections in all_conns:
@@ -1030,6 +1033,10 @@ def median_absolute_deviation(numbers):
     assert len(numbers) > 0
     med = median(numbers)
     return median(abs(x - med) for x in numbers)
+
+
+def stdev_percent(numbers):
+    return 100 * pstdev(numbers) / mean(numbers)
 
 
 def _fetch_apache(ctx, repo, basename, dest):
