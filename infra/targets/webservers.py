@@ -87,7 +87,7 @@ class WebServer(Target, metaclass=ABCMeta):
         report_modes = parser.add_mutually_exclusive_group()
         report_modes.add_argument('--aggregate', nargs='+',
                 choices=['mean', 'median', 'stdev', 'stdev_percent', 'mad',
-                         'min', 'max', 'sum'],
+                         'min', 'max', 'sum', 'count'],
                 default=['median'],
                 help='aggregation methods for columns, stdev_percent = '
                      '100*stdev/mean, mad = median absolute deviation')
@@ -210,7 +210,11 @@ class WebServer(Target, metaclass=ABCMeta):
         aggregate_fns = {'mean': mean, 'median': median,
                          'stdev': pstdev, 'stdev_percent': stdev_percent,
                          'mad': median_absolute_deviation,
-                         'min': min, 'max': max, 'sum': sum}
+                         'min': min, 'max': max, 'sum': sum, 'count': len}
+
+        def nr_to_string(n):
+            return str(n) if isinstance(n, int) else '%.3f' % n
+
         data = []
         for connections in all_conns:
             row = [connections]
@@ -219,7 +223,7 @@ class WebServer(Target, metaclass=ABCMeta):
                 for col in columns:
                     series = grouped.get((key, col), [-1])
                     for aggr_mode in ctx.args.aggregate:
-                        row.append('%.3f' % aggregate_fns[aggr_mode](series))
+                        row.append(nr_to_string(aggregate_fns[aggr_mode](series)))
             data.append(row)
 
         title = ' %s aggregated data ' % self.name
