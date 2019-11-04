@@ -93,9 +93,10 @@ def apply_patch(ctx: Namespace, path: str, strip_count: int) -> bool:
         return False
 
     ctx.log.debug('applying patch %s' % name)
+    require_program(ctx, 'patch', 'required to apply source patches')
 
     with open(path) as f:
-        run(ctx, ['patch', '-p%d' % strip_count], stdin=f)
+        run(ctx, 'patch -p%d' % strip_count, stdin=f)
 
     open(stamp, 'w').close()
     return True
