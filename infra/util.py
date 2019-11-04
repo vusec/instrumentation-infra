@@ -429,7 +429,7 @@ def report_table(ctx: Namespace,
         table.inner_column_border = False
         table.padding_left = 0
 
-        for kw, val in kwargs:
+        for kw, val in kwargs.items():
             if isinstance(val, dict):
                 attr = getattr(table, kw)
                 if isinstance(val, dict):

@@ -666,7 +666,7 @@ class SPEC2006(Target):
         # only use fancy UTF-8 table if writing to a compatible terminal
         fancy = sys.stdout.encoding == 'UTF-8' and \
                 sys.stdout.name == '<stdout>' and \
-                not args.ascii
+                args.table != 'ascii'
         if fancy:
             from terminaltables import SingleTable as Table
         else:
@@ -674,7 +674,7 @@ class SPEC2006(Target):
 
         # optional support for colored text
         try:
-            if not fancy or args.nonhuman:
+            if not fancy:
                 raise ImportError
             from termcolor import colored
         except ImportError:
