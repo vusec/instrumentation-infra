@@ -742,8 +742,8 @@ class Nginx(WebServer):
                 server_name localhost;
                 sendfile on;
                 access_log off;
-                # TODO:test keepalive_requests 500;
-                # TODO:test keepalive_timeout 500ms;
+                keepalive_requests 500;
+                keepalive_timeout 500ms;
                 location / {{
                     root {runner.rundir}/www;
                 }}
