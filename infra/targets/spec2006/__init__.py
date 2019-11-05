@@ -772,7 +772,7 @@ class SPEC2006(Target):
         ctx.log.debug('all benchmarks used the %s workload' % workload)
 
         # compute overheads compared to baseline
-        if len(ohkeys) and not args.nonhuman:
+        if len(ohkeys) and args.table in ('fancy', 'ascii'):
             if not baseline:
                 raise FatalError('cannot compute overhead without baseline')
 
