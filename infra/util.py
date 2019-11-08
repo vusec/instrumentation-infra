@@ -11,6 +11,7 @@ import shutil
 import argparse
 import csv
 import re
+from collections import OrderedDict
 from typing import Union, List, Dict, Iterable, Optional, Callable, Any
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
@@ -56,6 +57,55 @@ class Namespace(dict):
                 value = value.join_paths()
             new[key] = str(value)
         return new
+
+
+class Index:
+    def __init__(self, thing_name: str):
+        self.mem = OrderedDict()
+        self.thing_name = thing_name
+
+    def __getitem__(self, key: str):
+        value = self.mem.get(key, None)
+        if value is None:
+            raise FatalError('no %s called "%s"' % (self.thing_name, key))
+        return value
+
+    def __setitem__(self, key: str, value: Any):
+        if key in self.mem:
+            raise FatalError('%s "%s" already exists' % (self.thing_name, key))
+        self.mem[key] = value
+
+    def __iter__(self):
+        return iter(self.mem)
+
+    def keys(self):
+        return self.mem.keys()
+
+    def values(self):
+        return self.mem.values()
+
+    def items(self):
+        return self.mem.items()
+
+    def all(self):
+        return list(self.mem.values())
+
+    def select(self, keys):
+        return [self[key] for key in keys]
+
+
+class LazyIndex(Index):
+    def __init__(self, thing_name: str, find_value: Callable[[str], Any]):
+        super().__init__(thing_name)
+        self.find_value = find_value
+
+    def __getitem__(self, key: str):
+        value = self.mem.get(key, None)
+        if value is None:
+            self.mem[key] = value = self.find_value(key)
+        if value is None:
+            raise FatalError('no %s called "%s"' % (self.thing_name, key))
+        return value
 
 
 class FatalError(Exception):
