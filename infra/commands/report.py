@@ -66,8 +66,9 @@ class ReportCommand(Command):
 
         for name, target in self.targets.items():
             tparser = subparsers.add_parser(name)
-            rundirsarg = tparser.add_argument('rundirs', nargs='+',
-                    help='run directories containing result logs')
+            rundirsarg = tparser.add_argument('rundirs',
+                    nargs='+', metavar='RUNDIR', default=[],
+                    help='run directories to parse (results/run.XXX)')
 
             tparser.add_argument('-o', '--outfile',
                     type=argparse.FileType('w'), default=sys.stdout,
