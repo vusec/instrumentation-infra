@@ -1,14 +1,19 @@
 import argparse
 import csv
+import io
+import os
+import re
 import sys
 from contextlib import redirect_stdout
 from decimal import Decimal
 from functools import reduce
 from itertools import chain, zip_longest
 from statistics import median, pstdev, pvariance, mean
+from typing import Dict, Iterator, Iterable, Tuple, Union
 from ..command import Command
-from ..packages import BenchmarkUtils
-from ..util import FatalError
+from ..instance import Instance
+from ..target import Target
+from ..util import FatalError, Namespace
 
 
 def median_absolute_deviation(numbers):
@@ -52,6 +57,10 @@ _aggregate_fns = {'mean': mean, 'median': median,
                   'min': min, 'max': max, 'sum': sum, 'count': len,
                   'same': assert_all_same, 'one': assert_one,
                   'first': first, 'all': list, 'geomean': geomean}
+
+
+Result = Dict[str, Union[bool, int, float, str]]
+result_prefix = '[setup-report]'
 
 
 class ReportCommand(Command):
@@ -144,10 +153,9 @@ class ReportCommand(Command):
         instances = self.instances.select(uniq_instances)
 
         # collect results: {instance: [{field:value}]}
-        butils = BenchmarkUtils(target)
-        results = butils.parse_logs(ctx, instances, a.rundirs,
-                                    write_cache=a.cache,
-                                    read_cache=a.cache and not a.refresh)
+        results = parse_logs(ctx, target, instances, a.rundirs,
+                             write_cache=a.cache,
+                             read_cache=a.cache and not a.refresh)
 
         with redirect_stdout(a.outfile):
             if a.raw:
@@ -347,7 +355,6 @@ def report_table(ctx, nonhuman_header, human_header, data_rows, title,
 
     whole_digits = [max(map(get_whole_digits, values))
                     for values in zip(*data_rows)]
-    print(whole_digits)
 
     def pad(n_string, n, col):
         if isinstance(n, int):
@@ -442,3 +449,233 @@ def _precise_float(n: float, precision: int) -> str:
     zero_decimals = -tup.exponent - len(tup.digits)
     total_decimals = max(zero_decimals + precision, 0)
     return '%%.%df' % total_decimals % n
+
+
+def outfile_path(ctx: Namespace, target: Target, instance: Instance,
+                 *args: Iterable[str]) -> str:
+    """
+    Returns the path to a log file for the benchmark of a particular
+    instance, after creating the instance directory if it did not exist
+    yet.
+
+    :param ctx: the configuration context
+    :param target: benchmark target
+    :param instance: benchmark instance
+    :param args: log file name, optionally preceded by nested directory names
+    :returns: ``results/run.YY-MM-DD.HH-MM-SS/<target>/<instance>[/<arg>...]``
+    """
+    rundir = ctx.starttime.strftime('run.%Y-%m-%d.%H-%M-%S')
+    path = os.path.join(ctx.paths.pool_results, rundir, target.name,
+                        instance.name, *args)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return path
+
+
+def parse_logs(ctx, target, instances, rundirs,
+               write_cache=True, read_cache=True):
+    """
+    Parse logs from specified run directories.
+
+    Traverse the directories to find log files, parse each logfile, and
+    optionally append the parsed results to the log file. To get results
+    for a log file, :func:`Target.parse_outfile` is called on the target.
+    This should parse the log file and yield a number of result
+    dictionaries of results found in the log file (e.g., an entry for each
+    benchmark runtime). The parsed results are grouped per instance and
+    returned as an ``{<instance_name>: [<result>, ...]}`` dictionary.
+
+    If ``write_cache`` is true (which is the default), the results returned
+    by each invocation of :func:`Target.parse_outfile` are logged into the
+    log file itself and, is ``read_cache is true`` (also default), read
+    from there in the next invocation of the report command. This means
+    that expensive log file parsing is only done on the first invocation,
+    and also that the log files become portable across systems without
+    having to also copy any files referenced by the logs.
+
+    :param ctx: the configuration context
+    :param instances: list of instances to filter from, leave empty to get
+                        results for all instances in the logs
+    :param rundirs: run directories to traverse
+    :param write_cache: whether to append log file results to the log file
+                        itself
+    :param read_cache: whether to read existing results from log files
+                        instead of calling ``Target.parse_outfile``
+    """
+    abs_rundirs = []
+    for d in rundirs:
+        if not os.path.exists(d):
+            raise FatalError('rundir %s does not exist' % d)
+        abs_rundirs.append(os.path.abspath(d))
+
+    instance_names = [instance.name for instance in instances]
+    instance_dirs = []
+    results = dict((iname, []) for iname in instance_names)
+
+    for rundir in abs_rundirs:
+        targetdir = os.path.join(rundir, target.name)
+        if os.path.exists(targetdir):
+            for instance in os.listdir(targetdir):
+                instancedir = os.path.join(targetdir, instance)
+                if os.path.isdir(instancedir):
+                    if not instance_names or instance in instance_names:
+                        instance_dirs.append((instance, instancedir))
+        else:
+            ctx.log.warning('rundir %s contains no results for target %s' %
+                            (rundir, target.name))
+
+    for iname, idir in instance_dirs:
+        instance_results = results.setdefault(iname, [])
+
+        for filename in sorted(os.listdir(idir)):
+            path = os.path.join(idir, filename)
+            if not os.path.isfile(path):
+                continue
+
+            fresults = []
+            if read_cache:
+                fresults = list(parse_results(ctx, path, 'cached'))
+
+            if fresults:
+                ctx.log.debug('using cached results from ' + path)
+            else:
+                ctx.log.debug('parsing outfile ' + path)
+                fresults = list(target.parse_outfile(ctx, iname, path))
+
+                if write_cache:
+                    try:
+                        if read_cache:
+                            # there were no previous results, just append
+                            f = open(path, 'a')
+                        else:
+                            # there may be previous results, strip them
+                            f = open(path, 'r+')
+                            line = f.readline()
+                            while line:
+                                if line.startswith(result_prefix + ' begin cached'):
+                                    ctx.log.debug('removing cached results')
+                                    f.seek(f.tell() - len(line))
+                                    f.truncate()
+                                    break
+                                line = f.readline()
+
+                        ctx.log.debug('caching %d results' % len(fresults))
+                        for result in fresults:
+                            log_result('cached', result, f)
+                    finally:
+                        f.close()
+
+            for result in fresults:
+                result['outfile'] = _strip_cwd(path)
+
+            instance_results += fresults
+
+    return results
+
+
+def log_result(name: str, result: Result, ofile: io.TextIOWrapper):
+    """
+    :param name:
+    :param result:
+    :param ofile:
+    """
+    with redirect_stdout(ofile):
+        print(result_prefix, 'begin', name)
+
+        for key, value in result.items():
+            print(result_prefix, key + ':', _box_value(value))
+
+        print(result_prefix, 'end', name)
+
+
+def parse_results(ctx: Namespace, path: str, name: str) -> Iterator[Result]:
+    """
+    Parse results from a file and filter them by name. Can be used by a
+    :func:`Target.parse_outfile` implementation to parse results written by the
+    static library in the stderr log of a target.
+
+    :param ctx: the configuration context
+    :param path: path to file to parse
+    :param name: name of results to retrieve
+    :returns: results with the specified name
+    """
+    for rname, result in parse_all_results(ctx, path):
+        if rname == name:
+            yield result
+
+
+def parse_all_results(ctx: Namespace, path: str) -> \
+        Iterator[Tuple[str, Result]]:
+    """
+    Parse all results in a file.
+
+    :param ctx: the configuration context
+    :param path: path to file to parse
+    :returns: (name, result) tuples
+    """
+    with open(path) as f:
+        result = bname = None
+
+        for line in f:
+            line = line.rstrip()
+            if line.startswith(result_prefix):
+                statement = line[len(result_prefix) + 1:]
+                if re.match(r'begin \w+', statement):
+                    bname = statement[6:]
+                    result = Namespace()
+                elif re.match(r'end \w+', statement):
+                    if result is None:
+                        ctx.log.error('missing start for "%s" end '
+                                        'statement in %s' % (bname, path))
+                    else:
+                        ename = statement[4:]
+                        if ename != bname:
+                            ctx.log.error('begin/end name mismatch in %s: '
+                                            '%s != %s' % (path, ename, bname))
+
+                        yield bname, result
+                        result = bname = None
+                elif result is None:
+                    ctx.log.error('ignoring %s statement outside of begin-end '
+                                    'in %s' % (result_prefix, path))
+                else:
+                    name, value = statement.split(': ', 1)
+
+                    if name in result:
+                        ctx.log.warning('duplicate metadata entry for "%s" in '
+                                        '%s, using the last one' % (name, path))
+
+                    result[name] = _unbox_value(value)
+
+    if result is not None:
+        ctx.log.error('%s begin statement without end in %s' %
+                        (result_prefix, path))
+
+
+def _box_value(value):
+    return str(value)
+
+
+def _unbox_value(value):
+    # bool
+    if value == 'True':
+        return True
+    if value == 'False':
+        return False
+
+    # int
+    if value.isdigit():
+        return int(value)
+
+    # float
+    try:
+        return float(value)
+    except ValueError:
+        pass
+
+    # string
+    return value
+
+
+def _strip_cwd(path):
+    cwd = os.path.join(os.getcwd(), '')
+    return path[len(cwd):] if path.startswith(cwd) else path
