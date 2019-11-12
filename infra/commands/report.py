@@ -625,18 +625,18 @@ def parse_all_results(ctx: Namespace, path: str) -> \
                 elif re.match(r'end \w+', statement):
                     if result is None:
                         ctx.log.error('missing start for "%s" end '
-                                        'statement in %s' % (bname, path))
+                                      'statement in %s' % (bname, path))
                     else:
                         ename = statement[4:]
                         if ename != bname:
                             ctx.log.error('begin/end name mismatch in %s: '
-                                            '%s != %s' % (path, ename, bname))
+                                          '%s != %s' % (path, ename, bname))
 
                         yield bname, result
                         result = bname = None
                 elif result is None:
                     ctx.log.error('ignoring %s statement outside of begin-end '
-                                    'in %s' % (result_prefix, path))
+                                  'in %s' % (result_prefix, path))
                 else:
                     name, value = statement.split(': ', 1)
 
@@ -648,7 +648,7 @@ def parse_all_results(ctx: Namespace, path: str) -> \
 
     if result is not None:
         ctx.log.error('%s begin statement without end in %s' %
-                        (result_prefix, path))
+                      (result_prefix, path))
 
 
 def _box_value(value):
