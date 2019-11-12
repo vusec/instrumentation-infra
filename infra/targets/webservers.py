@@ -18,6 +18,7 @@ from ..util import run, download, qjoin, param_attrs, FatalError, untar
 class WebServer(Target, metaclass=ABCMeta):
     reportable_fields = {
         'connections':  'concurrent client connections',
+        'threads':      'number of client threads making connections',
         'throughput':   'attained throughput (reqs/s)',
         'avg_latency':  'average latency (ms)',
         '50p_latency':  '50th percentile latency (ms)',
