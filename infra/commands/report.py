@@ -324,11 +324,17 @@ def add_table_report_args(parser):
 
 def report_table(ctx, nonhuman_header, human_header, data_rows, title,
                  **table_options):
-    # align numbers on the decimal point
-    #for col, values in enumerate(zip(*data_rows)):
-    #    if any(isinstance(v, (int, float)) for v in values):
-    #        justify[col] = 'right'
-    #table_options = {'justify_columns': justify, **kwargs}
+    # don't align numbers for non-human reporting
+    if ctx.args.table in ('csv', 'tsv', 'ssv'):
+        data_rows = [[_to_string(ctx, v) for v in row] for row in data_rows]
+
+        delim = {'csv': ',', 'tsv': '\t', 'ssv': ' '}[ctx.args.table]
+        writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL,
+                            delimiter=delim)
+        writer.writerow(nonhuman_header)
+        for row in data_rows:
+            writer.writerow(row)
+        return
 
     # align numbers on the decimal point
     def get_whole_digits(n):
@@ -340,50 +346,47 @@ def report_table(ctx, nonhuman_header, human_header, data_rows, title,
 
     whole_digits = [max(map(get_whole_digits, values))
                     for values in zip(*data_rows)]
+    print(whole_digits)
 
     def pad(n_string, n, col):
         if isinstance(n, int):
             return ' ' * (whole_digits[col] - len(n_string)) + n_string
         if isinstance(n, float):
-            return ' ' * (whole_digits[col] - n_string.find('.')) + n_string
+            digits = n_string.find('.')
+            if digits == -1:
+                digits = len(n_string)
+            return ' ' * (whole_digits[col] - digits) + n_string
         return n_string
 
     # stringify data
     data_rows = [[pad(_to_string(ctx, v), v, col) for col, v in enumerate(row)]
                  for row in data_rows]
 
-    if ctx.args.table in ('csv', 'tsv', 'ssv'):
-        delim = {'csv': ',', 'tsv': '\t', 'ssv': ' '}[ctx.args.table]
-        writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL,
-                            delimiter=delim)
-        writer.writerow(nonhuman_header)
-        for row in data_rows:
-            writer.writerow(row)
+    # print human-readable table
+    if ctx.args.table == 'fancy':
+        from terminaltables import SingleTable as Table
     else:
-        if ctx.args.table == 'fancy':
-            from terminaltables import SingleTable as Table
-        else:
-            assert ctx.args.table == 'ascii'
-            from terminaltables import AsciiTable as Table
+        assert ctx.args.table == 'ascii'
+        from terminaltables import AsciiTable as Table
 
-        table = Table([human_header] + data_rows, title)
-        table.inner_column_border = False
-        table.padding_left = 0
+    table = Table([human_header] + data_rows, title)
+    table.inner_column_border = False
+    table.padding_left = 0
 
-        for kw, val in table_options.items():
+    for kw, val in table_options.items():
+        if isinstance(val, dict):
+            attr = getattr(table, kw)
             if isinstance(val, dict):
-                attr = getattr(table, kw)
-                if isinstance(val, dict):
-                    attr.update(val)
-                else:
-                    assert isinstance(attr, list)
-                    for index, elem in val.items():
-                        attr[index] = elem
+                attr.update(val)
             else:
-                setattr(table, kw, val)
+                assert isinstance(attr, list)
+                for index, elem in val.items():
+                    attr[index] = elem
+        else:
+            setattr(table, kw, val)
 
-        print(table.table)
-        return table
+    print(table.table)
+    return table
 
 
 def _reportable_fields(target):
