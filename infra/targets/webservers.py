@@ -9,7 +9,8 @@ from hashlib import md5
 from urllib.request import urlretrieve
 from statistics import median, pstdev, mean
 from multiprocessing import cpu_count
-from ..packages import Bash, BenchmarkUtils, Wrk, Netcat, Scons
+from ..commands.report import outfile_path
+from ..packages import Bash, Wrk, Netcat, Scons
 from ..parallel import ProcessPool, PrunPool
 from ..target import Target
 from ..util import run, download, qjoin, param_attrs, FatalError, untar
@@ -31,12 +32,8 @@ class WebServer(Target, metaclass=ABCMeta):
     }
     aggregation_field = 'connections'
 
-    def __init__(self):
-        self.butils = BenchmarkUtils(self)
-
     def dependencies(self):
         yield Bash('4.3')
-        yield self.butils
         yield Wrk()
         yield Netcat('0.7.1')
 
@@ -192,7 +189,7 @@ class WebServerRunner:
         localdir = '/tmp/infra-%s-%s' % (server.name, instance.name)
         self.rundir = os.path.join(localdir, 'run')
         if self.pool:
-            self.logdir = server.butils.outfile_path(ctx, instance)
+            self.logdir = outfile_path(ctx, self, instance)
         else:
             self.logdir = os.path.join(localdir, 'log')
 

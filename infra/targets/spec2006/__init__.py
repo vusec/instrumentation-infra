@@ -9,6 +9,7 @@ import statistics
 from contextlib import redirect_stdout
 from collections import defaultdict
 from typing import List
+from ...commands.report import outfile_path
 from ...util import Namespace, FatalError, run, apply_patch, qjoin, geomean, \
                     require_program, add_table_report_args, report_table
 from ...target import Target
@@ -128,11 +129,6 @@ class SPEC2006(Target):
 
     name = 'spec2006'
 
-    default_report_fields = (
-        'status', 'rt_median_overhead', 'maxrss_overhead', 'rt_median',
-        'rt_stdev', 'maxrss', 'maxrss_stdev', 'iters'
-    )
-
     reportable_fields = {
         'benchmark': 'benchmark program',
         'status':    'whether the benchmark finished successfully',
@@ -163,8 +159,6 @@ class SPEC2006(Target):
         self.patches = patches
         self.nothp = nothp
         self.force_cpu = force_cpu
-
-        self.butils = BenchmarkUtils(self)
 
     def add_build_args(self, parser, desc='build'):
         parser.add_argument('--spec2006-benchmarks',
@@ -216,7 +210,7 @@ class SPEC2006(Target):
         yield Bash('4.3')
         if self.nothp:
             yield Nothp()
-        yield self.butils
+        yield BenchmarkUtils()
 
     def is_fetched(self, ctx):
         return self.source_type == 'installed' or os.path.exists('install/shrc')
@@ -288,7 +282,7 @@ class SPEC2006(Target):
         self._apply_patches(ctx)
 
         # add flags to compile with runtime support for benchmark utils
-        self.butils.configure(ctx)
+        BenchmarkUtils().configure(ctx)
 
         os.chdir(self.path(ctx))
         config = self._make_spec_config(ctx, instance)
@@ -435,7 +429,7 @@ class SPEC2006(Target):
 
             for bench in benchmarks:
                 jobid = 'run-%s-%s' % (instance.name, bench)
-                outfile = self.butils.outfile_path(ctx, instance, bench)
+                outfile = outfile_path(ctx, self, instance, bench)
                 self._run_bash(ctx, cmd.format(bench=bench), pool, jobid=jobid,
                                outfile=outfile, nnodes=ctx.args.iterations)
         else:
@@ -550,8 +544,6 @@ class SPEC2006(Target):
     benchmarks = benchmark_sets
 
     def parse_outfile(self, ctx, instance_name, outfile):
-        # called by self.butils.parse_logs() in report() below
-
         def fix_specpath(path):
             if not os.path.exists(path):
                 benchspec_dir = self._install_path(ctx, 'benchspec')
@@ -609,7 +601,7 @@ class SPEC2006(Target):
                         continue
 
                     for result in rusage_results:
-                        for counter, value in result:
+                        for counter, value in result.items():
                             rusage_counters[counter] += value
 
                 if benchmark_error:
@@ -652,6 +644,8 @@ class SPEC2006(Target):
             }
 
     def report(self, ctx, instances, outfile, args):
+        # TODO: move --nodes reporting to a separate command and remove this
+
         results = self.butils.parse_logs(ctx, instances, args.rundirs,
                                          write_cache=True,
                                          read_cache=not args.refresh)
