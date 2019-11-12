@@ -3,6 +3,7 @@ import csv
 import sys
 from contextlib import redirect_stdout
 from decimal import Decimal
+from functools import reduce
 from itertools import chain, zip_longest
 from statistics import median, pstdev, pvariance, mean
 from ..command import Command
@@ -40,12 +41,17 @@ def first(values):
     return values[0]
 
 
+def geomean(values):
+    assert len(values) > 0
+    return reduce(lambda x, y: x * y, values) ** (1.0 / len(values))
+
+
 _aggregate_fns = {'mean': mean, 'median': median,
                   'stdev': pstdev, 'stdev_percent': stdev_percent,
                   'variance': pvariance, 'mad': median_absolute_deviation,
                   'min': min, 'max': max, 'sum': sum, 'count': len,
                   'same': assert_all_same, 'one': assert_one,
-                  'first': first, 'all': list}
+                  'first': first, 'all': list, 'geomean': geomean}
 
 
 class ReportCommand(Command):
@@ -100,7 +106,8 @@ class ReportCommand(Command):
                 add reported field, followed by aggregation methods
                 (unless --raw is true) separated by colons.
                 Valid aggregations are
-                mean|median|stdev|stdev_percent|mad|min|max|sum|count|first|same|all
+                mean|median|stdev|stdev_percent|mad|min|max|
+                sum|count|first|same|one|all|geomean
                 (stdev_percent = 100*stdev/mean,
                 mad = median absolute deviation,
                 same = asserts each value is the same,
