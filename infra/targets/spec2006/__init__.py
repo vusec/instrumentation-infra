@@ -13,7 +13,7 @@ from ...commands.report import outfile_path
 from ...util import Namespace, FatalError, run, apply_patch, qjoin, geomean, \
                     require_program, add_table_report_args, report_table
 from ...target import Target
-from ...packages import Bash, Nothp, BenchmarkUtils
+from ...packages import Bash, Nothp, RusageCounters
 from ...parallel import PrunPool
 from .benchmark_sets import benchmark_sets
 
@@ -72,7 +72,7 @@ class SPEC2006(Target):
     log files. By default, the columns list runtimes, memory usages, overheads,
     standard deviations and iterations. The computed values are appended to
     each log file with the prefix ``[setup-report]``, and read from there by
-    subsequent report commands if available (see also :class:`BenchmarkUtils`).
+    subsequent report commands if available (see also :class:`RusageCounters`).
     This makes log files portable to different machines without copying over
     the entire SPEC directory. The script depends on a couple of Python
     libraries for its output::
@@ -136,7 +136,7 @@ class SPEC2006(Target):
         'hostname':  'machine hostname',
         'workload':  'run workload (test / ref / train)',
         'inputs':    'number of different benchmark inputs',
-        **BenchmarkUtils.reportable_fields,
+        **RusageCounters.reportable_fields,
     }
     aggregation_field = 'benchmark'
 
@@ -210,7 +210,7 @@ class SPEC2006(Target):
         yield Bash('4.3')
         if self.nothp:
             yield Nothp()
-        yield BenchmarkUtils()
+        yield RusageCounters()
 
     def is_fetched(self, ctx):
         return self.source_type == 'installed' or os.path.exists('install/shrc')
@@ -282,7 +282,7 @@ class SPEC2006(Target):
         self._apply_patches(ctx)
 
         # add flags to compile with runtime support for benchmark utils
-        BenchmarkUtils().configure(ctx)
+        RusageCounters().configure(ctx)
 
         os.chdir(self.path(ctx))
         config = self._make_spec_config(ctx, instance)
@@ -593,7 +593,7 @@ class SPEC2006(Target):
                         continue
 
                     rusage_results = \
-                        list(BenchmarkUtils.parse_rusage_counters(ctx, path))
+                        list(RusageCounters.parse_results(ctx, path))
                     if not rusage_results:
                         ctx.log.error('no staticlib results in %s, there was '
                                       'probably an error' % path)

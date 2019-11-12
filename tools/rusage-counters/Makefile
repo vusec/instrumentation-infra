@@ -5,8 +5,8 @@ CFLAGS   := -fPIC -O2 -Wall -Wextra
 CXXFLAGS := $(CFLAGS)
 LDFLAGS  :=
 LDLIBS   :=
-LIB      := libbenchutils.a
-SRCS     := stats.c
+LIB      := librusagecounters.a
+SRCS     := counters.c
 OBJS     := $(patsubst %.c,$(OBJDIR)/%.o,$(SRCS))
 DEPS     := $(OBJS:%.o=%.d)
 BINS     := test/hello test/fork test/plushello
@@ -25,11 +25,11 @@ $(OBJDIR)/%.o: %.c | $(OBJDIR)
 
 %: %.c $(OBJDIR)/$(LIB)
 	$(CC) -Wall -o $@ $< -L$(OBJDIR) -Wl,--whole-archive \
-	    -l:libbenchutils.a -Wl,--no-whole-archive
+	    -l:librusagecounters.a -Wl,--no-whole-archive
 
 %: %.cxx $(OBJDIR)/$(LIB)
 	$(CXX) -Wall -o $@ $< -L$(OBJDIR) -Wl,--whole-archive \
-	    -l:libbenchutils.a -Wl,--no-whole-archive
+	    -l:librusagecounters.a -Wl,--no-whole-archive
 
 clean:
 	rm -f $(LIB) $(BINS) $(OBJS) $(DEPS)
