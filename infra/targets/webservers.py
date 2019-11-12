@@ -3,7 +3,6 @@ import shutil
 import random
 import time
 import re
-from itertools import chain, zip_longest
 from contextlib import redirect_stdout
 from abc import ABCMeta, abstractmethod
 from hashlib import md5
@@ -13,11 +12,24 @@ from multiprocessing import cpu_count
 from ..packages import Bash, BenchmarkUtils, Wrk, Netcat, Scons
 from ..parallel import ProcessPool, PrunPool
 from ..target import Target
-from ..util import run, download, qjoin, param_attrs, FatalError, \
-                   add_table_report_args, report_table, untar
+from ..util import run, download, qjoin, param_attrs, FatalError, untar
 
 
 class WebServer(Target, metaclass=ABCMeta):
+    reportable_fields = {
+        'connections':  'concurrent client connections',
+        'throughput':   'attained throughput (reqs/s)',
+        'avg_latency':  'average latency (ms)',
+        '50p_latency':  '50th percentile latency (ms)',
+        '75p_latency':  '75th percentile latency (ms)',
+        '90p_latency':  '90th percentile latency (ms)',
+        '99p_latency':  '99th percentile latency (ms)',
+        'transferrate': 'network traffic (KB/s)',
+        'duration':     'benchmark duration (s)',
+        'cpu':          'median server CPU load during benchmark (%%)',
+    }
+    aggregation_field = 'connections'
+
     def __init__(self):
         self.butils = BenchmarkUtils(self)
 
@@ -62,40 +74,6 @@ class WebServer(Target, metaclass=ABCMeta):
         # bench-client options
         parser.add_argument('--server-ip',
                 help='IP of machine running matching bench-server')
-
-    def add_report_args(self, parser):
-        self.butils.add_report_args(parser)
-        add_table_report_args(parser)
-
-        parser.add_argument('-c', '--columns', nargs='+', metavar='COL',
-                choices=['connections', 'throughput', 'avg_latency',
-                         '50p_latency', '75p_latency', '90p_latency',
-                         '99p_latency', 'transferrate', 'duration', 'cpu'],
-                default=['throughput', '99p_latency'],
-                help='''columns to show:
-                    connections:  Concurrent client connections,
-                    throughput:   Attained throughput (reqs/s),
-                    avg_latency:  Average latency (ms),
-                    50p_latency:  50th percentile latency (ms),
-                    75p_latency:  75th percentile latency (ms),
-                    90p_latency:  90th percentile latency (ms),
-                    99p_latency:  99th percentile latency (ms),
-                    transferrate: Network traffic (KB/s),
-                    duration:     Benchmark duration (s),
-                    cpu:          Median server CPU load during benchmark (%%)''')
-
-        report_modes = parser.add_mutually_exclusive_group()
-        report_modes.add_argument('--aggregate', nargs='+',
-                choices=['mean', 'median', 'stdev', 'stdev_percent', 'mad',
-                         'min', 'max', 'sum', 'count'],
-                default=['median'],
-                help='aggregation methods for columns, stdev_percent = '
-                     '100*stdev/mean, mad = median absolute deviation')
-        report_modes.add_argument('--raw', action='store_true',
-                help='output all data points instead of aggregates')
-
-        parser.add_argument('--refresh', action='store_true',
-                help='refresh cached results by reparsing logs')
 
     def run(self, ctx, instance, pool=None):
         runner = WebServerRunner(self, ctx, instance, pool)
@@ -142,93 +120,6 @@ class WebServer(Target, metaclass=ABCMeta):
         :returns: a bash script that stops the server daemon
         """
         pass
-
-    def report(self, ctx, instances, outfile, args):
-        # collect results: {instance: [{connections:x, throughput:x, latency:x}]}
-        results = self.butils.parse_logs(ctx, instances, args.rundirs,
-                                         read_cache=not args.refresh)
-
-        with redirect_stdout(outfile):
-            if args.raw:
-                self.report_raw(ctx, results)
-            else:
-                self.report_aggregate(ctx, results)
-
-    def report_raw(self, ctx, results):
-        columns = ctx.args.columns
-        instances = sorted(results.keys())
-
-        header = []
-        human_header = []
-        for instance in instances:
-            prefix = instance + '\n'
-            for col in columns:
-                header.append('%s_%s' % (instance, col))
-                human_header.append(prefix + col)
-                prefix = '\n'
-
-        rows = {}
-        for instance in instances:
-            rows[instance] = sorted(tuple(r[col] for col in columns)
-                                    for r in results[instance])
-
-        instance_rows = [rows[i] for i in instances]
-        joined_rows = []
-        for parts in zip_longest(*instance_rows, fillvalue=['', '']):
-            joined_rows.append(list(chain.from_iterable(parts)))
-
-        title = ' %s raw data ' % self.name
-        report_table(ctx, header, human_header, joined_rows, title)
-
-    def report_aggregate(self, ctx, results):
-        columns = [col for col in ctx.args.columns if col != 'connections']
-
-        # group results by connections
-        instances = sorted(results.keys())
-        all_conns = sorted(set(result['connections']
-                               for instance_results in results.values()
-                               for result in instance_results))
-        grouped = {}
-        for instance, instance_results in results.items():
-            for result in instance_results:
-                key = result['connections'], instance
-                for col in columns:
-                    grouped.setdefault((key, col), []).append(result[col])
-
-        # print a table with selected aggregate columns for each instance,
-        # grouped by the number of connections
-        header = ['connections']
-        human_header = ['\n\nconnections']
-        for instance in instances:
-            for i, col in enumerate(columns):
-                prefix = '%s\n%s\n' % ('' if i else instance, col)
-                for aggr_mode in ctx.args.aggregate:
-                    header += ['%s_%s_%s' % (instance, col, aggr_mode)]
-                    human_header += [prefix + aggr_mode]
-                    prefix = '\n\n'
-
-        aggregate_fns = {'mean': mean, 'median': median,
-                         'stdev': pstdev, 'stdev_percent': stdev_percent,
-                         'mad': median_absolute_deviation,
-                         'min': min, 'max': max, 'sum': sum, 'count': len}
-
-        def nr_to_string(n):
-            return str(n) if isinstance(n, int) else '%.3f' % n
-
-        data = []
-        for connections in all_conns:
-            row = [connections]
-            for instance in instances:
-                key = connections, instance
-                for col in columns:
-                    series = grouped.get((key, col), [-1])
-                    for aggr_mode in ctx.args.aggregate:
-                        row.append(nr_to_string(aggregate_fns[aggr_mode](series)))
-            data.append(row)
-
-        title = ' %s aggregated data ' % self.name
-        report_table(ctx, header, human_header, data, title)
-
 
     def parse_outfile(self, ctx, instance_name, outfile):
         dirname, filename = os.path.split(outfile)
