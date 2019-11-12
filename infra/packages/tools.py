@@ -1,12 +1,11 @@
 import os
 import io
 import argparse
-import statistics
 import re
+from contextlib import redirect_stdout
 from os.path import exists, join
 from abc import ABCMeta
-from collections import defaultdict
-from typing import Dict, List, Iterator, Iterable, Any, Optional
+from typing import Dict, List, Iterator, Iterable, Tuple, Optional, Union
 from ..package import Package
 from ..instance import Instance
 from ..target import Target
@@ -57,6 +56,9 @@ class Nothp(Tool):
     installed = ['bin/nothp']
 
 
+# TODO: move generic reporting/caching functions below out of this package
+# TODO: afterwards, rename this package to RusageCounters
+
 class BenchmarkUtils(Tool):
     """
     Utility class for the :ref:`report <usage-report>` command. Should be
@@ -85,20 +87,17 @@ class BenchmarkUtils(Tool):
     #: :class:`str` prefix for metadata lines in output files
     prefix = '[setup-report]'
 
-    counter_column_heads = {
-        'maxrss': 'memory\nmax',
-        'page_faults': 'page\nfaults',
-        'io_operations': '\nI/O ops',
-        'context_switches': 'context\nswitches',
-        'estimated_runtime_sec': 'estimated\nruntime',
+    #: :class:`dict` reportable fields (add to reportable fields of target)
+    reportable_fields = {
+        'maxrss':            'peak resident set size in KB',
+        'page_faults':       'number of page faults',
+        'io_operations':     'number of I/O operations',
+        'context_switches':  'number of context switches',
+        'estimated_runtime': 'benchmark runtime in seconds estimated by '
+                             'rusage-counters constructor/destructor',
     }
 
-    #: :class:`tuple` reported field names (for -f option of SPEC report)
-    counter_fields = tuple(counter_column_heads.keys())
-
-
-    LoggedResult = Dict[str, Any]
-    ParsedResult = Namespace
+    Result = Dict[str, Union[bool, int, float, str]]
 
     def __init__(self, target: Optional[Target] = None):
         self.target = target
@@ -147,7 +146,7 @@ class BenchmarkUtils(Tool):
                    rundirs: Iterable[str],
                    write_cache: bool = True,
                    read_cache: bool = True
-                   ) -> Dict[str, List[ParsedResult]]:
+                   ) -> Dict[str, List[Result]]:
         """
         Parse logs from specified run directories.
 
@@ -203,25 +202,18 @@ class BenchmarkUtils(Tool):
 
             for filename in sorted(os.listdir(idir)):
                 path = os.path.join(idir, filename)
-                cached = []
-
                 if not os.path.isfile(path):
                     continue
 
+                fresults = []
                 if read_cache:
-                    for result in self.parse_results(ctx, path):
-                        if result.get('cached', False):
-                            cached.append(result)
+                    fresults = list(self.parse_results(ctx, path, 'cached'))
 
-                if cached:
-                    fresults = cached
+                if fresults:
                     ctx.log.debug('using cached results from ' + path)
                 else:
-                    fresults = []
                     ctx.log.debug('parsing outfile ' + path)
-                    for result in self.target.parse_outfile(ctx, iname, path):
-                        result['cached'] = False
-                        fresults.append(result)
+                    fresults = list(self.target.parse_outfile(ctx, iname, path))
 
                     if write_cache:
                         try:
@@ -233,7 +225,7 @@ class BenchmarkUtils(Tool):
                                 f = open(path, 'r+')
                                 line = f.readline()
                                 while line:
-                                    if line.startswith(self.prefix):
+                                    if line.startswith(self.prefix + ' begin cached'):
                                         ctx.log.debug('removing cached results')
                                         f.seek(f.tell() - len(line))
                                         f.truncate()
@@ -242,32 +234,47 @@ class BenchmarkUtils(Tool):
 
                             ctx.log.debug('caching %d results' % len(fresults))
                             for result in fresults:
-                                self._log_result({**result, 'cached': True}, f)
+                                self._log_result('cached', result, f)
                         finally:
                             f.close()
 
                 for result in fresults:
-                    result['outfile'] = path
+                    result['outfile'] = _strip_cwd(path)
 
                 instance_results += fresults
 
         return results
 
     @classmethod
-    def _log_result(cls, result: LoggedResult, ofile: io.TextIOWrapper):
+    def _log_result(cls, name: str, result: Result, ofile: io.TextIOWrapper):
         """
+        :param name:
         :param result:
         :param ofile:
         """
-        print(cls.prefix, 'begin', file=ofile)
+        with redirect_stdout(ofile):
+            print(cls.prefix, 'begin', name)
 
-        for key, value in result.items():
-            print(cls.prefix, key + ':', _box_value(value), file=ofile)
+            for key, value in result.items():
+                print(cls.prefix, key + ':', _box_value(value))
 
-        print(cls.prefix, 'end', file=ofile)
+            print(cls.prefix, 'end', name)
 
     @classmethod
-    def parse_results(cls, ctx: Namespace, path: str) -> Iterator[ParsedResult]:
+    def parse_rusage_counters(cls, ctx: Namespace, path: str) -> \
+            Iterator[Result]:
+        yield from cls.parse_results(ctx, path, 'rusage-counters')
+
+    @classmethod
+    def parse_results(cls, ctx: Namespace, path: str, name: str) -> \
+            Iterator[Result]:
+        for name, result in cls.parse_all_results(ctx, path):
+            if name == name:
+                yield result
+
+    @classmethod
+    def parse_all_results(cls, ctx: Namespace, path: str) -> \
+            Iterator[Tuple[str, Result]]:
         """
         Parse existing results from a file. Can be used by a
         :func:`Target.parse_outfile` implementation to parse results written by
@@ -275,25 +282,33 @@ class BenchmarkUtils(Tool):
 
         :param ctx: the configuration context
         :param path: path to file to parse
+        :returns: (name, result) tuples
         """
         with open(path) as f:
-            result = None
+            result = bname = None
 
             for line in f:
                 line = line.rstrip()
                 if line.startswith(cls.prefix):
                     statement = line[len(cls.prefix) + 1:]
-                    if statement == 'begin':
+                    if re.match(r'begin \w+', statement):
+                        bname = statement[6:]
                         result = Namespace()
-                    elif statement == 'end':
+                    elif re.match(r'end \w+', statement):
                         if result is None:
-                            ctx.log.error('missing start for end statement in %s' % path)
+                            ctx.log.error('missing start for "%s" end '
+                                          'statement in %s' % (bname, path))
                         else:
-                            yield result
-                            result = None
+                            ename = statement[4:]
+                            if ename != bname:
+                                ctx.log.error('begin/end name mismatch in %s: '
+                                              '%s != %s' % (path, ename, bname))
+
+                            yield bname, result
+                            result = bname = None
                     elif result is None:
                         ctx.log.error('ignoring %s statement outside of begin-end '
-                                    'in %s' % (cls.prefix, path))
+                                      'in %s' % (cls.prefix, path))
                     else:
                         name, value = statement.split(': ', 1)
 
@@ -308,59 +323,26 @@ class BenchmarkUtils(Tool):
                           (cls.prefix, path))
 
     @staticmethod
-    def aggregate_values(values: Iterable[Any], key: str) -> Any:
-        def same(values):
-            s = set(values)
-            if len(s) > 1:
-                raise ValueError('different values for %s: %s' %
-                                 (key, tuple(s)))
-            return s.pop()
-
-        aggregators = {
-            'max': max, 'min': min, 'sum': sum, 'any': any, 'all': all,
-            'same': same, 'median': statistics.median, 'mean': statistics.mean,
-            'stdev': statistics.pstdev, 'variance': statistics.pvariance,
-        }
-
-        if key.startswith('_'):
-            aggrid = key.split('_', 2)[1]
-            if aggrid not in aggregators:
-                raise FatalError('unknown aggregator in ' + key)
-            aggregate = aggregators[aggrid]
-        else:
-            def aggregate(values):
-                return ','.join(str(v) for v in values)
-
-        values = list(values)
-        assert len(values) > 0
-        return values[0] if len(values) == 1 else aggregate(values)
-
-    @classmethod
-    def merge_results(cls, results: Iterable[ParsedResult],
-                           strip_prefix: bool) -> ParsedResult:
+    def sum_results(results: Iterable[Result]) -> Result:
         """
-        Merge several results into one (typically for the same benchmark).
-
-        Duplicate keys are aggregated based on their names: keys starting with
-        an underscore are special. Values for keys starting with "_" such as
-        _min_/_max_/_sum_ are aggregated by the corresponding aggregator
-        function. These prefixes are stripped if ``strip_prefix`` is set to
-        true.
-
-        Other duplicate keys (without leading underscore) are merged by joining
-        all values in a comma-separated string.
+        Sum the values of each key in `results`.
 
         :param results: results to merge
-        :param strip_prefix: whether to strip aggregator prefixes from keys
-        :returns: a single result with aggregated values
+        :returns: a single result with summed counters
         """
-        merged = defaultdict(list)
-        for res in results:
-            for k, v in res.items():
-                merged[k].append(v)
-        def strip(key):
-            return re.sub(r'^_[a-z]+_', '', key) if strip_prefix else key
-        return {strip(k): cls.aggregate_values(v, k) for k, v in merged.items()}
+        accumulated = {}
+        for result in results:
+            for key, value in result.items():
+                # backwards compatibility: strip accumulation prefix
+                # TODO: remove after fixing up all log files
+                key = re.sub(r'^_[^_]+_', '', key)
+
+                accumulated.setdefault(key, []).append(value)
+
+        assert len(set(map(len, accumulated.values()))) == 1, \
+               'adding results with different keys'
+
+        return {key: sum(values) for key, values in accumulated.items()}
 
 
 def _box_value(value):
@@ -386,3 +368,8 @@ def _unbox_value(value):
 
     # string
     return value
+
+
+def _strip_cwd(path):
+    cwd = os.path.join(os.getcwd(), '')
+    return path[len(cwd):] if path.startswith(cwd) else path

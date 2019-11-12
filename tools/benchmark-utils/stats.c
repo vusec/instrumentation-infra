@@ -70,11 +70,11 @@ static void report_stats() {
     u.ru_nivcsw += child.ru_nivcsw;
 
     // report accumulated results
-    report_begin();
-    reporti("_max_maxrss", u.ru_maxrss);
-    reporti("_sum_page_faults", u.ru_minflt + u.ru_majflt);
-    reporti("_sum_io_operations", u.ru_inblock + u.ru_oublock);
-    reporti("_sum_context_switches", u.ru_nvcsw + u.ru_nivcsw);
-    reportfp("_sum_estimated_runtime_sec", timediff_sec(&starttime, &endtime), 3);
-    report_end();
+    report_begin("rusage-counters");
+    reporti("maxrss", u.ru_maxrss);
+    reporti("page_faults", u.ru_minflt + u.ru_majflt);
+    reporti("io_operations", u.ru_inblock + u.ru_oublock);
+    reporti("context_switches", u.ru_nvcsw + u.ru_nivcsw);
+    reportfp("estimated_runtime", timediff_sec(&starttime, &endtime), 3);
+    report_end("rusage-counters");
 }

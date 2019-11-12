@@ -6,7 +6,7 @@
 #include <float.h>
 
 #define PREFIX "[setup-report] "
-#define report(...) fprintf(stderr, PREFIX __VA_ARGS__);
+#define report(...) fprintf(stderr, PREFIX __VA_ARGS__)
 #define REPORT(format, key, ...) report("%s: " format "\n", (key), __VA_ARGS__)
 
 #ifdef __cplusplus
@@ -37,12 +37,12 @@ static inline void reports(const char *key, char *value) {
     REPORT("%s", key, value);
 }
 
-static inline void report_begin() {
-    report("begin\n");
+static inline void report_begin(const char *name) {
+    report("begin %s\n", name);
 }
 
-static inline void report_end() {
-    report("end\n");
+static inline void report_end(const char *name) {
+    report("end %s\n", name);
     fflush(stderr);                                            \
 }
 

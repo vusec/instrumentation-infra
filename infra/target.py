@@ -69,6 +69,13 @@ class Target(metaclass=ABCMeta):
     #: :class:`str` The target's name, must be unique.
     name = None
 
+    #: A mapping of fields that can be reported to their descriptions.
+    reportable_fields = {}
+
+    #: :class:`str` The default reportable field to group by when
+    #               aggregating results.
+    aggregation_field = None
+
     def __eq__(self, other):
         return isinstance(other, self.__class__) and other.name == self.name
 

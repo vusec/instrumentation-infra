@@ -133,6 +133,17 @@ class SPEC2006(Target):
         'rt_stdev', 'maxrss', 'maxrss_stdev', 'iters'
     )
 
+    reportable_fields = {
+        'benchmark': 'benchmark program',
+        'status':    'whether the benchmark finished successfully',
+        'runtime':   'total runtime in seconds',
+        'hostname':  'machine hostname',
+        'workload':  'run workload (test / ref / train)',
+        'inputs':    'number of different benchmark inputs',
+        **BenchmarkUtils.reportable_fields,
+    }
+    aggregation_field = 'benchmark'
+
     def __init__(self, source_type: str,
                        source: str,
                        patches: List[str] = [],
@@ -574,12 +585,12 @@ class SPEC2006(Target):
             m = pat.search(logcontents)
             while m:
                 status, benchmark, workload, ratio, runtime = m.groups()
+                rusage_counters = defaultdict(int)
 
                 # find per-input logs by benchutils staticlib
                 rpat = r'Running %s.+?-C (.+?$)(.+?)^Specinvoke:' % benchmark
                 rundir, arglist = re.search(rpat, logcontents, re.M | re.S).groups()
                 errfiles = re.findall(r'-e ([^ ]+err) \.\./run_', arglist)
-                inputres = []
                 benchmark_error = False
                 for errfile in errfiles:
                     path = os.path.join(fix_specpath(rundir), errfile)
@@ -589,38 +600,30 @@ class SPEC2006(Target):
                         benchmark_error = True
                         continue
 
-                    ctx.log.debug('fetching staticlib results from errfile ' + path)
-                    res = list(BenchmarkUtils.parse_results(ctx, path))
-                    if not res:
+                    rusage_results = \
+                        list(BenchmarkUtils.parse_rusage_counters(ctx, path))
+                    if not rusage_results:
                         ctx.log.error('no staticlib results in %s, there was '
                                       'probably an error' % path)
                         benchmark_error = True
                         continue
 
-                    inputres += res
+                    for result in rusage_results:
+                        for counter, value in result:
+                            rusage_counters[counter] += value
 
                 if benchmark_error:
                     ctx.log.warning('cancel processing benchmark %s in log file '
                                     '%s because of errors' % (benchmark, logpath))
                 else:
-                    # merge counter results found in different invocations,
-                    # computing aggregates based on keys
-                    counters = BenchmarkUtils.merge_results(inputres, False)
-                    if '_max_maxrss' in counters:
-                        counters['_stdev_maxrss_stdev'] = counters['_max_maxrss']
-
-                    runtime = float(runtime)
                     yield {
                         'benchmark': benchmark,
-                        'success': status == 'Success',
+                        'status': 'ok' if status == 'Success' else 'invalid',
                         'workload': workload,
                         'hostname': hostname,
-                        '_median_rt_median': runtime,
-                        '_mean_rt_mean': runtime,
-                        '_stdev_rt_stdev': runtime,
-                        '_same_inputs': len(errfiles),
-                        '_sum_iters': 1,
-                        **counters
+                        'runtime': float(runtime),
+                        'inputs': len(errfiles),
+                        **rusage_counters
                     }
                     error_benchmarks.remove(benchmark)
 
@@ -629,8 +632,8 @@ class SPEC2006(Target):
             for benchmark in error_benchmarks:
                 yield {
                     'benchmark': benchmark,
-                    'success': False,
-                    'hostname': hostname
+                    'status': 'error',
+                    'hostname': hostname,
                 }
 
             ctx.log.debug('done parsing')
@@ -640,13 +643,12 @@ class SPEC2006(Target):
 
         logpaths = list(get_logpaths(outfile_contents))
         if logpaths:
-            for logpath in get_logpaths(outfile_contents):
+            for logpath in logpaths:
                 yield from parse_logfile(logpath)
         else:
             yield {
                 'benchmark': re.sub(r'\.\d+$', '', os.path.basename(outfile)),
-                'success': False,
-                'timeout': True
+                'status': 'timeout',
             }
 
     def report(self, ctx, instances, outfile, args):
