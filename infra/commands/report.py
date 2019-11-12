@@ -114,8 +114,8 @@ class ReportCommand(Command):
                 all = join values by space)''')
             tparser.add_argument('--help-fields', action='store_true',
                     help='print valid values for --field')
-
-            # TODO: add --aggregate argument for bottom row
+            tparser.add_argument('--aggregate', choices=_aggregate_fns,
+                    help='aggregation method for entire columns')
 
             try:
                 from argcomplete.completers import DirectoriesCompleter
@@ -262,7 +262,21 @@ class ReportCommand(Command):
         else:
             title = ' %s aggregated data ' % target.name
 
-        report_table(ctx, header, human_header, data, title)
+        table_options = {}
+
+        if ctx.args.aggregate:
+            aggr = _aggregate_fns[ctx.args.aggregate]
+            def try_aggr(values):
+                try:
+                    return aggr(values)
+                except:
+                    pass
+            aggregate_row = [try_aggr(c) for c in zip(*data)]
+            aggregate_row[0] = ctx.args.aggregate
+            data.append(aggregate_row)
+            table_options['inner_footing_row_border'] = True
+
+        report_table(ctx, header, human_header, data, title, **table_options)
 
     def _parse_fields(self, ctx, target):
         for arg in chain.from_iterable(ctx.args.field):
