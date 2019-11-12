@@ -60,7 +60,7 @@ Tools
 =====
 
 .. autoclass:: infra.packages.Nothp
-.. autoclass:: infra.packages.BenchmarkUtils
+.. autoclass:: infra.packages.RusageCounters
    :members:
 
 

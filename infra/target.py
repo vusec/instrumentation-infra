@@ -264,9 +264,8 @@ class Target(metaclass=ABCMeta):
     def parse_outfile(self, ctx: Namespace, instance_name: str,
                       outfile: str) -> Iterator[Dict[str, Any]]:
         """
-        Callback method for :func:`packages.BenchmarkUtils.parse_logs`. Used
-        during reporting if :class:`packages.BenchmarkUtils` is used by the
-        target.
+        Callback method for :func:`commands.report.parse_logs`. Used by report
+        command to get reportable results.
 
         :param ctx: the configuration context
         :param instance_name: name of corresponding instance

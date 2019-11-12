@@ -8,7 +8,7 @@ from .pyelftools import PyElfTools
 from .libshrink import LibShrink
 from .llvm_passes import BuiltinLLVMPasses, LLVMPasses
 from .perl import Perl, SPECPerl, Perlbrew
-from .tools import Nothp, BenchmarkUtils
+from .tools import Nothp, RusageCounters
 from .ninja import Ninja
 from .gperftools import Gperftools, LibUnwind
 from .apache import ApacheBench, APR, APRUtil
