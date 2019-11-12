@@ -185,17 +185,6 @@ class ReportCommand(Command):
             return not ctx.args.filter or \
                 str(result[ctx.args.groupby]) in ctx.args.filter
 
-        def to_string(n):
-            if n is None:
-                return '-'
-            if isinstance(n, float):
-                return _precise_float(n, ctx.args.precision)
-            if isinstance(n, list):
-                return '[%s]' % ' '.join(to_string(v) for v in n)
-            if isinstance(n, bool):
-                return 'yes' if n else 'no'
-            return str(n)
-
         baseline_instance = ctx.args.overhead
 
         instances = sorted(results)
@@ -254,7 +243,7 @@ class ReportCommand(Command):
                             value = _aggregate_fns[ag](series)
                             if baseline_results and isinstance(value, (int, float)):
                                 value /= baseline_results[(groupby_value, f)]
-                        row.append(to_string(value))
+                        row.append(value)
             data.append(row)
 
         if baseline_instance:
@@ -334,7 +323,35 @@ def add_table_report_args(parser):
 
 
 def report_table(ctx, nonhuman_header, human_header, data_rows, title,
-                 **kwargs):
+                 **table_options):
+    # align numbers on the decimal point
+    #for col, values in enumerate(zip(*data_rows)):
+    #    if any(isinstance(v, (int, float)) for v in values):
+    #        justify[col] = 'right'
+    #table_options = {'justify_columns': justify, **kwargs}
+
+    # align numbers on the decimal point
+    def get_whole_digits(n):
+        if isinstance(n, int):
+            return len(str(n))
+        if isinstance(n, float):
+            return get_whole_digits(int(n + 0.5))
+        return 0
+
+    whole_digits = [max(map(get_whole_digits, values))
+                    for values in zip(*data_rows)]
+
+    def pad(n_string, n, col):
+        if isinstance(n, int):
+            return ' ' * (whole_digits[col] - len(n_string)) + n_string
+        if isinstance(n, float):
+            return ' ' * (whole_digits[col] - n_string.find('.')) + n_string
+        return n_string
+
+    # stringify data
+    data_rows = [[pad(_to_string(ctx, v), v, col) for col, v in enumerate(row)]
+                 for row in data_rows]
+
     if ctx.args.table in ('csv', 'tsv', 'ssv'):
         delim = {'csv': ',', 'tsv': '\t', 'ssv': ' '}[ctx.args.table]
         writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL,
@@ -353,7 +370,7 @@ def report_table(ctx, nonhuman_header, human_header, data_rows, title,
         table.inner_column_border = False
         table.padding_left = 0
 
-        for kw, val in kwargs.items():
+        for kw, val in table_options.items():
             if isinstance(val, dict):
                 attr = getattr(table, kw)
                 if isinstance(val, dict):
@@ -374,6 +391,18 @@ def _reportable_fields(target):
         **target.reportable_fields,
         'outfile': 'log file containing the result',
     }
+
+
+def _to_string(ctx, n):
+    if n is None:
+        return '-'
+    if isinstance(n, float):
+        return _precise_float(n, ctx.args.precision)
+    if isinstance(n, list):
+        return '[%s]' % ' '.join(_to_string(ctx, v) for v in n)
+    if isinstance(n, bool):
+        return 'yes' if n else 'no'
+    return str(n)
 
 
 def _precise_float(n: float, precision: int) -> str:
