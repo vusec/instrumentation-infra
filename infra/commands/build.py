@@ -32,8 +32,6 @@ class BuildCommand(Command):
                     help='only build dependencies, not targets themselves')
             tparser.add_argument('--force-rebuild-deps', action='store_true',
                     help='always run the build commands')
-            tparser.add_argument('--relink', action='store_true',
-                    help='only link targets, don\'t rebuild object files')
             tparser.add_argument('--clean', action='store_true',
                     help='clean target first')
             tparser.add_argument('--dry-run', action='store_true',
@@ -106,11 +104,8 @@ class BuildCommand(Command):
                 ctx.log.info('building %s-%s' %
                                     (target.name, instance.name))
                 if not ctx.args.dry_run:
-                    if not ctx.args.relink:
-                        target.goto_rootdir(ctx)
-                        self.call_with_pool(target.build, (ctx, instance), pool)
                     target.goto_rootdir(ctx)
-                    self.call_with_pool(target.link, (ctx, instance), pool)
+                    self.call_with_pool(target.build, (ctx, instance), pool)
                     target.run_hooks_post_build(ctx, instance)
 
             ctx = oldctx
