@@ -31,9 +31,7 @@ class Target(metaclass=ABCMeta):
        to :func:`build`.
     #. All packages listed by :func:`dependencies` are built and installed into
        the environment (i.e., ``PATH`` and such are set).
-    #. Unless ``--relink`` was passed on the command line, it calls
-       :func:`build` to build the target object files.
-    #. It calls :func:`link` to link the target binaries.
+    #. It calls :func:`build` to build the target binaries.
     #. If any post-build hooks are installed by the current instance, it calls
        :func:`binary_paths` to get paths to all built binaries. These are then
        passed directly to the build hooks.
@@ -62,8 +60,7 @@ class Target(metaclass=ABCMeta):
     have working implementations. Some implementations are optional and some
     have a default implementation that works for almost all cases (see docs
     below), but the following are mandatory to implement for each new target:
-    :func:`is_fetched`, :func:`fetch`, :func:`build`, :func:`link` and
-    :func:`run`.
+    :func:`is_fetched`, :func:`fetch`, :func:`build` and :func:`run`.
     """
 
     #: :class:`str` The target's name, must be unique.
@@ -170,10 +167,8 @@ class Target(metaclass=ABCMeta):
     @abstractmethod
     def build(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
         """
-        Build the target object files. Called some time after :func:`fetch`, but
-        before :func:`link` (see :class:`above <Target>`). You may choose to not
-        implement :func:`link` and link the target binaries here instead (since
-        some build systems are not flexible enough for this).
+        Build the target object files. Called some time after :func:`fetch` (see
+        :class:`above <Target>`).
 
         ``ctx.runenv`` will have been populated with the exported environments
         of all packages returned by :func:`dependencies` (i.e.,
@@ -201,22 +196,6 @@ class Target(metaclass=ABCMeta):
 
         :param ctx: the configuration context
         :param instance: instance to build
-        :param pool: parallel process pool if ``--parallel`` is specified
-        """
-        pass
-
-    def link(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
-        """
-        Link the target binaries. Implementing this method is optional, its only
-        use is to skip building object files when running ``build --relink``
-        (useful when only doing link-time passes). If left unimplemented,
-        :func:`build` should do the linking instead.
-
-        Similarly to :func:`build`, the method may specify the ``pool``
-        parameter for parallel linking.
-
-        :param ctx: the configuration context
-        :param instance: instance to link
         :param pool: parallel process pool if ``--parallel`` is specified
         """
         pass
@@ -295,9 +274,9 @@ class Target(metaclass=ABCMeta):
     def binary_paths(self, ctx: Namespace, instance: Instance) -> Iterable[str]:
         """
         If implemented, this should return a list of absolute paths to binaries
-        created by :func:`link` or :func:`build` for the given instance. This is
-        only used if the instance specifies post-build hooks. Each hook is
-        called for each of the returned paths.
+        created by :func:`build` for the given instance. This is only used if
+        the instance specifies post-build hooks. Each hook is called for each of
+        the returned paths.
 
         :param ctx: the configuration context
         :param instance: instance to get paths for

@@ -521,9 +521,6 @@ class SPEC2006(Target):
 
         return config_name
 
-    def link(self, ctx, instance):
-        pass
-
     # override post-build hook runner rather than defining `binary_paths` since
     # we add hooks to the generated SPEC config file and call them through the
     # exec-hook setup command instead
