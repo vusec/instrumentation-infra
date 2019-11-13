@@ -2,6 +2,7 @@ import os
 import shlex
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser
+from collections import OrderedDict
 from inspect import signature
 from multiprocessing import cpu_count
 from .parallel import ProcessPool, PrunPool
@@ -80,7 +81,7 @@ class Command(metaclass=ABCMeta):
 
 
 def get_deps(*objs):
-    deps = []
+    deps = OrderedDict()
 
     def add_dep(dep, visited):
         if dep in visited:
@@ -90,11 +91,10 @@ def get_deps(*objs):
         for nested_dep in dep.dependencies():
             add_dep(nested_dep, set(visited))
 
-        if dep not in deps:
-            deps.append(dep)
+        deps.setdefault(dep, True)
 
     for obj in objs:
         for dep in obj.dependencies():
             add_dep(dep, set())
 
-    return deps
+    return list(deps)
