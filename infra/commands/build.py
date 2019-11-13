@@ -48,17 +48,14 @@ class BuildCommand(Command):
     def run(self, ctx):
         target = self.targets[ctx.args.target]
         instances = self.instances.select(ctx.args.instances)
-        packages = self.packages.select(ctx.args.packages)
         pool = self.make_pool(ctx)
 
-        deps = get_deps(target, *instances, *packages)
+        deps = get_deps(target, *instances)
 
         self.enable_run_log(ctx)
 
-        # clean packages and target if requested
+        # clean target if requested
         if ctx.args.clean:
-            for package in packages:
-                clean_package(ctx, package)
             clean_target(ctx, target)
 
         # first fetch all necessary code so that the internet connection can be
