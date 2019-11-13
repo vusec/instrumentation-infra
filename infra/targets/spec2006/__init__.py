@@ -160,17 +160,16 @@ class SPEC2006(Target):
         self.nothp = nothp
         self.force_cpu = force_cpu
 
-    def add_build_args(self, parser, desc='build'):
-        parser.add_argument('--spec2006-benchmarks',
+    def add_build_args(self, parser):
+        parser.add_argument('--benchmarks',
                 nargs='+', metavar='BENCHMARK', default=['all_c', 'all_cpp'],
-                choices=list(self.benchmarks.keys()),
-                help='which SPEC-CPU2006 benchmarks to build')
+                choices=self.benchmarks,
+                help='which benchmarks to build')
 
     def add_run_args(self, parser):
-        parser.add_argument('--benchmarks', '--spec2006-benchmarks',
-                dest='spec2006_benchmarks',
+        parser.add_argument('--benchmarks',
                 nargs='+', metavar='BENCHMARK', default=['all_c', 'all_cpp'],
-                choices=list(self.benchmarks.keys()),
+                choices=self.benchmarks,
                 help='which benchmarks to run')
         parser.add_argument('--test', action='store_true',
                 help='run a single iteration of the test workload')
@@ -533,7 +532,7 @@ class SPEC2006(Target):
 
     def _get_benchmarks(self, ctx, instance):
         benchmarks = set()
-        for bset in ctx.args.spec2006_benchmarks:
+        for bset in ctx.args.benchmarks:
             for bench in self.benchmarks[bset]:
                 if not hasattr(instance, 'exclude_spec2006_benchmark') or \
                         not instance.exclude_spec2006_benchmark(bench):
