@@ -323,6 +323,7 @@ class Setup:
         self.ctx.workdir = os.getcwd()
 
         self.add_command(commands.BuildCommand())
+        self.add_command(commands.PkgBuildCommand())
         self.add_command(commands.RunCommand())
         self.add_command(commands.ReportCommand())
         self.add_command(commands.CleanCommand())
