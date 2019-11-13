@@ -11,7 +11,7 @@ default_jobs = min(cpu_count(), 16)
 
 class BuildCommand(Command):
     name = 'build'
-    description = 'build target programs (also builds dependencies)'
+    description = 'build target programs and their dependencies'
 
     def add_args(self, parser):
         target_parsers = parser.add_subparsers(
@@ -25,16 +25,9 @@ class BuildCommand(Command):
             tparser.add_argument('instances', nargs='+',
                     metavar='INSTANCE', choices=self.instances,
                     help=' | '.join(self.instances))
-            tparser.add_argument('--build', action='store_true',
-                    help='build target first')
             tparser.add_argument('-j', '--jobs', type=int, default=default_jobs,
                     help='maximum number of build processes (default %d)' %
-                        default_jobs)
-            packagearg = tparser.add_argument('-p', '--packages', nargs='+',
-                    metavar='PACKAGE', default=[],
-                    help='which packages to build (either on top of dependencies, '
-                         'or to force a rebuild)')
-            packagearg.completer = self.complete_package
+                         default_jobs)
             tparser.add_argument('--deps-only', action='store_true',
                     help='only build dependencies, not targets themselves')
             tparser.add_argument('--force-rebuild-deps', action='store_true',
@@ -42,7 +35,7 @@ class BuildCommand(Command):
             tparser.add_argument('--relink', action='store_true',
                     help='only link targets, don\'t rebuild object files')
             tparser.add_argument('--clean', action='store_true',
-                    help='clean targets and packages (not all deps, only from -p) first')
+                    help='clean target first')
             tparser.add_argument('--dry-run', action='store_true',
                     help='don\'t actually build anything, just show what will be done')
 
@@ -52,7 +45,6 @@ class BuildCommand(Command):
             for instance in self.instances.values():
                 instance.add_build_args(tparser)
 
-
     def run(self, ctx):
         target = self.targets[ctx.args.target]
         instances = self.instances.select(ctx.args.instances)
@@ -60,13 +52,6 @@ class BuildCommand(Command):
         pool = self.make_pool(ctx)
 
         deps = get_deps(target, *instances, *packages)
-        force_deps = set()
-        separate_packages = []
-        for package in packages:
-            if package in deps:
-                force_deps.add(package)
-            else:
-                separate_packages.append(package)
 
         self.enable_run_log(ctx)
 
@@ -80,8 +65,6 @@ class BuildCommand(Command):
         # broken during building
         for package in deps:
             fetch_package(ctx, package, ctx.args.force_rebuild_deps)
-        for package in separate_packages:
-            fetch_package(ctx, package, True)
 
         if not ctx.args.deps_only:
             target.goto_rootdir(ctx)
@@ -91,8 +74,7 @@ class BuildCommand(Command):
                 ctx.log.info('fetching %s' % target.name)
                 target.fetch(ctx)
 
-        need_deps_for = [target] + instances + separate_packages
-        cached_deps = {obj: get_deps(obj) for obj in need_deps_for}
+        cached_deps = {obj: get_deps(obj) for obj in [target] + instances}
 
         built_packages = set()
 
@@ -104,16 +86,10 @@ class BuildCommand(Command):
 
         def build_deps_once(obj):
             for package in cached_deps[obj]:
-                force = ctx.args.force_rebuild_deps or package in force_deps
+                force = ctx.args.force_rebuild_deps
                 build_package_once(package, force)
                 ctx.log.debug('install %s in env' % package.ident())
                 package.install_env(ctx)
-
-        for package in separate_packages:
-            oldctx = ctx.copy()
-            build_deps_once(package)
-            build_package_once(package, True)
-            ctx = oldctx
 
         if ctx.args.deps_only and not instances:
             oldctx = ctx.copy()
@@ -183,6 +159,50 @@ class ExecHookCommand(Command):
         for hook in ctx.hooks[hooktype]:
             os.chdir(basedir)
             hook(ctx, absfile)
+
+
+class PkgBuildCommand(Command):
+    name = 'pkg-build'
+    description = 'build a single package and its dependencies'
+
+    def add_args(self, parser):
+        packagearg = parser.add_argument('package', metavar='PACKAGE',
+                help='package to build')
+        packagearg.completer = self.complete_package
+        parser.add_argument('-j', '--jobs', type=int, default=default_jobs,
+                help='maximum number of build processes (default %d)' %
+                     default_jobs)
+        parser.add_argument('--force-rebuild-deps', action='store_true',
+                help='always run the build commands')
+        parser.add_argument('--clean', action='store_true',
+                help='clean package first')
+        parser.add_argument('--dry-run', action='store_true',
+                help='don\'t actually build anything, just show what will be done')
+
+    def run(self, ctx):
+        package = self.packages[ctx.args.package]
+
+        deps = get_deps(package)
+        force_deps = ctx.args.force_rebuild_deps
+
+        self.enable_run_log(ctx)
+
+        if ctx.args.clean:
+            clean_package(ctx, package)
+
+        for package in deps:
+            fetch_package(ctx, package, force_deps)
+
+        fetch_package(ctx, package, True)
+
+        for package in deps:
+            fetch_package(ctx, package, force_deps)
+
+        for package in deps:
+            build_package(ctx, package, force_deps)
+            install_package(ctx, package, force_deps)
+
+        build_package(ctx, package, True)
 
 
 def fetch_package(ctx: Namespace, package: Package, force_rebuild: bool):
