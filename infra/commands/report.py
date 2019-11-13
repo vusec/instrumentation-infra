@@ -79,9 +79,6 @@ class ReportCommand(Command):
                     nargs='+', metavar='RUNDIR', default=[],
                     help='run directories to parse (results/run.XXX)')
 
-            tparser.add_argument('-o', '--outfile',
-                    type=argparse.FileType('w'), default=sys.stdout,
-                    help='outfile (default: stdout)')
             tparser.add_argument('-i', '--instances', nargs='+',
                     metavar='INSTANCE', default=[], choices=self.instances,
                     help=' | '.join(self.instances))
@@ -90,9 +87,6 @@ class ReportCommand(Command):
                     help='cached results in the bottom of log files')
             tparser.add_argument('--refresh', action='store_true',
                     help='refresh cached results in logs')
-            tparser.add_argument('--precision', type=int, default=3,
-                    help='least significant digits to round numbers to '
-                         '(default 3)')
 
             add_table_report_args(tparser)
 
@@ -157,11 +151,8 @@ class ReportCommand(Command):
                              write_cache=a.cache,
                              read_cache=a.cache and not a.refresh)
 
-        with redirect_stdout(a.outfile):
-            if a.raw:
-                self.report_raw(ctx, target, results, fields)
-            else:
-                self.report_aggregate(ctx, target, results, fields)
+        fn = self.report_raw if a.raw else self.report_aggregate
+        fn(ctx, target, results, fields)
 
     def report_raw(self, ctx, target, results, fields):
         fields = [f for f, aggr in fields]
@@ -186,7 +177,7 @@ class ReportCommand(Command):
         for parts in zip_longest(*instance_rows, fillvalue=['', '']):
             joined_rows.append(list(chain.from_iterable(parts)))
 
-        title = ' %s raw data ' % target.name
+        title = '%s raw data' % target.name
         report_table(ctx, header, human_header, joined_rows, title)
 
     def report_aggregate(self, ctx, target, results, fields):
@@ -256,9 +247,9 @@ class ReportCommand(Command):
             data.append(row)
 
         if baseline_instance:
-            title = ' %s overhead on %s ' % (target.name, baseline_instance)
+            title = '%s overhead vs %s' % (target.name, baseline_instance)
         else:
-            title = ' %s aggregated data ' % target.name
+            title = '%s aggregated data' % target.name
 
         table_options = {}
 
@@ -317,12 +308,19 @@ class _FieldCompleter:
 
 
 def add_table_report_args(parser):
+    parser.add_argument('-o', '--outfile',
+            type=argparse.FileType('w'), default=sys.stdout,
+            help='outfile (default: stdout)')
+
     can_fancy = sys.stdout.encoding == 'UTF-8' and sys.stdout.name == '<stdout>'
     parser.add_argument('--table',
             choices=('fancy', 'ascii', 'csv', 'tsv', 'ssv'),
             default='fancy' if can_fancy else 'ascii-table',
             help='output mode for tables: UTF-8 formatted (default) / '
                  'ASCII tables / {comma,tab,space}-separated')
+
+    parser.add_argument('--precision', type=int, default=3,
+            help='least significant digits to round numbers to (default 3)')
 
     quickset_group = parser.add_mutually_exclusive_group()
     for mode in ('ascii', 'csv', 'tsv', 'ssv'):
@@ -340,9 +338,10 @@ def report_table(ctx, nonhuman_header, human_header, data_rows, title,
         delim = {'csv': ',', 'tsv': '\t', 'ssv': ' '}[ctx.args.table]
         writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL,
                             delimiter=delim)
-        writer.writerow(nonhuman_header)
-        for row in data_rows:
-            writer.writerow(row)
+        with redirect_stdout(ctx.args.outfile):
+            writer.writerow(nonhuman_header)
+            for row in data_rows:
+                writer.writerow(row)
         return
 
     # align numbers on the decimal point
@@ -377,7 +376,7 @@ def report_table(ctx, nonhuman_header, human_header, data_rows, title,
         assert ctx.args.table == 'ascii'
         from terminaltables import AsciiTable as Table
 
-    table = Table([human_header] + data_rows, title)
+    table = Table([human_header] + data_rows, ' %s ' % title)
     table.inner_column_border = False
     table.padding_left = 0
 
@@ -393,8 +392,8 @@ def report_table(ctx, nonhuman_header, human_header, data_rows, title,
         else:
             setattr(table, kw, val)
 
-    print(table.table)
-    return table
+    with redirect_stdout(ctx.args.outfile):
+        print(table.table)
 
 
 def _reportable_fields(target):
