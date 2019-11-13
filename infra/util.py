@@ -362,16 +362,6 @@ class _Tee(io.IOBase):
             os.close(self.writefd)
 
 
-def geomean(values: Iterable[Union[float, int]]) -> float:
-    """
-    Compute the geometric mean of a list of numbers.
-
-    :param values: non-empty list of numbers
-    """
-    assert len(values) > 0
-    return reduce(lambda x, y: x * y, values) ** (1.0 / len(values))
-
-
 def param_attrs(constructor: Callable) -> Callable:
     """
     Decorator for class constructors that sets parameter values as object
@@ -432,67 +422,6 @@ def require_program(ctx: Namespace, name: str, error: Optional[str] = None):
         if error:
             msg += ': ' + error
         raise FatalError(msg)
-
-
-def add_table_report_args(parser: argparse.ArgumentParser):
-    """
-    TODO: docs
-    """
-    can_fancy = sys.stdout.encoding == 'UTF-8' and sys.stdout.name == '<stdout>'
-    parser.add_argument('--table',
-            choices=('fancy', 'ascii', 'csv', 'tsv', 'ssv'),
-            default='fancy' if can_fancy else 'ascii-table',
-            help='output mode for tables: UTF-8 formatted (default) / '
-                 'ASCII tables / {comma,tab,space}-separated')
-
-    quickset_group = parser.add_mutually_exclusive_group()
-    for mode in ('ascii', 'csv', 'tsv', 'ssv'):
-        quickset_group.add_argument('--' + mode,
-                action='store_const', const=mode, dest='table',
-                help='short for --table=' + mode)
-
-
-def report_table(ctx: Namespace,
-                 nonhuman_header: List[str],
-                 human_header: List[str],
-                 data_rows: List[List[Any]],
-                 title: str,
-                 **kwargs):
-    """
-    TODO: docs
-    """
-    if ctx.args.table in ('csv', 'tsv', 'ssv'):
-        delim = {'csv': ',', 'tsv': '\t', 'ssv': ' '}[ctx.args.table]
-        writer = csv.writer(sys.stdout, quoting=csv.QUOTE_MINIMAL,
-                            delimiter=delim)
-        writer.writerow(nonhuman_header)
-        for row in data_rows:
-            writer.writerow(row)
-    else:
-        if ctx.args.table == 'fancy':
-            from terminaltables import SingleTable as Table
-        else:
-            assert ctx.args.table == 'ascii'
-            from terminaltables import AsciiTable as Table
-
-        table = Table([human_header] + data_rows, title)
-        table.inner_column_border = False
-        table.padding_left = 0
-
-        for kw, val in kwargs.items():
-            if isinstance(val, dict):
-                attr = getattr(table, kw)
-                if isinstance(val, dict):
-                    attr.update(val)
-                else:
-                    assert isinstance(attr, list)
-                    for index, elem in val.items():
-                        attr[index] = elem
-            else:
-                setattr(table, kw, val)
-
-        print(table.table)
-        return table
 
 
 def untar(ctx: Namespace, tarname: str, dest: Optional[str] = None, *,
