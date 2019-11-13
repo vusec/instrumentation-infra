@@ -14,51 +14,52 @@ class BuildCommand(Command):
     description = 'build target programs (also builds dependencies)'
 
     def add_args(self, parser):
-        parser.add_argument('-t', '--targets', nargs='+',
-                metavar='TARGET', choices=self.targets, default=[],
+        target_parsers = parser.add_subparsers(
+                title='target', metavar='TARGET', dest='target',
                 help=' | '.join(self.targets))
-        parser.add_argument('-i', '--instances', nargs='+',
-                metavar='INSTANCE', choices=self.instances, default=[],
-                help=' | '.join(self.instances))
-        parser.add_argument('-p', '--packages', nargs='+',
-                metavar='PACKAGE', default=[],
-                help='which packages to build (either on top of dependencies, '
-                     'or to force a rebuild)').completer = self.complete_package
-        parser.add_argument('-j', '--jobs', type=int, default=default_jobs,
-                help='maximum number of build processes (default %d)' %
-                     default_jobs)
-        parser.add_argument('--deps-only', action='store_true',
-                help='only build dependencies, not targets themselves')
-        parser.add_argument('--force-rebuild-deps', action='store_true',
-                help='always run the build commands')
-        parser.add_argument('--relink', action='store_true',
-                help='only link targets, don\'t rebuild object files')
-        parser.add_argument('--clean', action='store_true',
-                help='clean targets and packages (not all deps, only from -p) first')
-        parser.add_argument('--dry-run', action='store_true',
-                help='don\'t actually build anything, just show what will be done')
-
-        self.add_pool_args(parser)
+        target_parsers.required = True
 
         for target in self.targets.values():
-            target.add_build_args(parser)
+            tparser = target_parsers.add_parser(target.name)
 
-        for instance in self.instances.values():
-            instance.add_build_args(parser)
+            tparser.add_argument('instances', nargs='+',
+                    metavar='INSTANCE', choices=self.instances,
+                    help=' | '.join(self.instances))
+            tparser.add_argument('--build', action='store_true',
+                    help='build target first')
+            tparser.add_argument('-j', '--jobs', type=int, default=default_jobs,
+                    help='maximum number of build processes (default %d)' %
+                        default_jobs)
+            packagearg = tparser.add_argument('-p', '--packages', nargs='+',
+                    metavar='PACKAGE', default=[],
+                    help='which packages to build (either on top of dependencies, '
+                         'or to force a rebuild)')
+            packagearg.completer = self.complete_package
+            tparser.add_argument('--deps-only', action='store_true',
+                    help='only build dependencies, not targets themselves')
+            tparser.add_argument('--force-rebuild-deps', action='store_true',
+                    help='always run the build commands')
+            tparser.add_argument('--relink', action='store_true',
+                    help='only link targets, don\'t rebuild object files')
+            tparser.add_argument('--clean', action='store_true',
+                    help='clean targets and packages (not all deps, only from -p) first')
+            tparser.add_argument('--dry-run', action='store_true',
+                    help='don\'t actually build anything, just show what will be done')
+
+            self.add_pool_args(tparser)
+            target.add_build_args(tparser)
+
+            for instance in self.instances.values():
+                instance.add_build_args(tparser)
+
 
     def run(self, ctx):
-        targets = self.targets.select(ctx.args.targets)
+        target = self.targets[ctx.args.target]
         instances = self.instances.select(ctx.args.instances)
         packages = self.packages.select(ctx.args.packages)
         pool = self.make_pool(ctx)
 
-        if ctx.args.deps_only:
-            if not targets and not instances and not packages:
-                raise FatalError('no targets or instances specified')
-        elif (not targets or not instances) and not packages:
-            raise FatalError('need at least one target and instance to build')
-
-        deps = get_deps(*targets, *instances, *packages)
+        deps = get_deps(target, *instances, *packages)
         force_deps = set()
         separate_packages = []
         for package in packages:
@@ -69,12 +70,11 @@ class BuildCommand(Command):
 
         self.enable_run_log(ctx)
 
-        # clean packages and targets if requested
+        # clean packages and target if requested
         if ctx.args.clean:
             for package in packages:
                 clean_package(ctx, package)
-            for target in targets:
-                clean_target(ctx, target)
+            clean_target(ctx, target)
 
         # first fetch all necessary code so that the internet connection can be
         # broken during building
@@ -84,19 +84,15 @@ class BuildCommand(Command):
             fetch_package(ctx, package, True)
 
         if not ctx.args.deps_only:
-            for target in targets:
-                target.goto_rootdir(ctx)
-                if target.is_fetched(ctx):
-                    ctx.log.debug('%s already fetched, skip' % target.name)
-                else:
-                    ctx.log.info('fetching %s' % target.name)
-                    target.fetch(ctx)
+            target.goto_rootdir(ctx)
+            if target.is_fetched(ctx):
+                ctx.log.debug('%s already fetched, skip' % target.name)
+            else:
+                ctx.log.info('fetching %s' % target.name)
+                target.fetch(ctx)
 
-        cached_deps = {t: get_deps(t) for t in targets}
-        for i in instances:
-            cached_deps[i] = get_deps(i)
-        for p in separate_packages:
-            cached_deps[p] = get_deps(p)
+        need_deps_for = [target] + instances + separate_packages
+        cached_deps = {obj: get_deps(obj) for obj in need_deps_for}
 
         built_packages = set()
 
@@ -120,38 +116,31 @@ class BuildCommand(Command):
             ctx = oldctx
 
         if ctx.args.deps_only and not instances:
-            for target in targets:
-                oldctx = ctx.copy()
-                build_deps_once(target)
-                ctx = oldctx
+            oldctx = ctx.copy()
+            build_deps_once(target)
+            ctx = oldctx
 
         for instance in instances:
             # use a copy of the context for instance configuration to avoid
             # stacking configurations between instances
             # FIXME: only copy the build env (the part that changes)
-            oldctx_outer = ctx.copy()
+            oldctx = ctx.copy()
             instance.configure(ctx)
             build_deps_once(instance)
+            build_deps_once(target)
 
-            for target in targets:
-                oldctx_inner = ctx.copy()
-                build_deps_once(target)
-
-                if not ctx.args.deps_only:
-                    ctx.log.info('building %s-%s' %
-                                      (target.name, instance.name))
-                    if not ctx.args.dry_run:
-                        if not ctx.args.relink:
-                            target.goto_rootdir(ctx)
-                            self.call_with_pool(target.build, (ctx, instance),
-                                                pool)
+            if not ctx.args.deps_only:
+                ctx.log.info('building %s-%s' %
+                                    (target.name, instance.name))
+                if not ctx.args.dry_run:
+                    if not ctx.args.relink:
                         target.goto_rootdir(ctx)
-                        self.call_with_pool(target.link, (ctx, instance), pool)
-                        target.run_hooks_post_build(ctx, instance)
+                        self.call_with_pool(target.build, (ctx, instance), pool)
+                    target.goto_rootdir(ctx)
+                    self.call_with_pool(target.link, (ctx, instance), pool)
+                    target.run_hooks_post_build(ctx, instance)
 
-                ctx = oldctx_inner
-
-            ctx = oldctx_outer
+            ctx = oldctx
 
         if pool:
             pool.wait_all()

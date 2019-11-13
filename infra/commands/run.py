@@ -8,28 +8,29 @@ class RunCommand(Command):
     description = 'run a single target program'
 
     def add_args(self, parser):
-        parser.add_argument('--build', action='store_true',
-                help='build target first (default false)')
-        parser.add_argument('-j', '--jobs', type=int, default=default_jobs,
-                help='maximum number of build processes (default %d)' %
-                     default_jobs)
-        parser.add_argument('-n', '--iterations', metavar='N', type=int,
-                default=1,
-                help='number of runs per benchmark')
-
-        self.add_pool_args(parser)
-
         target_parsers = parser.add_subparsers(
                 title='target', metavar='TARGET', dest='target',
                 help=' | '.join(self.targets))
         target_parsers.required = True
 
         for target in self.targets.values():
-            ptarget = target_parsers.add_parser(target.name)
-            ptarget.add_argument('instances', nargs='+',
+            tparser = target_parsers.add_parser(target.name)
+
+            tparser.add_argument('instances', nargs='+',
                     metavar='INSTANCE', choices=self.instances,
                     help=' | '.join(self.instances))
-            target.add_run_args(ptarget)
+            tparser.add_argument('--build', action='store_true',
+                    help='build target first (no custom target/instance arguments)')
+            tparser.add_argument('-j', '--jobs', type=int, default=default_jobs,
+                    help='maximum number of build processes (default %d)' %
+                        default_jobs)
+            tparser.add_argument('-i', '--iterations', metavar='ITERATIONS',
+                    type=int, default=1,
+                    help='number of runs per benchmark')
+
+            self.add_pool_args(tparser)
+            target.add_run_args(tparser)
+
 
     def run(self, ctx):
         target = self.targets[ctx.args.target]
