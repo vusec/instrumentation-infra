@@ -7,7 +7,7 @@ from ..util import FatalError, Namespace
 class CleanCommand(Command):
     name = 'clean'
     description = '''remove all source/build/install files of the given
-                      packages and targets'''
+                     packages and targets'''
 
     def add_args(self, parser):
         parser.add_argument('-t', '--targets', nargs='+', metavar='TARGET',
@@ -22,9 +22,8 @@ class CleanCommand(Command):
         packages = self.packages.select(ctx.args.packages)
 
         if not packages and not targets:
-            raise FatalError('no packages or targets specified')
+            raise FatalError('need at least one target or package to clean')
 
-        ctx.args.dry_run = False
         for package in packages:
             clean_package(ctx, package)
         for target in targets:
@@ -36,8 +35,7 @@ def clean_package(ctx: Namespace, package: Package):
         ctx.log.debug('package %s is already cleaned' % package.ident())
     else:
         ctx.log.info('cleaning package ' + package.ident())
-        if not ctx.args.dry_run:
-            package.clean(ctx)
+        package.clean(ctx)
 
 
 def clean_target(ctx: Namespace, target: Target):
@@ -45,5 +43,4 @@ def clean_target(ctx: Namespace, target: Target):
         ctx.log.debug('target %s is already cleaned' % target.name)
     else:
         ctx.log.info('cleaning target ' + target.name)
-        if not ctx.args.dry_run:
-            target.clean(ctx)
+        target.clean(ctx)
