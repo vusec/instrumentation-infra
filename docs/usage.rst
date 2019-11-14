@@ -65,23 +65,22 @@ your project so that you can use them in the commands below.
 
 .. _usage-build:
 
-The ``build`` command
-=====================
+The ``build`` and ``pkg-build`` commands
+========================================
 
 ::
 
-    ./setup.py build [-j JOBS] --targets TARGET ... --instances INSTANCE ...
-    ./setup.py build [-j JOBS] --packages PACKAGE ...
+    ./setup.py build TARGET INSTANCE ... [-j JOBS] [--iterations=N] [<target-options>]
+    ./setup.py pkg-build PACKAGE [-j JOBS]
 
-``build`` builds one or more target programs, using one or more instances. Only
-registered targets/instances are valid. The :class:`API docs <infra.Setup>`
-explain how to register them. Each target and instance specifies which packages
-it depends on. For example, an instance that runs LLVM passes depends on LLVM,
-which in turn depends on some libraries depending on the version used. Before
-building a target programs, ``build`` lists its dependencies, downloads and
-builds them, and adds their installation directories to the PATH. All generated
-build files are put in a directory called ``build/`` in the root of your
-project.
+``build`` builds one or more instances of a target program. Only registered
+targets/instances are valid. The :class:`API docs <infra.Setup>` explain how to
+register them. Each target and instance specifies which packages it depends on.
+For example, an instance that runs LLVM passes depends on LLVM, which in turn
+depends on some libraries depending on the version used. Before building a
+target programs, ``build`` lists its dependencies, downloads and builds them,
+and adds their installation directories to the PATH. All generated build files
+are put in the ``build/`` directory in the root of your project.
 
 Each package specifies a simple test for the setup script to see if it has
 already been built (e.g., it checks if ``install/bin/<binary>`` exists). If so,
@@ -90,14 +89,16 @@ dependency, but sometimes you do want to force-run ``make``, for example while
 debugging a custom package, or when you hackfixed the source code of a package.
 In this case, you can use ``--force-rebuild-deps`` to skip the checks and
 rebuild everything, and optionally ``--clean`` to first remove all generated
-files for all built packages and targets (this behaves as if you just cloned the
-project, use it with care). You can also force-build a single package using
-``--packages`` for more fine-grained control.
+files the target (this behaves as if you just cloned the
+project, use it with care).
 
-The ``-j`` option is similar to that of ``make``, allowing parallel builds of
-object files. It defaults to the number of cores available on the machine, with
-a maximum of 16 (but you can manually set it to larger values if you think
+The ``-j`` option is forwarded to ``make`` commands, allowing parallel builds
+of object files. It defaults to the number of cores available on the machine,
+with a maximum of 16 (but you can manually set it to larger values if you think
 enough RAM is available).
+
+``pkg-build`` builds a single package and its dependencies. It is useful for
+debugging new packages or force-building a patched dependency.
 
 
 .. _usage-clean:
@@ -126,7 +127,7 @@ The ``run`` command
 
 ::
 
-    ./setup.py run [--build] [--iterations=N] TARGET INSTANCE ... [<target-options>]
+    ./setup.py run TARGET INSTANCE ... [--build] [--iterations=N] [<target-options>]
 
 ``run`` runs one or more instances of a single target program. When ``--build``
 is passed, it first runs the ``build`` command for that target. Valid values for
@@ -180,19 +181,38 @@ The ``report`` command
 
 ::
 
-    ./setup.py report [-i INSTANCE ...] TARGET <target-options>
+    ./setup.py report TARGET RUNDIRS -i INSTANCE ... [--field FIELD:AGGREGATION ...] [--overhead BASELINE]
+    ./setup.py report TARGET RUNDIRS -i INSTANCE --raw
+    ./setup.py report TARGET RUNDIRS --help-fields
 
-``report`` aggragates and show results for the specified target. Typical
-results are runtime and memory overheads. While there are similarities between
-targets, the behaviour of this command is target-dependent. See the :func:`API docs
-<infra.Target>` and :doc:`built-in targets <targets>` for more details.
+``report`` dsiplays a table with benchmark results for the specified target,
+gathered from a given list of run directories that have been populated by a
+(parallel) ``run`` invocation. Each target defines a number of reportable
+fields that are measured during benchmarks, which are listed by
+``--help-fields``.
 
-The following example reports a table of runtimes and overheads for SPEC2006,
-gathered from all the log files of parallel runs in ``results/run.*``. It
-collects data for the **clang** and **myinst** instances, and computes the
-overhead of **myinst** using **clang** as a baseline::
+The report aggregates results by default, grouping them on the default field
+set by `<infra.Target.aggregation_field>`. This can be overridden using the
+``--groupby`` option. The user must specify an aggregation function for each
+reported field in the ``-f|--field`` option. For instance, suppose we ran the
+``clang`` and ``myinst`` instances of the ``spec2006`` target and want to
+report the results. First we report the mean runtime and standard deviation to
+see if the result ("count" shows the number of results)::
 
-    ./setup.py report -i clang myinst spec2006 results/run.* --baseline clang
+    ./setup.py report spec2006 results/run.* -f runtime:count:mean:stdev_percent
+
+Let's assume the standard deviations are low and the runtimes look believable,
+so we want to compute the overhead the runtime+memory overheads of the
+instrumentation added in the ``myinst`` instance, compared to the ``clang``
+instance::
+
+    ./setup.py report spec2006 results/run.* -i myinst -f runtime:median maxrss:median --overhead clang
+
+Alternatively, the ``--raw`` option makes the command output all results
+without aggregation. This can be useful when creating scatter plots, for
+example::
+
+    ./setup.py report spec2006 results/run.* -i myinst -f benchmark runtime maxrss --raw
 
 
 .. _usage-config:
