@@ -52,9 +52,8 @@ class Target(metaclass=ABCMeta):
 
     For the :ref:`report <usage-report>` command:
 
-    #. It calls :func:`add_report_args` to include any custom command-line
-       arguments for this target.
-    #. It calls :func:`report`.
+    #. It calls :func:`parse_outfile` for every log file before creating the
+       report.
 
     Naturally, when defining your own target, all the methods listed above must
     have working implementations. Some implementations are optional and some
@@ -102,20 +101,6 @@ class Target(metaclass=ABCMeta):
 
         For example, :class:`SPEC2006 <targets.SPEC2006>` defines
         ``--benchmarks`` and ``--test``.
-
-        :param parser: the argument parser to extend
-        """
-        pass
-
-    def add_report_args(self, parser: argparse.ArgumentParser):
-        """
-        Extend the command-line arguments for the :ref:`report <usage-report>`
-        command with custom arguments for this target. Since only a single
-        target can be reported at a time, prefixing to avoid naming conflicts
-        with other targets is not necessary here.
-
-        For example, :class:`SPEC2006 <targets.SPEC2006>` defines
-        ``--baseline`` (among others).
 
         :param parser: the argument parser to extend
         """
@@ -224,21 +209,6 @@ class Target(metaclass=ABCMeta):
         :param pool: parallel process pool if ``--parallel`` is specified
         """
         pass
-
-    def report(self, ctx: Namespace, instances: List[Instance],
-               args: argparse.Namespace):
-        """
-        Report results after a run. ``instances`` is the (possibly empty) list
-        of instances specified by ``--instances`` on the command line. ``args``
-        is populated with command-line arguments added by
-        :func:`add_report_args`.
-
-        :param ctx: the configuration context
-        :param instances: instances to report results for
-        :param args: command-line arguments
-        :raises NotImplementedError: unless implemented
-        """
-        raise NotImplementedError(self.__class__.__name__)
 
     def parse_outfile(self, ctx: Namespace, instance_name: str,
                       outfile: str) -> Iterator[Dict[str, Any]]:
