@@ -5,7 +5,11 @@
 
 import inspect
 from importlib import import_module
-from typing import ForwardRef, Any
+from typing import Any
+try:
+    from typing import _ForwardRef as ForwardRef
+except ImportError:
+    from typing import ForwardRef
 
 
 def typestr(obj):
