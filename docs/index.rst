@@ -32,7 +32,7 @@ having to link them into the compiler after every rebuild.
 
 A typical use case is a programmer that has implemented some security feature in
 an LLVM pass, and wants to apply this pass to real-world benchmarks to measure
-its performance impact. He/she would create an instance that adds the relevant
+its performance impact. They would create an instance that adds the relevant
 arguments to CFLAGS, create a setup script that registers this instance in the
 infrastructure, and run the setup script with the ``build`` and ``run`` commands
 to quickly see if things work on the builtin targets (e.g., SPEC).
