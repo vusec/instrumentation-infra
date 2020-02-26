@@ -256,9 +256,10 @@ class Target(metaclass=ABCMeta):
         raise NotImplementedError(self.__class__.__name__)
 
     def run_hooks_post_build(self, ctx, instance):
-        for binary in self.binary_paths(ctx, instance):
-            absbin = os.path.abspath(binary)
-            basedir = os.path.dirname(absbin)
-            for hook in ctx.hooks.post_build:
-                os.chdir(basedir)
-                hook(ctx, absbin)
+        if ctx.hooks.post_build:
+            for binary in self.binary_paths(ctx, instance):
+                absbin = os.path.abspath(binary)
+                basedir = os.path.dirname(absbin)
+                for hook in ctx.hooks.post_build:
+                    os.chdir(basedir)
+                    hook(ctx, absbin)
