@@ -223,6 +223,8 @@ def build_package(ctx: Namespace, package: Package, force_rebuild: bool):
             ctx.log.debug('%s already installed, skip building' % package.ident())
             return
 
+    load_deps(ctx, package)
+
     force = ' (forced rebuild)' if force_rebuild and built else ''
     ctx.log.info('building %s' % package.ident() + force)
     if not ctx.args.dry_run:
@@ -246,7 +248,12 @@ def install_package(ctx: Namespace, package: Package, force_rebuild: bool):
     package.goto_rootdir(ctx)
 
 
+def load_package(ctx: Namespace, package: Package):
+    ctx.log.debug('install %s into env' % package.ident())
+    if not ctx.args.dry_run:
+        package.install_env(ctx)
+
+
 def load_deps(ctx: Namespace, obj):
     for package in get_deps(obj):
-        ctx.log.debug('install %s into env' % package.ident())
-        package.install_env(ctx)
+        load_package(ctx, package)
