@@ -172,20 +172,20 @@ class PkgBuildCommand(Command):
                 help='don\'t actually build anything, just show what will be done')
 
     def run(self, ctx):
-        package = self.packages[ctx.args.package]
+        main_package = self.packages[ctx.args.package]
 
-        deps = get_deps(package)
+        deps = get_deps(main_package)
         force_deps = ctx.args.force_rebuild_deps
 
         self.enable_run_log(ctx)
 
         if ctx.args.clean:
-            clean_package(ctx, package)
+            clean_package(ctx, main_package)
 
         for package in deps:
             fetch_package(ctx, package, force_deps)
 
-        fetch_package(ctx, package, True)
+        fetch_package(ctx, main_package, True)
 
         for package in deps:
             fetch_package(ctx, package, force_deps)
@@ -194,7 +194,7 @@ class PkgBuildCommand(Command):
             build_package(ctx, package, force_deps)
             install_package(ctx, package, force_deps)
 
-        build_package(ctx, package, True)
+        build_package(ctx, main_package, True)
 
 
 def fetch_package(ctx: Namespace, package: Package, force_rebuild: bool):
