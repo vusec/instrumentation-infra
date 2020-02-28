@@ -141,7 +141,7 @@ class ExecHookCommand(Command):
 
         # don't build packages (should have been done already since this
         # command should only be called recursively), just load them
-        load_deps(instance)
+        load_deps(ctx, instance)
 
         # populate ctx.hooks[hooktype]
         instance.configure(ctx)
