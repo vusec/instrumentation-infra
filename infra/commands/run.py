@@ -37,13 +37,14 @@ class RunCommand(Command):
         instances = self.instances.select(ctx.args.instances)
         pool = self.make_pool(ctx)
 
+        ctx.args.dry_run = False
+
         if ctx.args.build:
             ctx.args.targets = [ctx.args.target]
             ctx.args.packages = []
             ctx.args.deps_only = False
             ctx.args.clean = False
             ctx.args.force_rebuild_deps = False
-            ctx.args.dry_run = False
             ctx.args.relink = False
             build_command = BuildCommand()
             build_command.set_maps(self.instances, self.targets, self.packages)
