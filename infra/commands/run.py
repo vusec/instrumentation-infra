@@ -38,6 +38,7 @@ class RunCommand(Command):
         pool = self.make_pool(ctx)
 
         ctx.args.dry_run = False
+        oldctx = ctx.copy()
 
         if ctx.args.build:
             ctx.args.targets = [ctx.args.target]
@@ -50,6 +51,7 @@ class RunCommand(Command):
             build_command.set_maps(self.instances, self.targets, self.packages)
             build_command.run(ctx)
 
+        ctx = oldctx
         load_deps(ctx, target)
 
         for instance in instances:
