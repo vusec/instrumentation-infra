@@ -285,6 +285,9 @@ class Setup:
 
         :param instance: The instance to register.
         """
+        if not isinstance(instance.name, str):
+            raise TypeError('Instance must have name of type str.')
+
         self.instances[instance.name] = instance
 
     def add_target(self, target: Target):
@@ -294,6 +297,9 @@ class Setup:
 
         :param target: The target to register.
         """
+        if not isinstance(target.name, str):
+            raise TypeError('Target must have name of type str.')
+
         self.targets[target.name] = target
 
     def _find_package(self, name):
