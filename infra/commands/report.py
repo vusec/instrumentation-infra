@@ -56,7 +56,7 @@ _aggregate_fns = {'mean': mean, 'median': median,
                   'variance': pvariance, 'mad': median_absolute_deviation,
                   'min': min, 'max': max, 'sum': sum, 'count': len,
                   'same': assert_all_same, 'one': assert_one,
-                  'first': first, 'all': list, 'geomean': geomean}
+                  'first': first, 'all': sorted, 'geomean': geomean}
 
 
 Result = Dict[str, Union[bool, int, float, str]]
