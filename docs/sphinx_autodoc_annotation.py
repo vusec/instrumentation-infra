@@ -69,10 +69,10 @@ def typestr(obj):
                 ret = obj.__args__[-1] if obj.__args__ else None
 
             if params is None:
-                return 'callable'
+                return '~typing.Callable'
 
             params = ', '.join(typestr(t) for t in params)
-            return 'callable[(%s) -> %s]' % (params, typestr(ret))
+            return '~typing.Callable[(%s) -> %s]' % (params, typestr(ret))
 
         if classname in ('List', 'Tuple', 'Dict', 'Iterator', 'Iterable'):
             if hasattr(obj, '__tuple_params__'):
@@ -81,10 +81,10 @@ def typestr(obj):
                 args = obj.__args__  # Python 3.6
 
             if args is None:
-                return classname.lower()
+                return '~typing.' + classname
 
             args = ', '.join(typestr(t) for t in args)
-            return '%s[%s]' % (classname.lower(), args)
+            return '~typing.%s[%s]' % (classname, args)
 
         return str(obj)
 
