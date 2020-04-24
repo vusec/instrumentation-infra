@@ -23,17 +23,23 @@ class ASan(Clang):
     :param check_writes: toggle checks on stores
     :param check_reads: toggle checks on loads
     :param lto: perform link-time optimizations
+    :param redzone: minimum heap redzone size (default 16, always 32 for stack)
     """
     @param_attrs
     def __init__(self, llvm: LLVM, *, temporal=True, stack=True, glob=True,
-                 check_writes=True, check_reads=True, lto=False):
+                 check_writes=True, check_reads=True, lto=False, redzone=None):
         assert llvm.compiler_rt, 'ASan needs LLVM with runtime support'
         super().__init__(llvm, lto=lto)
         assert not check_reads or check_writes, 'will not check reads without writes'
+        if redzone is not None:
+            assert isinstance(redzone, int), 'redzone size must be a number'
 
     @property
     def name(self):
         name = 'asan'
+
+        if self.redzone is not None:
+            name += str(self.redzone)
 
         if not self.temporal:
             name += '-spatial'
@@ -75,6 +81,9 @@ class ASan(Clang):
             'detect_odr_violation': 0,
             'detect_leaks': 0,
         }
+
+        if self.redzone is not None:
+            opts['redzone'] = self.redzone
 
         if not self.temporal:
             opts['detect_stack_use_after_return'] = 0
