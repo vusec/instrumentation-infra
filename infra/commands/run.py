@@ -21,6 +21,8 @@ class RunCommand(Command):
                     help=' | '.join(self.instances))
             tparser.add_argument('--build', action='store_true',
                     help='build target first (no custom target/instance arguments)')
+            tparser.add_argument('--force-rebuild-deps', action='store_true',
+                    help='force rebuilding of dependencies (implies --build)')
             tparser.add_argument('-j', '--jobs', type=int, default=default_jobs,
                     help='maximum number of build processes (default %d)' %
                         default_jobs)
@@ -40,12 +42,11 @@ class RunCommand(Command):
         ctx.args.dry_run = False
         oldctx = ctx.copy()
 
-        if ctx.args.build:
+        if ctx.args.build or ctx.args.force_rebuild_deps:
             ctx.args.targets = [ctx.args.target]
             ctx.args.packages = []
             ctx.args.deps_only = False
             ctx.args.clean = False
-            ctx.args.force_rebuild_deps = False
             ctx.args.relink = False
             build_command = BuildCommand()
             build_command.set_maps(self.instances, self.targets, self.packages)
