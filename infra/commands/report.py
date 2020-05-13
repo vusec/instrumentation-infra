@@ -56,7 +56,8 @@ _aggregate_fns = {'mean': mean, 'median': median,
                   'variance': pvariance, 'mad': median_absolute_deviation,
                   'min': min, 'max': max, 'sum': sum, 'count': len,
                   'same': assert_all_same, 'one': assert_one,
-                  'first': first, 'all': sorted, 'geomean': geomean}
+                  'first': first, 'all': list, 'sort': sorted,
+                  'geomean': geomean}
 
 
 Result = Dict[str, Union[bool, int, float, str]]
@@ -115,7 +116,8 @@ class ReportCommand(Command):
                 (stdev_percent = 100*stdev/mean,
                 mad = median absolute deviation,
                 same = asserts each value is the same,
-                all = join values by space)''')
+                all = join values by space,
+                sort = join sorted values by space)''')
             tparser.add_argument('--help-fields', action='store_true',
                     help='print valid values for --field')
             tparser.add_argument('--aggregate', choices=_aggregate_fns,
