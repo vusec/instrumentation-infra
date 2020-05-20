@@ -480,7 +480,9 @@ class WebServerRunner:
         while [ "$rate" != stop ]; do
             echo "=== logging cpu usage to cpu.$rate for {duration} seconds"
             {{ timeout {duration} mpstat 1 {duration} || true; }} | \\
-                    awk '/^[0-9].+all/ {{print 100-$13; fflush()}}' \\
+                    awk 'BEGIN {{idle=13}}
+                         /%idle/ {{for(i=1;i<=NF;i++) if($i == "%idle") idle=i}}
+                         /^[0-9].+all/ {{print 100-$idle; fflush()}}' \\
                     > "cpu.$rate"
 
             echo "=== waiting for next work rate"
