@@ -189,7 +189,7 @@ class WebServerRunner:
         localdir = '/tmp/infra-%s-%s' % (server.name, instance.name)
         self.rundir = os.path.join(localdir, 'run')
         if self.pool:
-            self.logdir = outfile_path(ctx, self, instance)
+            self.logdir = outfile_path(ctx, server, instance)
         else:
             self.logdir = os.path.join(localdir, 'log')
 
