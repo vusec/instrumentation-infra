@@ -784,6 +784,7 @@ class ApacheHttpd(WebServer):
         Listen {a.port}
         ErrorLog error.log
         PidFile apache.pid
+        ServerName localhost
         DocumentRoot www
         ServerLimit {a.workers}
         StartServers {a.workers}
