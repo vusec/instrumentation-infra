@@ -147,17 +147,19 @@ class WebServer(Target, metaclass=ABCMeta):
             return latency
 
         def parse_bytesize(s):
-            m = re.match(r'(\d+\.\d+)([KMG]?B)', s)
+            m = re.match(r'(\d+\.\d+)([KMGTP]?B)', s)
             assert m, 'invalid bytesize'
             size = float(m.group(1))
             unit = m.group(2)
-            if unit == 'B':
-                size /= 1000
-            elif unit == 'MB':
-                size *= 1000
-            elif unit == 'GB':
-                size *= 1000000
-            return size
+            factors = {
+                 'B': 1./1024,
+                'KB': 1,
+                'MB': 1024,
+                'GB': 1024 * 1024,
+                'TB': 1024 * 1024 * 1024,
+                'PB': 1024 * 1024 * 1024 * 1024,
+            }
+            return size * factors[unit]
 
         cpu_outfile = os.path.join(dirname, filename.replace('bench', 'cpu'))
         with open(cpu_outfile) as f:
