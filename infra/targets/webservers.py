@@ -100,6 +100,58 @@ class WebServer(Target, metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def server_bin(self, runner: 'WebServerRunner') -> str:
+        """
+        Retrieve path to the server binary file.
+
+        :param runner: the web server runner instance calling this function
+        :returns: the path to the server binary
+        """
+        pass
+
+    @abstractmethod
+    def pid_file(self, runner: 'WebServerRunner') -> str:
+        """
+        Retrieve path to the PID file (a file containing the process id of the
+        running web server instance).
+
+        :param runner: the web server runner instance calling this function
+        :returns: the path to the pid file
+        """
+        pass
+
+    @abstractmethod
+    def start_cmd(self, runner: 'WebServerRunner', foreground=False) -> str:
+        """
+        Generate command to start running the webserver.
+
+        :param runner: the web server runner instance calling this function
+        :param foreground: whether to start the web server in the foreground or
+                           background (i.e., daemonize, the default)
+        :returns: the command that starts the server
+        """
+        pass
+
+    @abstractmethod
+    def stop_cmd(self, runner: 'WebServerRunner') -> str:
+        """
+        Generate command to stop running the webserver.
+
+        :param runner: the web server runner instance calling this function
+        :returns: the command that stops the server
+        """
+        pass
+
+    @abstractmethod
+    def kill_cmd(self, runner: 'WebServerRunner') -> str:
+        """
+        Generate command to forcefully kill the running webserver.
+
+        :param runner: the web server runner instance calling this function
+        :returns: the command that kills the server
+        """
+        pass
+
     def start_script(self, runner: 'WebServerRunner'):
         """
         Generate a bash script that starts the server daemon.
@@ -107,9 +159,14 @@ class WebServer(Target, metaclass=ABCMeta):
         :param runner: the web server runner instance calling this function
         :returns: a bash script that starts the server daemon
         """
-        pass
+        start_cmd = self.start_cmd(runner)
+        pid_file = self.pid_file(runner)
+        return '''
+        {start_cmd}
+        echo -n "=== started server on port {runner.ctx.args.port}, "
+        echo "pid $(cat "{pid_file}")"
+        '''.format(**locals())
 
-    @abstractmethod
     def stop_script(self, runner: 'WebServerRunner'):
         """
         Generate a bash script that stops the server daemon after benchmarking.
@@ -117,7 +174,7 @@ class WebServer(Target, metaclass=ABCMeta):
         :param runner: the web server runner instance calling this function
         :returns: a bash script that stops the server daemon
         """
-        pass
+        return self.stop_cmd(runner)
 
     def parse_outfile(self, ctx, instance_name, outfile):
         dirname, filename = os.path.split(outfile)
@@ -660,11 +717,22 @@ class Nginx(WebServer):
         echo "pid $(cat {runner.rundir}/nginx.pid)"
         '''.format(**locals())
 
-    def stop_script(self, runner):
-        objdir = self.path(runner.ctx, runner.instance.name, 'objs')
-        return '''
-        {objdir}/nginx -p "{runner.rundir}" -c nginx.conf -s quit
-        '''.format(**locals())
+    def pid_file(self, runner):
+        return '{runner.rundir}/nginx.pid'.format(**locals())
+
+    def start_cmd(self, runner, foreground=False):
+        nginx = self.server_bin(runner.ctx, runner.instance)
+        runopt = '-g "daemon off;"' if foreground else ''
+        return '{nginx} -p "{runner.rundir}" -c nginx.conf {runopt}'\
+                .format(**locals())
+
+    def stop_cmd(self, runner):
+        nginx = self.server_bin(runner.ctx, runner.instance)
+        return '{nginx} -p "{runner.rundir}" -c nginx.conf -s quit'\
+                .format(**locals())
+
+    def kill_cmd(self, runner):
+        return 'pkill -9 nginx'
 
 
 class ApacheHttpd(WebServer):
@@ -814,11 +882,22 @@ class ApacheHttpd(WebServer):
         echo "pid $(cat "{runner.rundir}/apache.pid")"
         '''.format(**locals())
 
-    def stop_script(self, runner):
-        rootdir = self.path(runner.ctx, runner.instance.name, 'install')
-        return '''
-        {rootdir}/bin/httpd -d "{runner.rundir}" -k stop
-        '''.format(**locals())
+    def pid_file(self, runner):
+        return '{runner.rundir}/apache.pid'.format(**locals())
+
+    def start_cmd(self, runner, foreground=False):
+        httpd = self.path(runner.ctx, runner.instance.name,
+                          'install', 'bin', 'httpd')
+        runopt = '-D FOREGROUND' if foreground else '-k start'
+        return '{httpd} -d "{runner.rundir}" {runopt}'.format(**locals())
+
+    def stop_cmd(self, runner):
+        httpd = self.path(runner.ctx, runner.instance.name,
+                          'install', 'bin', 'httpd')
+        return '{httpd} -d "{runner.rundir}" -k stop'.format(**locals())
+
+    def kill_cmd(self, runner):
+        return 'pkill -9 httpd'
 
 
 class Lighttpd(WebServer):
@@ -925,6 +1004,22 @@ class Lighttpd(WebServer):
         return '''
         kill $(cat "{runner.rundir}/lighttpd.pid")
         '''.format(**locals())
+
+    def pid_file(self, runner):
+        return '{runner.rundir}/lighttpd.pid'.format(**locals())
+
+    def start_cmd(self, runner, foreground=False):
+        lighttpd = self.server_bin(runner.ctx, runner.instance)
+        runopt = '-D' if foreground else ''
+        return '{lighttpd} -f "{runner.rundir}/lighttpd.conf" {runopt}'\
+                .format(**locals())
+
+    def stop_cmd(self, runner):
+        # TODO better to read pidfile
+        return 'pkill lighttpd'
+
+    def kill_cmd(self, runner):
+        return 'pkill -9 lighttpd'
 
 
 def median_absolute_deviation(numbers):
