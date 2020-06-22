@@ -1,5 +1,6 @@
 import os
 import shutil
+import string
 import random
 import time
 import re
@@ -88,12 +89,14 @@ class WebServer(Target, metaclass=ABCMeta):
             runner.run_bench_client()
 
     @abstractmethod
-    def populate_logdir(self, runner: 'WebServerRunner'):
+    def populate_stagedir(self, runner: 'WebServerRunner'):
         """
-        Populate the run directory which will be mounted on both server and
-        the client. E.g., write the server configuration file here. The
-        configuration should store temporary files, such as access logs, in
-        `runner.rundir` which will be private to each host in the run pool.
+        Populate the staging directory (`runner.stagedir`), which will be copied
+        to (or mounted on) both server and the client as their run directory
+        (`runner.rundir`) later. E.g., write the server configuration file here.
+        The configuration should store temporary files, such as access logs, in
+        the rundir (`runner.rundir`) which will be private to each host in the
+        run pool.
 
         :param runner: the web server runner instance calling this function
         """
@@ -245,12 +248,19 @@ class WebServerRunner:
 
     @param_attrs
     def __init__(self, server, ctx, instance, pool):
-        localdir = '/tmp/infra-%s-%s' % (server.name, instance.name)
-        self.rundir = os.path.join(localdir, 'run')
+        tmpdir = '/tmp/infra-%s-%s' % (server.name, instance.name)
+
+        # Directory where we stage our run directory, which will then be copied
+        # to the (node-local) rundir.
+        self.stagedir = os.path.join(ctx.paths.buildroot, 'run-staging',
+                '%s-%s' % (server.name, instance.name))
+
         if self.pool:
+            self.rundir = os.path.join(tmpdir, 'run')
             self.logdir = outfile_path(ctx, server, instance)
         else:
-            self.logdir = os.path.join(localdir, 'log')
+            self.rundir = os.path.join(tmpdir, 'run')
+            self.logdir = os.path.join(tmpdir, 'log')
 
     def logfile(self, outfile):
         return os.path.join(self.logdir, outfile)
@@ -260,7 +270,7 @@ class WebServerRunner:
             if not self.ctx.args.duration:
                 raise FatalError('need --duration argument')
 
-            self.populate_logdir()
+            self.populate_stagedir()
 
             server_command = self.bash_command(self.standalone_server_script())
             outfile = self.logfile('server.out')
@@ -269,7 +279,7 @@ class WebServerRunner:
                           outfile=outfile)
         else:
             self.create_logdir()
-            self.populate_logdir()
+            self.populate_stagedir()
             self.start_server()
 
             try:
@@ -283,7 +293,7 @@ class WebServerRunner:
 
     def run_test(self):
         if self.pool:
-            self.populate_logdir()
+            self.populate_stagedir()
 
             server_command = self.bash_command(self.test_server_script())
             outfile = self.logfile('server.out')
@@ -298,7 +308,7 @@ class WebServerRunner:
                           outfile=outfile)
         else:
             self.create_logdir()
-            self.populate_logdir()
+            self.populate_stagedir()
             self.start_server()
             self.request_and_check_index()
             self.stop_server()
@@ -321,8 +331,11 @@ class WebServerRunner:
                 raise FatalError('#connections must be >= #threads (%d < %d)' %
                                  (conn, self.ctx.args.threads))
 
-        self.populate_logdir()
-        self.write_config()
+        # Set up directory for results
+        os.makedirs(self.logdir, exist_ok=True)
+        self.write_log_of_config()
+
+        self.populate_stagedir()
 
         server_script = self.wrk_server_script()
         server_command = self.bash_command(server_script)
@@ -345,8 +358,8 @@ class WebServerRunner:
         self.ctx.log.info('will log to %s (merge with client log)'
                           % self.logdir)
 
-        self.populate_logdir()
-        self.write_config()
+        self.populate_stagedir()
+        self.write_log_of_config()
         run(self.ctx, self.bash_command(self.wrk_server_script()), teeout=True)
 
     def run_bench_client(self):
@@ -379,10 +392,10 @@ class WebServerRunner:
         with open(self.logfile('server_host'), 'w') as f:
             f.write(self.ctx.args.server_ip + '\n')
 
-        self.write_config()
+        self.write_log_of_config()
         run(self.ctx, self.bash_command(self.wrk_client_script()), teeout=True)
 
-    def write_config(self):
+    def write_log_of_config(self):
         with open(self.logfile('config.txt'), 'w') as f:
             with redirect_stdout(f):
                 print('server workers:    ', self.ctx.args.workers)
@@ -415,11 +428,23 @@ class WebServerRunner:
         self.ctx.log.debug('creating log directory ' + self.logdir)
         os.makedirs(self.logdir)
 
-    def populate_logdir(self):
-        self.ctx.log.debug('populating log directory')
-        os.makedirs(self.logdir, exist_ok=True)
-        os.chdir(self.logdir)
-        self.server.populate_logdir(self)
+    def populate_stagedir(self):
+        if os.path.exists(self.stagedir):
+            self.ctx.log.debug('removing old staging run directory ' +
+                    self.stagedir)
+            shutil.rmtree(self.stagedir)
+
+        self.ctx.log.debug('populating local staging run directory')
+        os.makedirs(self.stagedir, exist_ok=True)
+        os.chdir(self.stagedir)
+
+        os.makedirs('www', exist_ok=True)
+        with open('www/index.html', 'w') as f:
+            chars = string.printable
+            filesize = parse_filesize(self.ctx.args.filesize)
+            f.write(''.join(random.choice(chars) for i in range(filesize)))
+
+        self.server.populate_stagedir(self)
 
     def request_and_check_index(self):
         assert not self.pool
@@ -444,10 +469,9 @@ class WebServerRunner:
             # get the infiniband network IP
             host_command = 'ifconfig ib0 2>/dev/null | grep -Po "(?<=inet )[^ ]+"'
         return '''
-        echo "=== creating local run directory with index.html"
+        echo "=== creating local run directory"
         rm -rf "{self.rundir}"
-        mkdir -p "{self.rundir}/www"
-        dd if=/dev/urandom bs=1 count={filesize} of="{self.rundir}/www/index.html"
+        cp -r {self.stagedir} {self.rundir}
 
         echo "=== starting web server"
         {start_script}
@@ -673,7 +697,11 @@ class Nginx(WebServer):
         parser.add_argument('--worker-connections', type=int, default=1024,
                 help='number of connections per worker process (default 1024)')
 
-    def populate_logdir(self, runner):
+    def populate_stagedir(self, runner):
+        # Nginx needs the logs/ dir to create the default error log before
+        # processing the error_logs directive
+        os.makedirs('logs', exist_ok=True)
+
         runner.ctx.log.debug('creating nginx.conf')
         a = runner.ctx.args
         config_template = '''
@@ -702,20 +730,6 @@ class Nginx(WebServer):
         '''
         with open('nginx.conf', 'w') as f:
             f.write(config_template.format(**locals()))
-
-    def start_script(self, runner):
-        objdir = self.path(runner.ctx, runner.instance.name, 'objs')
-        return '''
-        # create logs/ dir, nginx needs it to create the default error log
-        # before processing the error_logs directive
-        mkdir -p "{runner.rundir}/logs"
-
-        cp nginx.conf "{runner.rundir}"
-
-        {objdir}/nginx -p "{runner.rundir}" -c nginx.conf
-        echo -n "=== started server on port {runner.ctx.args.port}, "
-        echo "pid $(cat {runner.rundir}/nginx.pid)"
-        '''.format(**locals())
 
     def pid_file(self, runner):
         return '{runner.rundir}/nginx.pid'.format(**locals())
@@ -846,7 +860,11 @@ class ApacheHttpd(WebServer):
                 help='number of connection threads per worker process '
                      '(ThreadsPerChild, default 25)')
 
-    def populate_logdir(self, runner):
+    def populate_stagedir(self, runner):
+        runner.ctx.log.debug('copying base config')
+        rootdir = self.path(runner.ctx, runner.instance.name, 'install')
+        copytree(rootdir, runner.stagedir)
+
         runner.ctx.log.debug('creating httpd.conf')
         a = runner.ctx.args
         total_threads = a.workers * a.worker_threads
@@ -868,19 +886,8 @@ class ApacheHttpd(WebServer):
         EnableSendfile On
         Timeout 1
         '''
-        with open('httpd.conf', 'w') as f:
+        with open('conf/httpd.conf', 'w') as f:
             f.write(config_template.format(**locals()))
-
-    def start_script(self, runner):
-        rootdir = self.path(runner.ctx, runner.instance.name, 'install')
-        return '''
-        cp -r "{rootdir}/conf" "{runner.rundir}"
-        cp httpd.conf "{runner.rundir}"/conf
-
-        {rootdir}/bin/httpd -d "{runner.rundir}" -k start
-        echo -n "=== started server on port {runner.ctx.args.port}, "
-        echo "pid $(cat "{runner.rundir}/apache.pid")"
-        '''.format(**locals())
 
     def pid_file(self, runner):
         return '{runner.rundir}/apache.pid'.format(**locals())
@@ -965,8 +972,8 @@ class Lighttpd(WebServer):
         parser.add_argument('--server-connections', type=int, default=2048,
                 help='number of concurrent connections to the server (default 2048)')
 
-    def populate_logdir(self, runner):
-        runner.ctx.log.debug('creating nginx.conf')
+    def populate_stagedir(self, runner):
+        runner.ctx.log.debug('creating lighttpd.conf')
         a = runner.ctx.args
         max_fds = 2 * a.server_connections
         config_template = '''
@@ -989,16 +996,6 @@ class Lighttpd(WebServer):
         '''
         with open('lighttpd.conf', 'w') as f:
             f.write(config_template.format(**locals()))
-
-    def start_script(self, runner):
-        server_bin = self.server_bin(runner.ctx, runner.instance)
-        return '''
-        cp lighttpd.conf "{runner.rundir}"
-
-        {server_bin} -f "{runner.rundir}"/lighttpd.conf
-        echo -n "=== started server on port {runner.ctx.args.port}, "
-        echo "pid $(cat "{runner.rundir}/lighttpd.pid")"
-        '''.format(**locals())
 
     def stop_script(self, runner):
         return '''
@@ -1036,3 +1033,32 @@ def _fetch_apache(ctx, repo, basename, dest):
     tarname = basename + '.tar.bz2'
     download(ctx, 'http://apache.cs.uu.nl/%s/%s' % (repo, tarname))
     untar(ctx, tarname, dest)
+
+
+def copytree(src, dst):
+    """Wrapper for shutil.copytree, which does not have dirs_exist_ok until
+    python 3.8."""
+    for item in os.listdir(src):
+        s = os.path.join(src, item)
+        d = os.path.join(dst, item)
+        if os.path.isdir(s):
+            shutil.copytree(s, d)
+        else:
+            shutil.copy2(s, d)
+
+
+def parse_filesize(filesize):
+    """Convert a size in human-readable form to bytes (e.g., 4K, 2G)."""
+    if isinstance(filesize, int):
+        return filesize
+    if not isinstance(filesize, str):
+        raise FatalError('unsupported filesize type ' + repr(filesize))
+    factors = { '': 1,
+               'K': 1024,
+               'M': 1024 * 1024,
+               'G': 1024 * 1024 * 1024}
+    filesize = filesize.upper()
+    factor = ''
+    if filesize[-1] not in string.digits:
+        filesize, factor = filesize[:-1], filesize[-1]
+    return int(filesize) * factors[factor]
