@@ -46,6 +46,9 @@ class Wrk(Package):
     def is_installed(self, ctx):
         return os.path.exists('install/bin/wrk')
 
+    def get_binary_path(self, ctx):
+        return self.path(ctx, 'src', 'wrk')
+
 
 class Wrk2(Wrk):
     """

@@ -12,9 +12,10 @@ from statistics import median, pstdev, mean
 from multiprocessing import cpu_count
 from ..commands.report import outfile_path
 from ..packages import Bash, Wrk, Netcat, Scons
-from ..parallel import ProcessPool, PrunPool
+from ..parallel import ProcessPool, SSHPool, PrunPool
 from ..target import Target
 from ..util import run, download, qjoin, param_attrs, FatalError, untar
+from .remote_runner import RemoteRunner, RemoteRunnerError
 
 
 class WebServer(Target, metaclass=ABCMeta):
@@ -69,6 +70,36 @@ class WebServer(Target, metaclass=ABCMeta):
         parser.add_argument('--cleanup-time',
                 metavar='SECONDS', default=0, type=int,
                 help='time to wait between benchmarks (default 3)')
+
+        parser.add_argument('--restart-server-between-runs',
+                default=False, action='store_true',
+                help='terminate and restart the server between each '
+                     'benchmarking run (e.g., when benchmarking multiple '
+                     'connection configurations or doing multiple iterations\n'
+                     'NOTE: only supported for --parallel=ssh!')
+        parser.add_argument('--disable-warmup',
+                default=False, action='store_true',
+                help='disable the warmup run of the server before doing actual '
+                     'benchmarks. This can be useful for measuring statistics\n'
+                     'NOTE: only supported for --parallel=ssh!')
+        parser.add_argument('--collect-stats',
+                nargs='+',
+                choices=('cpu', 'cpu-proc', 'rss', 'vms'),
+                help='Statistics to collect of server while running benchmarks '
+                     '(disabled if not specified)\n'
+                     'NOTE: only supported for --parallel=ssh!\n'
+                     'cpu: CPU utilization of entire server (0..100%)\n'
+                     'cpu-proc: sum of CPU utilization of all server processes '
+                     '(0..nproc*100%)\n'
+                     'rss: sum of Resident Set Size of all server processes\n'
+                     'vms: sum of Virtual Memory Size of all server processes\n')
+        parser.add_argument('--collect-stats-interval',
+                type=float, default=1,
+                help='seconds between measurements of statistics provided in '
+                     'the --collect-stats argument. Has no effect if no '
+                     'statistics are specified.\n'
+                     'NOTE: only supported for --parallel=ssh!')
+
 
         # bench-client options
         parser.add_argument('--server-ip',
@@ -256,6 +287,8 @@ class WebServerRunner:
                 '%s-%s' % (server.name, instance.name))
 
         if self.pool:
+            if isinstance(self.pool, SSHPool):
+                tmpdir = self.pool.tempdir
             self.rundir = os.path.join(tmpdir, 'run')
             self.logdir = outfile_path(ctx, server, instance)
         else:
@@ -313,9 +346,200 @@ class WebServerRunner:
             self.request_and_check_index()
             self.stop_server()
 
+    def _run_bench_over_ssh(self):
+
+        def _start_server():
+            """Start the server for benchmarking, verify it is behaving
+            correctly and perfom warmup run."""
+
+            server_cmd = self.server.start_cmd(self, foreground=True)
+            server.run(server_cmd, wait=False)
+
+            # Wait for server to come up
+            starttime = time.time()
+            while time.time() - starttime < 5:
+                test_cmd = 'curl -s {url}'.format(url=url)
+                ret = client.run(test_cmd, allow_error=True)
+                if ret['rv'] == 0:
+                    break
+                time.sleep(0.1)
+            else:
+                raise RunnerError('server did not come up')
+
+            server.poll(expect_alive=True)
+            with open(os.path.join(self.stagedir, 'www/index.html')) as f:
+                if ret['stdout'] != f.read():
+                    raise RunnerError('contents of ' + url + ' do not match')
+
+            # Do a warmup run
+            if not self.ctx.args.disable_warmup:
+                client.run('{wrk_path} --duration 1s --threads {wrk_threads} '
+                            '--connections 400 "{url}"'
+                                .format(wrk_path=wrk_path,
+                                        wrk_threads=wrk_threads,
+                                        url=url))
+
+            server.poll(expect_alive=True)
+
+
+        def _run_bench_client(cons, it):
+            """Run workload on client, and write back the results. Optionally
+            monitor statistics of the server and write back those as well."""
+
+            self.ctx.log.info('Benchmarking {server} with {cons} connections, '
+                    '#{it}'.format(cons=cons, it=it, server=self.server.name))
+
+            if collect_stats:
+                server.start_monitoring(stats=collect_stats,
+                        interval=self.ctx.args.collect_stats_interval)
+
+            ret = client.run('{wrk_path} '
+                    '--latency '
+                    '--duration {wrk_duration}s '
+                    '--connections {cons} '
+                    '--threads {wrk_threads} '
+                    '"{url}"'.format(wrk_path=wrk_path,
+                                     wrk_duration=wrk_duration,
+                                     wrk_threads=wrk_threads,
+                                     cons=cons,
+                                     url=url))
+
+            if collect_stats:
+                stats = server.stop_monitoring()
+
+            # Write results: wrk output and all of our collected stats
+            resfile = lambda base: self.logfile('{base}.{cons}.{it}'
+                    .format(base=base, cons=cons, it=it))
+            with open(resfile('bench'), 'w') as f:
+                f.write(ret['stdout'])
+            for stat in collect_stats:
+                with open(resfile(stat), 'w') as f:
+                    vals = stats[stat]
+                    if isinstance(vals[0], float):
+                        vals = ['%.3f' % v for v in vals]
+                    f.write('\n'.join(map(str, vals + [''])))
+
+
+        assert self.rundir.startswith(self.pool.tempdir)
+
+        tempfile = lambda *p: os.path.join(self.pool.tempdir, *p)
+
+        client_node, server_node = self.ctx.args.ssh_nodes
+        client_outfile = self.logfile('client_runner.out')
+        server_outfile = self.logfile('server_runner.out')
+        client_debug_file = 'client_runner_debug.out'
+        server_debug_file = 'server_runner_debug.out'
+        rrunner_port_client, rrunner_port_server = 20010, 20011
+        rrunner_script = 'remote_runner.py'
+        rrunner_script_path = tempfile(rrunner_script)
+        client_cmd = ['python3', rrunner_script_path,
+                '-p', rrunner_port_client,
+                '-o', tempfile(client_debug_file)]
+        server_cmd = ['python3', rrunner_script_path,
+                '-p', rrunner_port_server,
+                '-o', tempfile(server_debug_file)]
+        curdir = os.path.dirname(os.path.abspath(__file__))
+
+        url = 'http://{a.server_ip}:{a.port}/index.html'.format(a=self.ctx.args)
+        wrk_path = Wrk().get_binary_path(self.ctx)
+        wrk_threads = self.ctx.args.threads
+        wrk_duration = self.ctx.args.duration
+
+        collect_stats = []
+        if self.ctx.args.collect_stats:
+            collect_stats = ['time'] + self.ctx.args.collect_stats
+
+        has_started_server = False
+
+        # Create local stagedir and transfer files to other nodes.
+        self.ctx.log.info('Setting up local and remote files')
+        self.populate_stagedir()
+        self.pool.sync_to_nodes(self.stagedir, 'run')
+        self.pool.sync_to_nodes(os.path.join(curdir, rrunner_script))
+
+        # Launch the remote runners so we can easily control each node.
+        client_job = self.pool.run(self.ctx, client_cmd, jobid='client',
+                nnodes=1, outfile=client_outfile, nodes=client_node,
+                tunnel_to_nodes_dest=rrunner_port_client)[0]
+        server_job = self.pool.run(self.ctx, server_cmd, jobid='server',
+                nnodes=1, outfile=server_outfile, nodes=server_node,
+                tunnel_to_nodes_dest=rrunner_port_server)[0]
+
+        # Connect to the remote runners. SSH can be slow, so give generous
+        # timeout (retry window) so we don't end up with a ConnectionRefused.
+        # Client here means "connect to the remote runner server", not the
+        # client/server of our webserver setup.
+        self.ctx.log.info('Connecting to remote nodes')
+        client = RemoteRunner(self.ctx.log, side='client',
+                port=client_job.tunnel_src, timeout=10)
+        server = RemoteRunner(self.ctx.log, side='client',
+                port=server_job.tunnel_src, timeout=10)
+
+        _err = None
+        try:
+            # Do some minor sanity checks on the remote file system of server
+            server_bin = self.server.server_bin(self.ctx, self.instance)
+            if not server.has_file(server_bin):
+                raise RemoteRunnerError('server binary ' + server_bin +
+                                        ' not present on server')
+
+            # Copy wrk binary only as needed
+            if not client.has_file(wrk_path):
+                self.ctx.log.info('wrk binary not found on client, syncing...')
+                self.pool.sync_to_nodes(wrk_path)
+                wrk_path = tempfile('wrk')
+
+            # Clean up any lingering server. # XXX hacky
+            for s in (Nginx, ApacheHttpd, Lighttpd):
+                kill_cmd = s.kill_cmd(None, self)
+                server.run(kill_cmd, allow_error=True)
+
+            # Start actual server and benchmarking!
+            for cons in self.ctx.args.connections:
+                for it in range(self.ctx.args.iterations):
+
+                    if not has_started_server or \
+                            self.ctx.args.restart_server_between_runs:
+                        if has_started_server:
+                            server.kill()
+                            server.wait()
+                        _start_server()
+                        has_started_server = True
+
+                    _run_bench_client(cons, it)
+
+            server.kill()
+            server.wait()
+
+        except RemoteRunnerError as e:
+            _err = e
+            self.ctx.log.error('aborting tests due to error:\n' + str(e))
+
+        # Terminate the remote runners and clean up.
+        client.close()
+        server.close()
+        self.pool.wait_all()
+
+        self.ctx.log.info('Done, syncing results to ' + self.logdir)
+        self.pool.sync_from_nodes(client_debug_file,
+                self.logfile(client_debug_file), client_node)
+        self.pool.sync_from_nodes(server_debug_file,
+                self.logfile(server_debug_file), server_node)
+
+        self.pool.cleanup_tempdirs()
+
+        if _err:
+            raise _err
+
+
     def run_bench(self):
         if not self.pool:
-            raise FatalError('need prun to run benchmark')
+            raise FatalError('need --parallel= argument to run benchmark')
+        elif isinstance(self.pool, SSHPool):
+            if len(self.ctx.args.ssh_nodes) != 2:
+                raise FatalError('need exactly 2 nodes (via --ssh-nodes)')
+            if not self.ctx.args.server_ip:
+                raise FatalError('need --server-ip')
         elif isinstance(self.pool, ProcessPool):
             self.ctx.log.warn('the client should not run on the same machine '
                               'as the server, use prun for benchmarking')
@@ -335,20 +559,24 @@ class WebServerRunner:
         os.makedirs(self.logdir, exist_ok=True)
         self.write_log_of_config()
 
-        self.populate_stagedir()
+        if isinstance(self.pool, SSHPool):
+            self._run_bench_over_ssh()
+        else:
+            client_outfile = self.logfile('client.out')
+            server_outfile = self.logfile('server.out')
 
-        server_script = self.wrk_server_script()
-        server_command = self.bash_command(server_script)
-        outfile = self.logfile('server.out')
-        self.ctx.log.debug('server will log to ' + outfile)
-        self.pool.run(self.ctx, server_command, outfile=outfile,
-                        jobid='server', nnodes=1)
+            self.populate_stagedir()
 
-        client_command = self.bash_command(self.wrk_client_script())
-        outfile = self.logfile('client.out')
-        self.ctx.log.debug('client will log to ' + outfile)
-        self.pool.run(self.ctx, client_command, outfile=outfile,
-                        jobid='wrk-client', nnodes=1)
+            server_script = self.wrk_server_script()
+            server_command = self.bash_command(server_script)
+            self.ctx.log.debug('server will log to ' + server_outfile)
+            self.pool.run(self.ctx, server_command, outfile=server_outfile,
+                            jobid='server', nnodes=1)
+
+            client_command = self.bash_command(self.wrk_client_script())
+            self.ctx.log.debug('client will log to ' + client_outfile)
+            self.pool.run(self.ctx, client_command, outfile=client_outfile,
+                            jobid='wrk-client', nnodes=1)
 
     def run_bench_server(self):
         if self.pool:
