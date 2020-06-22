@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 from collections import OrderedDict
 from inspect import signature
 from multiprocessing import cpu_count
-from .parallel import ProcessPool, PrunPool
+from .parallel import ProcessPool, SSHPool, PrunPool
 from .util import FatalError, Namespace, Index, param_attrs
 
 
@@ -32,7 +32,7 @@ class Command(metaclass=ABCMeta):
         ctx.runlog = open(ctx.paths.runlog, 'w')
 
     def add_pool_args(self, parser):
-        parser.add_argument('--parallel', choices=('proc', 'prun'),
+        parser.add_argument('--parallel', choices=('proc', 'ssh', 'prun'),
                 default=None,
                 help='build benchmarks in parallel ("proc" for local '
                      'processes, "prun" for DAS cluster)')
@@ -40,6 +40,8 @@ class Command(metaclass=ABCMeta):
                 type=int, default=None,
                 help='limit simultaneous node reservations (default: %d for '
                      'proc, 64 for prun)' % cpu_count())
+        parser.add_argument('--ssh-nodes', nargs='+', default='',
+                help='ssh remotes to run jobs on (for --parallel=ssh)')
         parser.add_argument('--prun-opts', default='',
                 help='additional options for prun (for --parallel=prun)')
 
@@ -49,11 +51,24 @@ class Command(metaclass=ABCMeta):
         if ctx.args.parallel == 'proc':
             if len(prun_opts):
                 raise FatalError('--prun-opts not supported for --parallel=proc')
+            if ctx.args.ssh_nodes:
+                raise FatalError('--ssh-nodes not supported for --parallel=proc')
             pmax = cpu_count() if ctx.args.parallelmax is None \
                    else ctx.args.parallelmax
             return ProcessPool(ctx.log, pmax)
 
+        if ctx.args.parallel == 'ssh':
+            if len(prun_opts):
+                raise FatalError('--prun-opts not supported for --parallel=ssh')
+            if not ctx.args.ssh_nodes:
+                raise FatalError('--ssh-nodes required for --parallel=ssh')
+            pmax = len(ctx.args.ssh_nodes) if ctx.args.parallelmax is None \
+                   else ctx.args.parallelmax
+            return SSHPool(ctx, ctx.log, pmax, ctx.args.ssh_nodes)
+
         if ctx.args.parallel == 'prun':
+            if ctx.args.ssh_nodes:
+                raise FatalError('--ssh-nodes not supported for --parallel=prun')
             pmax = 64 if ctx.args.parallelmax is None else ctx.args.parallelmax
             return PrunPool(ctx.log, pmax, prun_opts)
 

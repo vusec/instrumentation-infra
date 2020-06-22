@@ -8,6 +8,7 @@ import re
 import io
 import fcntl
 import logging
+import random
 from subprocess import Popen, STDOUT
 from abc import ABCMeta, abstractmethod
 from typing import Union, List, Optional, Iterator, Callable
@@ -213,6 +214,198 @@ class ProcessPool(Pool):
         super().onsuccess(job)
 
     def onerror(self, job):
+        job.outfile_handle.close()
+        super().onerror(job)
+
+
+class SSHPool(Pool):
+    """
+    An SSHPool runs jobs on remote nodes via ssh.
+
+    The --ssh-nodes argument specified a list of ssh hosts to distribute the
+    work over. These hosts are passed as-is to the ssh command; the best way for
+    specifying alternative ssh ports, user, and other options is to add your
+    hosts to the ~/.ssh/config file. Additionally, make sure the hosts can be
+    reached without password prompts (e.g., by using passphrase-less keys or
+    using an ssh agent).
+
+    For targets that are being run via an SSHPool additional functionality is
+    available, such as distributing files to/from nodes.
+    """
+
+    ssh_opts = [
+            # Block stdin and background ssh before executing command.
+            '-f',
+            # Eliminate some of the yes/no questions ssh may ask.
+            '-oStrictHostKeyChecking=accept-new',
+        ]
+    scp_opts = [
+            # Quiet mode to disable progress meter
+            '-q',
+            # Batch mode to prevent asking for password
+            '-B',
+            # Copy directories
+            '-r',
+        ]
+
+    def __init__(self, ctx, logger, parallelmax, nodes):
+        if parallelmax > len(nodes):
+            raise FatalError('parallelmax cannot be greater than number of '
+                             'available nodes')
+        super().__init__(logger, parallelmax)
+        self._ctx = ctx
+        self.nodes = nodes[:]
+        self.available_nodes = nodes[:]
+        self.has_tested_nodes = False
+        self.has_created_tempdirs = False
+
+    @property
+    def tempdir(self):
+        if not self.has_created_tempdirs:
+            self.create_tempdirs()
+        return self._tempdir
+
+    def _ssh_cmd(self, node, cmd, extra_opts=None):
+        if not isinstance(cmd, str):
+            cmd = ' '.join(shlex.quote(str(c)) for c in cmd)
+        extra_opts = extra_opts or []
+        return ['ssh', *self.ssh_opts, *extra_opts, node, cmd]
+
+    def test_nodes(self):
+        if self.has_tested_nodes:
+            return
+        for node in self.nodes:
+            cmd = ['ssh', *self.ssh_opts, node, 'echo -n hi']
+            p = run(self._ctx, cmd, stderr=STDOUT, silent=True)
+            if p.returncode or p.stdout != 'hi':
+                self._ctx.log.error('Testing SSH node ' + node + ' failed:\n'
+                        + p.stdout)
+                sys.exit(-1)
+
+        self.has_tested_nodes = True
+
+    def create_tempdirs(self):
+        if self.has_created_tempdirs:
+            return
+
+        self.test_nodes()
+
+        starttime = self._ctx.starttime.strftime('%Y-%m-%d.%H-%M-%S')
+        self._tempdir = os.path.join('/tmp', 'infra-' + starttime)
+
+        self._ctx.log.debug('creating SSHPool temp dir {self._tempdir} on '
+                'nodes {self.nodes}'.format(**locals()))
+
+        for node in self.nodes:
+            run(self._ctx, self._ssh_cmd(node, ['mkdir', '-p', self._tempdir]))
+
+        self.has_created_tempdirs = True
+
+    def cleanup_tempdirs(self):
+        if not self.has_created_tempdirs:
+            return
+        self._ctx.log.debug('cleaning up SSHPool temp directory '
+                '{self._tempdir} on nodes {self.nodes}'.format(**locals()))
+        for node in self.nodes:
+            run(self._ctx, self._ssh_cmd(node, ['rm', '-rf', self._tempdir]))
+        self.has_created_tempdirs = False
+        self._tempdir = None
+
+    def sync_to_nodes(self, sources, destination='', target_nodes=None):
+        if isinstance(sources, str): sources = [sources]
+        if isinstance(target_nodes, str): target_nodes = [target_nodes]
+        nodes = target_nodes or self.nodes
+        self._ctx.log.debug('syncing file to SSHPool nodes, sources={sources},'
+                'destination={destination}, nodes={nodes}'.format(**locals()))
+        for node in nodes:
+            dest = '%s:%s' % (node, os.path.join(self.tempdir, destination))
+            cmd = ['scp', *self.scp_opts, *sources, dest]
+            run(self._ctx, cmd)
+
+    def sync_from_nodes(self, source, destination='', source_nodes=None):
+        if isinstance(source_nodes, str): source_nodes = [source_nodes]
+        nodes = source_nodes or self.nodes
+
+        self._ctx.log.debug('syncing file from SSHPool nodes, source={source},'
+                'destination={destination}, nodes={nodes}'.format(**locals()))
+
+        for i, node in enumerate(nodes):
+            dest = destination or os.path.basename(source)
+            if len(nodes) > 1:
+                dest += '.' + node
+                if len(nodes) != len(set(nodes)):
+                    dest += i
+            src = '%s:%s' % (node, os.path.join(self.tempdir, source))
+            cmd = ['scp', *self.scp_opts, src, dest]
+            run(self._ctx, cmd)
+
+    def get_free_node(self, override_node=None):
+        if override_node:
+            assert override_node in self.nodes
+            assert override_node in self.available_nodes
+            self.available_nodes.remove(override_node)
+            return override_node
+        else:
+            return self.available_nodes.pop()
+
+    def make_jobs(self, ctx, cmd, jobid_base, outfile_base, nnodes, nodes=None,
+            tunnel_to_nodes_dest=None, **kwargs):
+
+        if isinstance(nodes, str): nodes = [nodes]
+
+        self.test_nodes()
+
+        for i in range(nnodes):
+            jobid = jobid_base
+            outfile = outfile_base
+            if nnodes > 1:
+                jobid += '-%d' % i
+                outfile += '-%d' % i
+
+            self._wait_for_queue_space(1)
+            override_node = nodes[i] if nodes else None
+            node = self.get_free_node(override_node)
+            ctx.log.info('running ' + jobid + ' on ' + node)
+
+            ssh_node_opts = []
+            if tunnel_to_nodes_dest:
+                tunnel_src = random.randint(10000, 30000)
+                ssh_node_opts += ['-Llocalhost:%d:0.0.0.0:%d' %
+                        (tunnel_src, tunnel_to_nodes_dest)]
+
+            ssh_cmd = self._ssh_cmd(node, cmd, ssh_node_opts)
+            job = run(ctx, ssh_cmd, defer=True, stderr=STDOUT,
+                        bufsize=io.DEFAULT_BUFFER_SIZE,
+                        universal_newlines=False, **kwargs)
+            _set_non_blocking(job.stdout)
+            job.start_time = time.time()
+            job.jobid = jobid
+            job.nnodes = 1
+            job.node = node
+
+            if tunnel_to_nodes_dest:
+                job.tunnel_src = tunnel_src
+                job.tunnel_dest = tunnel_to_nodes_dest
+
+            os.makedirs(os.path.dirname(outfile), exist_ok=True)
+            job.outfiles = [outfile]
+            job.outfile_handle = open(outfile, 'wb')
+
+            yield job
+
+    def process_job_output(self, job):
+        buf = job.stdout.read(io.DEFAULT_BUFFER_SIZE)
+        if buf is not None:
+            job.output += buf.decode('ascii', errors='replace')
+            job.outfile_handle.write(buf)
+
+    def onsuccess(self, job):
+        job.outfile_handle.close()
+        self.available_nodes.append(job.node)
+        super().onsuccess(job)
+
+    def onerror(self, job):
+        self.available_nodes.append(job.node)
         job.outfile_handle.close()
         super().onerror(job)
 
