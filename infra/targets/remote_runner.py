@@ -27,12 +27,90 @@ import shlex
 import socket
 import subprocess
 import sys
+import threading
 import time
 import traceback
 
 
 class RemoteRunnerError(Exception):
     pass
+
+
+class MonitorThread(threading.Thread):
+    """Asynchronous thread that monitors statistics of the whole system or
+    a given set of processes.
+
+    Instantiate this class with the interval, PIDs and statistics you can to
+    monitor, and then start it using `start`. The thread can be stopped through
+    `stop`, which will destroy the thread (i.e., it cannot be restarted
+    afterwards). See the `data` field to read back the collected data."""
+
+    supported_stats = ('time', 'cpu', 'cpu-proc', 'rss', 'vms')
+
+    # Statistics that require looping over all monitored processes
+    aggregated_stats = ('cpu-proc', 'rss', 'vms')
+
+
+    def __init__(self, interval, pids=[], stats=('cpu', 'rss')):
+        threading.Thread.__init__(self)
+        self._event = threading.Event()
+        self._exception = None
+
+        self.interval = interval
+        self.stats = tuple(set(list(stats) + ['time']))
+
+        unsupported_stats = set(self.stats) - set(self.supported_stats)
+        if unsupported_stats:
+            raise ValueError('Unsupported stats requested: '
+                    + str(unsupported_stats))
+
+        self.data = {stat: [] for stat in self.stats}
+        self.procs = [psutil.Process(pid) for pid in pids]
+
+    def stop(self):
+        self._event.set()
+        self.join()
+
+        if self._exception is not None:
+            raise self._exception
+
+    def sample_data(self):
+        if 'time' in self.stats:
+            time_elapsed = time.time() - self.start_time
+            self.data['time'].append(time_elapsed)
+
+        if 'cpu' in self.stats:
+            self.data['cpu'].append(psutil.cpu_percent())
+
+        aggr_stats = tuple(set(self.stats) & set(self.aggregated_stats))
+        if aggr_stats:
+            aggr = {s: 0 for s in aggr_stats}
+            for proc in self.procs:
+                with proc.oneshot():
+                    if 'cpu-proc' in aggr:
+                        aggr['cpu-proc'] += proc.cpu_percent()
+                    if 'rss' in aggr:
+                        aggr['rss'] += proc.memory_info().rss
+                    if 'vms' in aggr:
+                        aggr['vms'] += proc.memory_info().vms
+            for stat, value in aggr.items():
+                self.data[stat].append(value)
+
+    def run(self):
+        """Do not call directly! Called by `threading.Thread` to start executing
+        our code of this thread. To start the thread, using `thread.start()`.
+
+        Samples data every `interval` seconds until the monitoring thread is
+        stopped. Catches any exception so it can be transfered out of the thread
+        when `stop` is called."""
+        try:
+            self.start_time = time.time()
+            self.sample_data()
+            while not self._event.wait(self.interval):
+                self.sample_data()
+            self.sample_data()
+        except Exception as e:
+            self._exception = e
 
 
 class RemoteRunnerComms:
@@ -307,6 +385,19 @@ class RemoteRunner:
     @remotecall
     def get_cpu_percentage(self):
         return psutil.cpu_percent()
+
+    @remotecall
+    def start_monitoring(self, interval=1.0, stats=('cpu', 'rss')):
+        pids = self.get_pids()
+        self.monitor_thread = MonitorThread(interval, pids, stats)
+        self.monitor_thread.start()
+
+    @remotecall
+    def stop_monitoring(self):
+        if self.monitor_thread is None:
+            self._error('no monitoring thread')
+        self.monitor_thread.stop()
+        return self.monitor_thread.data
 
     @remotecall
     def has_file(self, path):
