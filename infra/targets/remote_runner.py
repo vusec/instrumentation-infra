@@ -335,7 +335,7 @@ class RemoteRunner:
         return self.proc.poll()
 
     @remotecall
-    def proc_communicate(self, stdin=None):
+    def proc_communicate(self, stdin=None, timeout=None):
         if self.proc is None:
             self._error('no process was running')
 
@@ -347,21 +347,25 @@ class RemoteRunner:
         elif self.proc.stderr.closed:
             return '', self.proc.stdout.read()
         else:
-            return self.proc.communicate()
+            try:
+                return self.proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                return None, None
 
     @remotecall
-    def wait(self, timeout=-1, output=True, stats=True, allow_error=False):
+    def wait(self, timeout=None, output=True, stats=True, allow_error=False):
         if self.proc is None:
             self._error('no process was running')
 
         ret = {}
         try:
-            ret['rv'] = self.proc.wait()
+            ret['rv'] = self.proc.wait(timeout)
         except subprocess.TimeoutExpired:
             pass
 
         if output and self.proc.poll() is not None:
-            ret['stdout'], ret['stderr'] = self.proc_communicate()
+            ret['stdout'], ret['stderr'] = \
+                    self.proc_communicate(timeout=timeout)
 
         if stats:
             ret['cpu_percentage'] = psutil.cpu_percent()
