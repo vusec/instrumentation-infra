@@ -429,6 +429,14 @@ class WebServerRunner:
                     f.write('\n'.join(map(str, vals + [''])))
 
 
+        def _kill_server():
+            """Really really kills the running server."""
+            server.kill()
+            server.wait(timeout=1, allow_error=True)
+            forcekillcmd = self.server.kill_cmd(self)
+            server.run(forcekillcmd, allow_error=True)
+
+
         assert self.rundir.startswith(self.pool.tempdir)
 
         tempfile = lambda *p: os.path.join(self.pool.tempdir, *p)
@@ -523,15 +531,13 @@ class WebServerRunner:
                     if not has_started_server or \
                             self.ctx.args.restart_server_between_runs:
                         if has_started_server:
-                            server.kill()
-                            server.wait()
+                            _kill_server()
                         _start_server()
                         has_started_server = True
 
                     _run_bench_client(cons, it)
 
-            server.kill()
-            server.wait()
+            _kill_server()
 
         except RemoteRunnerError as e:
             _err = e
