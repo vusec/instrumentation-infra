@@ -312,7 +312,7 @@ class RemoteRunner:
         join = lambda v: ':'.join(v) if isinstance(v, (tuple, list)) else v
         renv.update({k: join(v) for k, v in env.items()})
 
-        self.proc = subprocess.Popen(cmd, env=env, encoding='utf-8',
+        self.proc = subprocess.Popen(cmd, env=renv, encoding='utf-8',
                 preexec_fn=os.setsid,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
