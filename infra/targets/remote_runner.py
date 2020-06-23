@@ -381,18 +381,13 @@ class RemoteRunner:
             self._error('no process was running')
 
         if self.proc.poll() is None:
-            self.log.info('terminating ' + str(self.proc.pid))
             self.proc.terminate()
-            self.log.info('terminated ' + str(self.proc.pid))
 
         try:
             self.proc.wait(timeout=1)
         except subprocess.TimeoutExpired:
-            self.log.info('killing ' + str(self.proc.pid))
             self.proc.kill()
             self.proc.wait()
-
-        self.log.info('OK!')
 
     @remotecall
     def read_output_line(self):
