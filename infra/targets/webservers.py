@@ -364,12 +364,13 @@ class WebServerRunner:
                     break
                 time.sleep(0.1)
             else:
-                raise RunnerError('server did not come up')
+                raise RemoteRunnerError('server did not come up')
 
             server.poll(expect_alive=True)
             with open(os.path.join(self.stagedir, 'www/index.html')) as f:
                 if ret['stdout'] != f.read():
-                    raise RunnerError('contents of ' + url + ' do not match')
+                    raise RemoteRunnerError('contents of ' + url +
+                            ' do not match')
 
             # Do a warmup run
             if not self.ctx.args.disable_warmup:
