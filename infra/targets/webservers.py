@@ -402,16 +402,20 @@ class WebServerRunner:
                 server.start_monitoring(stats=collect_stats,
                         interval=self.ctx.args.collect_stats_interval)
 
+            # Allow wrk to return non-zero values, which it does when (some) of
+            # the requests are errors. We just go on benchmarking, and let the
+            # report command worry about this.
             ret = client.run('{wrk_path} '
-                    '--latency '
-                    '--duration {wrk_duration}s '
-                    '--connections {cons} '
-                    '--threads {wrk_threads} '
-                    '"{url}"'.format(wrk_path=wrk_path,
-                                     wrk_duration=wrk_duration,
-                                     wrk_threads=wrk_threads,
-                                     cons=cons,
-                                     url=url))
+                                '--latency '
+                                '--duration {wrk_duration}s '
+                                '--connections {cons} '
+                                '--threads {wrk_threads} '
+                                '"{url}"'.format(wrk_path=wrk_path,
+                                                wrk_duration=wrk_duration,
+                                                wrk_threads=wrk_threads,
+                                                cons=cons,
+                                                url=url),
+                    allow_error=True)
 
             if collect_stats:
                 stats = server.stop_monitoring()
