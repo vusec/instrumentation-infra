@@ -99,6 +99,14 @@ class WebServer(Target, metaclass=ABCMeta):
                      'the --collect-stats argument. Has no effect if no '
                      'statistics are specified.\n'
                      'NOTE: only supported for --parallel=ssh!')
+        parser.add_argument('--remote-client-host', type=str, default='',
+                help='if specified, connect to the remote client runner via '
+                     'this host instead of setting up an SSH tunnel.\n'
+                     'NOTE: only supported for --parallel=ssh!')
+        parser.add_argument('--remote-server-host', type=str, default='',
+                help='if specified, connect to the remote server runner via '
+                     'this host instead of setting up an SSH tunnel.\n'
+                     'NOTE: only supported for --parallel=ssh!')
 
 
         # bench-client options
@@ -441,6 +449,15 @@ class WebServerRunner:
                 '-o', tempfile(server_debug_file)]
         curdir = os.path.dirname(os.path.abspath(__file__))
 
+        client_host = self.ctx.args.remote_client_host or 'localhost'
+        server_host = self.ctx.args.remote_server_host or 'localhost'
+
+        client_tunnel_dest, server_tunnel_dest = None, None
+        if not self.ctx.args.remote_client_host:
+            client_tunnel_dest = rrunner_port_client
+        if not self.ctx.args.remote_server_host:
+            server_tunnel_dest = rrunner_port_server
+
         url = 'http://{a.server_ip}:{a.port}/index.html'.format(a=self.ctx.args)
         wrk_path = Wrk().get_binary_path(self.ctx)
         wrk_threads = self.ctx.args.threads
@@ -461,20 +478,24 @@ class WebServerRunner:
         # Launch the remote runners so we can easily control each node.
         client_job = self.pool.run(self.ctx, client_cmd, jobid='client',
                 nnodes=1, outfile=client_outfile, nodes=client_node,
-                tunnel_to_nodes_dest=rrunner_port_client)[0]
+                tunnel_to_nodes_dest=client_tunnel_dest)[0]
         server_job = self.pool.run(self.ctx, server_cmd, jobid='server',
                 nnodes=1, outfile=server_outfile, nodes=server_node,
-                tunnel_to_nodes_dest=rrunner_port_server)[0]
+                tunnel_to_nodes_dest=server_tunnel_dest)[0]
 
         # Connect to the remote runners. SSH can be slow, so give generous
         # timeout (retry window) so we don't end up with a ConnectionRefused.
         # Client here means "connect to the remote runner server", not the
         # client/server of our webserver setup.
         self.ctx.log.info('Connecting to remote nodes')
+        client_port = client_job.tunnel_src if client_tunnel_dest else \
+                rrunner_port_client
+        server_port = server_job.tunnel_src if server_tunnel_dest else \
+                rrunner_port_server
         client = RemoteRunner(self.ctx.log, side='client',
-                port=client_job.tunnel_src, timeout=10)
+                host=client_host, port=client_port, timeout=10)
         server = RemoteRunner(self.ctx.log, side='client',
-                port=server_job.tunnel_src, timeout=10)
+                host=server_host, port=server_port, timeout=10)
 
         _err = None
         try:
