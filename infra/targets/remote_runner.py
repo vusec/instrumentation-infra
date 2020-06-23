@@ -129,15 +129,26 @@ class RemoteRunnerComms:
         self.last_pkg = ''
 
     def close(self):
+        if self.sock is None:
+            return
         self.sock.close()
         self.sock, self.rsock, self.wsock = None, None, None
 
     def send(self, func, *args, **kwargs):
         self.log.debug(' > {func} {args} {kwargs}'.format(**locals()))
+        if self.sock is None:
+            self.log.warning('Could not send message {func} because there is '
+                             'no connection'.format(**locals()))
+            return
         pkg = json.dumps((func, args, kwargs))
         self.sock.sendall(pkg.encode('utf-8') + b'\n')
 
     def recv(self):
+        if self.sock is None:
+            self.log.warning('Could not receive data because there is no '
+                             'connection')
+            return
+
         pkg = self.rsock.readline()
         if not pkg:
             raise RemoteRunnerError('connection closed')
