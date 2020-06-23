@@ -131,6 +131,7 @@ class RemoteRunnerComms:
     def close(self):
         if self.sock is None:
             return
+        self.sock.shutdown(socket.SHUT_RDWR)
         self.sock.close()
         self.sock, self.rsock, self.wsock = None, None, None
 
@@ -215,21 +216,25 @@ class RemoteRunner:
             self.log.info('Listening on %s:%s' % (host, port))
 
             conn, addr = s.accept()
-            with conn:
-                self.log.info('Connection from', addr)
+            self.log.info('Connection from %s', addr)
 
-                self.running = True
-                self.comms = RemoteRunnerComms(self.log, conn)
-                try:
-                    while self.running:
-                        func, args, kwargs = self.comms.recv()
-                        handler = getattr(self, func, None)
-                        if handler is None:
-                            self._error('unknown message type')
-                        handler(*args, **kwargs)
-                except Exception as e:
-                    self._error('exception occurred:\n' + str(e))
-                    raise e
+            self.running = True
+            self.comms = RemoteRunnerComms(self.log, conn)
+            try:
+                while self.running:
+                    func, args, kwargs = self.comms.recv()
+                    handler = getattr(self, func, None)
+                    if handler is None:
+                        self._error('unknown message type')
+                    handler(*args, **kwargs)
+            except Exception as e:
+                self._error('exception occurred:\n' + str(e))
+                raise e
+
+            self.comms.close()
+
+            if self.proc:
+                self.kill()
 
     def remotecall(func):
         def remotecallwrapper(runner, *args, **kwargs):
@@ -456,6 +461,10 @@ def server_main():
     except Exception as e:
         log.critical(traceback.format_exc().rstrip())
         sys.exit(-1)
+
+    # Really make sure we exit so the ssh doesn't linger on. This bypasses some
+    # cleanup code though...
+    os._exit(0)
 
 
 if __name__ == '__main__':
