@@ -277,7 +277,7 @@ class SSHPool(Pool):
         for node in self.nodes:
             cmd = ['ssh', *self.ssh_opts, node, 'echo -n hi']
             p = run(self._ctx, cmd, stderr=STDOUT, silent=True)
-            if p.returncode or p.stdout != 'hi':
+            if p.returncode or not p.stdout.endswith('hi'):
                 self._ctx.log.error('Testing SSH node ' + node + ' failed:\n'
                         + p.stdout)
                 sys.exit(-1)
