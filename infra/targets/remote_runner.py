@@ -277,7 +277,7 @@ class RemoteRunner:
     def close(self):
         try:
             self.runner_exit()
-        except RemoteRunnerError:
+        except (KeyboardInterrupt, RemoteRunnerError):
             pass
         self.comms.close()
         self.comms = None

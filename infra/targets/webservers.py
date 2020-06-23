@@ -514,6 +514,13 @@ class WebServerRunner:
         except RemoteRunnerError as e:
             _err = e
             self.ctx.log.error('aborting tests due to error:\n' + str(e))
+        except KeyboardInterrupt as e:
+            self.ctx.log.error('Received KeyboardInterrupt, aborting '
+                               'gracefully...\n'
+                               'Note that this will wait for the last '
+                               'benchmark to finish, which may take up to '
+                               '{wrk_duration} seconds.'.format(**locals()))
+            _err = e
 
         # Terminate the remote runners and clean up.
         client.close()
