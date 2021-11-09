@@ -206,7 +206,7 @@ class AutoMake(GNUTarPackage):
     @classmethod
     def default(cls, automake_version = '1.15.1',
                      autoconf_version = '2.69',
-                     m4_version = '1.4.18',
+                     m4_version = '1.4.19',
                      libtool_version: Optional[str] = '2.4.6') -> 'AutoMake':
         """
         Create a package with default versions for all autotools.
