@@ -46,7 +46,7 @@ class LLVM(Package):
     """
 
     #supported_versions = ('3.8.0', '3.9.1', '4.0.0', '5.0.0')
-    binutils = BinUtils('2.31.1', gold=True)
+    binutils = BinUtils('2.37', gold=True)
 
     def __init__(self, version: str,
                        compiler_rt: bool,
@@ -73,9 +73,9 @@ class LLVM(Package):
     def dependencies(self):
         # TODO: prune these
         yield Bash('4.3')
-        yield CoreUtils('8.22')
+        yield CoreUtils('9.0')
         yield self.binutils
-        yield Make('4.1')
+        yield Make('4.3')
         yield AutoMake.default()
         yield CMake('3.8.2')
         yield Ninja('1.8.2')

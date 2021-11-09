@@ -221,7 +221,7 @@ SmallVector<Value*, 2> AllocSite::getSizeFactors() {
             Factors.push_back(CS.getArgOperand(Info.MembArg));
     }
 
-    return std::move(Factors);
+    return Factors;
 }
 
 Value *AllocSite::getCallParam(uint64_t i) {
