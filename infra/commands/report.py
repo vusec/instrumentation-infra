@@ -317,7 +317,7 @@ def add_table_report_args(parser):
     can_fancy = sys.stdout.encoding == 'UTF-8' and sys.stdout.name == '<stdout>'
     parser.add_argument('--table',
             choices=('fancy', 'ascii', 'csv', 'tsv', 'ssv'),
-            default='fancy' if can_fancy else 'ascii-table',
+            default='fancy' if can_fancy else 'ascii',
             help='output mode for tables: UTF-8 formatted (default) / '
                  'ASCII tables / {comma,tab,space}-separated')
 
