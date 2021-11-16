@@ -119,6 +119,7 @@ class SPEC2006(Target):
     :param source_type: see above
     :param source: where to install spec from
     :param patches: patches to apply after installing
+    :param toolsets: approved toolsets to add additionally
     :param nothp: run without transparent huge pages (they tend to introduce
                   noise in performance measurements), implies :class:`Nothp`
                   dependency if ``True``
@@ -141,6 +142,7 @@ class SPEC2006(Target):
     def __init__(self, source_type: str,
                        source: str,
                        patches: List[str] = [],
+                       toolsets: List[str] = [],
                        nothp: bool = True,
                        force_cpu: int = 0):
         if source_type not in ('isofile', 'mounted', 'installed', 'tarfile', 'git'):
@@ -155,6 +157,7 @@ class SPEC2006(Target):
         self.source = source
         self.source_type = source_type
         self.patches = patches
+        self.toolsets = toolsets
         self.nothp = nothp
         self.force_cpu = force_cpu
 
@@ -188,6 +191,9 @@ class SPEC2006(Target):
     def fetch(self, ctx):
         def do_install(srcdir):
             os.chdir(srcdir)
+            for toolset in self.toolsets:
+                ctx.log.debug('extracting SPEC-CPU2006 toolset ' + toolset)
+                run(ctx, ['tar', 'xf', toolset])
             install_path = self._install_path(ctx)
             ctx.log.debug('installing SPEC-CPU2006 into ' + install_path)
             run(ctx, ['./install.sh', '-f', '-d', install_path],
