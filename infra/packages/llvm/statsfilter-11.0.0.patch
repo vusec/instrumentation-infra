@@ -1,0 +1,85 @@
+diff --git a/lib/Support/Statistic.cpp b/lib/Support/Statistic.cpp
+index e9308ab575ab..7981fac8f01c 100644
+--- a/lib/Support/Statistic.cpp
++++ b/lib/Support/Statistic.cpp
+@@ -47,6 +47,25 @@ static cl::opt<bool> StatsAsJSON("stats-json",
+                                  cl::desc("Display statistics as json data"),
+                                  cl::Hidden);
+
++static ManagedStatic<std::vector<std::string>> FilteredStatsTypes;
++
++namespace {
++struct StatsOnlyOpt {
++  void operator=(const std::string &Val) const {
++    if (Val.empty())
++      return;
++    FilteredStatsTypes->push_back(Val);
++  }
++};
++}
++
++static StatsOnlyOpt StatsOnlyOptLoc;
++
++static cl::opt<StatsOnlyOpt, true, cl::parser<std::string> >
++StatsOnly("stats-only", cl::desc("Enable a specific type of stats output"),
++          cl::Hidden, cl::ZeroOrMore, cl::value_desc("stats string"),
++          cl::location(StatsOnlyOptLoc), cl::ValueRequired);
++
+ static bool Enabled;
+ static bool PrintOnExit;
+
+@@ -167,31 +186,45 @@ void StatisticInfo::reset() {
+   Stats.clear();
+ }
+
++bool shouldPrintStatistic(const TrackingStatistic *S) {
++  if (FilteredStatsTypes->empty())
++    return true;
++  for (auto &d : *FilteredStatsTypes)
++    if (d == S->getDebugType())
++      return true;
++  return false;
++}
++
+ void llvm::PrintStatistics(raw_ostream &OS) {
+   StatisticInfo &Stats = *StatInfo;
+
++  Stats.sort();
++
++  std::vector<const TrackingStatistic*> FilteredStats;
++  for (size_t i = 0, e = Stats.Stats.size(); i != e; ++i)
++    if (shouldPrintStatistic(Stats.Stats[i]))
++      FilteredStats.push_back(Stats.Stats[i]);
++
+   // Figure out how long the biggest Value and Name fields are.
+   unsigned MaxDebugTypeLen = 0, MaxValLen = 0;
+-  for (size_t i = 0, e = Stats.Stats.size(); i != e; ++i) {
++  for (const TrackingStatistic *S : FilteredStats) {
+     MaxValLen = std::max(MaxValLen,
+-                         (unsigned)utostr(Stats.Stats[i]->getValue()).size());
++                         (unsigned)utostr(S->getValue()).size());
+     MaxDebugTypeLen = std::max(MaxDebugTypeLen,
+-                         (unsigned)std::strlen(Stats.Stats[i]->getDebugType()));
++                         (unsigned)std::strlen(S->getDebugType()));
+   }
+
+-  Stats.sort();
+-
+   // Print out the statistics header...
+   OS << "===" << std::string(73, '-') << "===\n"
+      << "                          ... Statistics Collected ...\n"
+      << "===" << std::string(73, '-') << "===\n\n";
+
+   // Print all of the statistics.
+-  for (size_t i = 0, e = Stats.Stats.size(); i != e; ++i)
++  for (const TrackingStatistic *S : FilteredStats)
+     OS << format("%*u %-*s - %s\n",
+-                 MaxValLen, Stats.Stats[i]->getValue(),
+-                 MaxDebugTypeLen, Stats.Stats[i]->getDebugType(),
+-                 Stats.Stats[i]->getDesc());
++                 MaxValLen, S->getValue(),
++                 MaxDebugTypeLen, S->getDebugType(),
++                 S->getDesc());
+
+   OS << '\n';  // Flush the output stream.
+   OS.flush();
