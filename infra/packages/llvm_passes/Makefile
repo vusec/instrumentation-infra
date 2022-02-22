@@ -19,7 +19,7 @@ LLVM_PREFIX    = $(shell $(PKG_CONFIG) llvm-$(LLVM_VERSION) --prefix)
 LLVM_CONFIG    = $(LLVM_PREFIX)/bin/llvm-config
 
 OLD_CXXFLAGS  := $(CXXFLAGS)
-CXXFLAGS       = -Werror -Wall -std=c++0x -I. \
+CXXFLAGS       = -fPIC -Werror -Wall -std=c++0x -I. \
                  $(shell $(LLVM_CONFIG) --cxxflags | sed s/-I/-isystem/g) \
                  $(OLD_CXXFLAGS)
 ifeq ($(DEBUG),true)
