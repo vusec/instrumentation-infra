@@ -91,14 +91,28 @@ class LLVM(Package):
 
             dirname = '%s-%s.src' % (repo, self.version)
             tarname = dirname + '.tar.xz'
-            download(ctx, 'https://releases.llvm.org/%s/%s' % (self.version, tarname))
+            major_version = int(self.version.split('.')[0])
+
+            if major_version >= 8:
+                # use github now
+                url_prefix = 'https://github.com/llvm/llvm-project/releases/download'
+                download(ctx, '%s/llvmorg-%s/%s' % (url_prefix, self.version, tarname))
+            else:
+                download(ctx, 'https://releases.llvm.org/%s/%s' % (self.version, tarname))
+
             run(ctx, ['tar', '-xf', tarname])
             shutil.move(dirname, clonedir)
             os.remove(tarname)
 
         # download and unpack sources
         get('llvm', 'src')
-        get('cfe', 'src/tools/clang')
+
+        major_version = int(self.version.split('.')[0])
+        if major_version >= 8:
+            get('clang', 'src/tools/clang')
+        else:
+            get('cfe', 'src/tools/clang')
+
         if self.compiler_rt:
             get('compiler-rt', 'src/projects/compiler-rt')
 
