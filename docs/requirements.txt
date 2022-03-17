@@ -1,1 +1,4 @@
 sphinx_rtd_theme
+
+# Optional infra dependencies, that need to be in place for docs
+psutil
