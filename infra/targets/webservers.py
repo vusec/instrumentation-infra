@@ -902,6 +902,11 @@ class Nginx(WebServer):
     def __init__(self, version, build_flags: List[str] = []):
         super().__init__()
         self.build_flags = build_flags
+<<<<<<< Updated upstream
+=======
+        self.conf=conf
+        self.name = 'nginx-'+ version
+>>>>>>> Stashed changes
 
     def fetch(self, ctx):
         download(ctx, 'https://nginx.org/download/' + self.tar_name())
