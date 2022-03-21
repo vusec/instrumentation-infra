@@ -16,6 +16,7 @@ from ..parallel import ProcessPool, SSHPool, PrunPool
 from ..target import Target
 from ..util import run, download, qjoin, param_attrs, FatalError, untar
 from .remote_runner import RemoteRunner, RemoteRunnerError
+from typing import List, Iterable
 
 
 class WebServer(Target, metaclass=ABCMeta):
@@ -898,8 +899,9 @@ class Nginx(WebServer):
     ))]
 
     @param_attrs
-    def __init__(self, version):
+    def __init__(self, version, build_flags: List[str] = []):
         super().__init__()
+        self.build_flags = build_flags
 
     def fetch(self, ctx):
         download(ctx, 'https://nginx.org/download/' + self.tar_name())
@@ -923,7 +925,8 @@ class Nginx(WebServer):
             run(ctx, ['./configure',
                       '--with-cc=' + ctx.cc,
                       '--with-cc-opt=' + qjoin(ctx.cflags),
-                      '--with-ld-opt=' + qjoin(ctx.ldflags)])
+                      '--with-ld-opt=' + qjoin(ctx.ldflags),
+                      *self.build_flags])
         else:
             ctx.log.debug('same flags as before, skip reconfigure')
 
