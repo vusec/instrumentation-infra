@@ -7,7 +7,7 @@ repository. To use it, you must create a `setup script`. The setup script
 specifies which targets and instances are used by the current project, including
 any custom targets and instances. An example can be found in our skeleton
 repository `here
-<https://github.com/vusec/instrumentation-skeleton/blob/master/setup.py>`_. The
+<https://github.com/vusec/instrumentation-skeleton/blob/master/setup.py>`__. The
 setup script (which we will call ``setup.py`` from now on) is an executable
 Python script that calls :func:`Setup.main() <infra.Setup.main>`. The script has
 a number of subcommands of which the basic usage is discussed below. Each
@@ -40,7 +40,7 @@ activated first (optional)::
 
 **Note**: if you're using ``zsh`` you first need to load and run
 ``bashcompinit`` as shown `here
-<https://stackoverflow.com/questions/3249432/can-a-bash-tab-completion-script-be-used-in-zsh>`_.
+<https://stackoverflow.com/questions/3249432/can-a-bash-tab-completion-script-be-used-in-zsh>`__.
 
 
 Cloning the framework in your project

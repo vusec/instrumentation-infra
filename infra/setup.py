@@ -132,7 +132,10 @@ class Setup:
     ``ctx.workdir`` is set to the work directory from which the setup script is
     invoked.
 
-    ``ctx.log`` is set to a new ``logging.Logger`` object.
+    ``ctx.target_run_wrapper`` can be set to a program to prepend in front of
+    the target's run command (executed directly on the command line). This can
+    be set to a custom shell script, or for example something like ``perf`` or
+    ``valgrind``.
     """
 
     _max_default_jobs = 16
