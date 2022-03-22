@@ -90,7 +90,12 @@ class Gperftools(Package):
         os.chdir('obj')
         if not os.path.exists('Makefile'):
             prefix = self.path(ctx, 'install')
-            run(ctx, ['../src/configure', '--prefix=' + prefix])
+            run(ctx, [
+                '../src/configure',
+                'CPPFLAGS=-I' + self.libunwind.path(ctx, 'install/include'),
+                'LDFLAGS=-L' + self.libunwind.path(ctx, 'install/lib'),
+                '--prefix=' + prefix
+            ])
         run(ctx, 'make -j%d' % ctx.jobs)
 
     def is_installed(self, ctx):
