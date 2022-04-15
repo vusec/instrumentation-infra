@@ -50,6 +50,7 @@ class LLVM(Package):
 
     def __init__(self, version: str,
                        compiler_rt: bool,
+                       lld: bool = False,
                        patches: List[str] = [],
                        build_flags: List[str] = []):
         #if version not in self.supported_versions:
@@ -58,6 +59,7 @@ class LLVM(Package):
 
         self.version = version
         self.compiler_rt = compiler_rt
+        self.lld = lld
         self.patches = patches
         self.build_flags = build_flags
 
@@ -65,7 +67,8 @@ class LLVM(Package):
             patches.append('compiler-rt-typefix')
 
     def ident(self):
-        return 'llvm-' + self.version
+        suffix = '-lld' if self.lld else ''
+        return 'llvm-' + self.version + suffix
 
     def prefix(self, ctx):
         return os.path.join(ctx.paths.installroot, self.ident())
@@ -115,6 +118,8 @@ class LLVM(Package):
 
         if self.compiler_rt:
             get('compiler-rt', 'src/projects/compiler-rt')
+        if self.lld:
+            get('lld', 'src/projects/lld')
 
     def build(self, ctx):
         # TODO: verify that any applied patches are in self.patches, error
