@@ -196,7 +196,7 @@ class LLVM(Package):
         ctx.ldflags = []
 
     @staticmethod
-    def add_plugin_flags(ctx: Namespace, *flags: Iterable[str]):
+    def add_plugin_flags(ctx: Namespace, *flags: Iterable[str], gold_passes: bool = True):
         """
         Helper to pass link-time flags to the LLVM gold plugin. Prefixes all
         **flags** with ``-Wl,-plugin-opt=`` before adding them to
@@ -206,7 +206,10 @@ class LLVM(Package):
         :param flags: flags to pass to the gold plugin
         """
         for flag in flags:
-            ctx.ldflags.append('-Wl,-plugin-opt=' + str(flag))
+            if gold_passes:
+                ctx.ldflags.append('-Wl,-plugin-opt=' + str(flag))
+            else:
+                ctx.ldflags.append('-Wl,-mllvm=' + str(flag))
 
 
 class LLVMBinDist(Package):

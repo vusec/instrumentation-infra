@@ -1,10 +1,12 @@
 #include <llvm/Pass.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Constants.h>
+#include "llvm/IR/LegacyPassManager.h"
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/raw_ostream.h>
 #include "llvm/Support/FileSystem.h"
+#include <llvm/Transforms/IPO/PassManagerBuilder.h>
 
 #define DEBUG_TYPE "dump-ir"
 
@@ -34,6 +36,20 @@ struct DumpIR : public ModulePass {
 char DumpIR::ID = 0;
 static RegisterPass<DumpIR> X("dump-ir",
         "Generate .ll source file for current module");
+
+#ifndef USE_GOLD_PASSES
+static llvm::RegisterStandardPasses RegisterDumpIRLTO(
+    llvm::PassManagerBuilder::EP_FullLinkTimeOptimizationEarly,
+    [](const llvm::PassManagerBuilder &Builder,
+       llvm::legacy::PassManagerBase &PM) { PM.add(new DumpIR()); });
+#endif
+
+#ifndef USE_GOLD_PASSES
+static cl::opt<bool> ClDumpIR(
+    "dump-ir",
+    cl::desc("If set will be enabled"),
+    cl::init(false));
+#endif
 
 static cl::opt<std::string> OutFile("dump-ir-to",
         cl::desc("Outfile for dumped llvm source"),
@@ -79,6 +95,9 @@ StringRef getNameFromGlobal(Module &M) {
 }
 
 bool DumpIR::runOnModule(Module &M) {
+#ifndef USE_GOLD_PASSES
+    if (!ClDumpIR) return false;
+#endif
     char *envdisable = getenv(DISABLE_ENV_FLAG);
     if (envdisable && !strncmp(envdisable, "1", 2))
         return false;
