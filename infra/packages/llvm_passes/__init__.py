@@ -59,12 +59,14 @@ class LLVMPasses(Package):
                        srcdir: str,
                        build_suffix: str,
                        use_builtins: bool,
-                       debug = False):
+                       debug = False,
+                       gold_passes: bool = True):
         self.llvm = llvm
         self.custom_srcdir = os.path.abspath(srcdir)
         self.build_suffix = build_suffix
-        self.builtin_passes = BuiltinLLVMPasses(llvm) if use_builtins else None
+        self.builtin_passes = BuiltinLLVMPasses(llvm, gold_passes=gold_passes) if use_builtins else None
         self.debug = debug
+        self.gold_passes = gold_passes
 
     def ident(self):
         return 'llvm-passes-' + self.build_suffix
@@ -99,6 +101,7 @@ class LLVMPasses(Package):
             'OBJDIR=' + self.path(ctx, 'obj'),
             'PREFIX=' + self.path(ctx, 'install'),
             'USE_BUILTINS=' + str(bool(self.builtin_passes)).lower(),
+            'USE_GOLD_PASSES=' + str(bool(self.gold_passes)).lower(),
             'DEBUG=' + str(self.debug).lower()
         ], **kwargs)
 
@@ -141,7 +144,11 @@ class LLVMPasses(Package):
             libpath = self.path(ctx, 'install/libpasses-gold.so')
             ctx.cflags += ['-flto']
             ctx.cxxflags += ['-flto']
-            ctx.ldflags += ['-flto', '-Wl,-plugin-opt=-load=' + libpath]
+            ctx.ldflags += ['-flto']
+            if self.gold_passes:
+                ctx.ldflags += ['-Wl,-plugin-opt=-load=' + libpath]
+            else:
+                ctx.ldflags += ['-fuse-ld=lld', '-Wl,-mllvm=-load=' + libpath]
             ctx.lib_ldflags += ['-flto']
 
     def runtime_cflags(self, ctx: Namespace) -> List[str]:
@@ -183,8 +190,8 @@ class BuiltinLLVMPasses(LLVMPasses):
     :param llvm: LLVM package to link against
     """
 
-    def __init__(self, llvm: LLVM):
-        super().__init__(llvm, '.', 'builtin-' + llvm.version, False)
+    def __init__(self, llvm: LLVM, gold_passes: bool = True):
+        super().__init__(llvm, '.', 'builtin-' + llvm.version, False, gold_passes=gold_passes)
         self.custom_srcdir = None
 
     def _srcdir(self, ctx, *subdirs):

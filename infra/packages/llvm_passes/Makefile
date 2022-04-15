@@ -50,7 +50,10 @@ LIBOPT   := libpasses-opt.so
 
 all: $(OBJDIR)/$(LIBGOLD) $(OBJDIR)/$(LIBOPT)
 
+ifeq ($(USE_GOLD_PASSES),true)
 $(OBJDIR)/$(LIBGOLD): LDFLAGS += $(LDFLAGSGOLD)
+$(OBJDIR)/$(LIBGOLD): CXXFLAGS += -DUSE_GOLD_PASSES
+endif
 $(OBJDIR)/$(LIBGOLD) $(OBJDIR)/$(LIBOPT): $(OBJS) $(BUILTIN_DEP)
 	cd $(OBJDIR) && $(CXX) $(OBJNAMES) $(LDFLAGS) -o $(@F)
 
