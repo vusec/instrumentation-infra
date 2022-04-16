@@ -69,7 +69,8 @@ class LLVMPasses(Package):
         self.gold_passes = gold_passes
 
     def ident(self):
-        return 'llvm-passes-' + self.build_suffix
+        suffix = '-gold' if self.gold_passes else ''
+        return 'llvm-passes-' + self.build_suffix + suffix
 
     def _srcdir(self, ctx):
         if not os.path.exists(self.custom_srcdir):
