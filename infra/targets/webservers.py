@@ -110,6 +110,10 @@ class WebServer(Target, metaclass=ABCMeta):
                 help='if specified, connect to the remote server runner via '
                      'this host instead of setting up an SSH tunnel.\n'
                      'NOTE: only supported for --parallel=ssh!')
+        parser.add_argument('--nofork', action='store_true',
+                help='if specified, run the server without any forking '
+                     '(1 worker max)\n'
+                     'NOTE: only supported for --parallel=ssh and nginx!')
 
 
         # bench-client options
@@ -1023,6 +1027,8 @@ class Nginx(WebServer):
     def start_cmd(self, runner, foreground=False):
         nginx = self.server_bin(runner.ctx, runner.instance)
         runopt = '-g "daemon off;"' if foreground else ''
+        if runner.ctx.args.nofork:
+            runopt = '-g "daemon off; master_process off;"'
         return '{nginx} -p "{runner.rundir}" -c nginx.conf {runopt}'\
                 .format(**locals())
 
