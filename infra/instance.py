@@ -25,7 +25,7 @@ class Instance(metaclass=ABCMeta):
     """
 
     #: :class:`str` The instance's name, must be unique.
-    name = None
+    name: str
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and other.name == self.name

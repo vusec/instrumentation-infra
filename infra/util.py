@@ -196,8 +196,8 @@ def run(ctx: Namespace, cmd: Union[str, List[str]], allow_error=False,
     cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd]
     cmd_print = qjoin(cmd)
     stdin = kwargs.get('stdin', None)
-    if isinstance(stdin, io.IOBase):
-        cmd_print += ' < ' + shlex.quote(stdin.name)
+    if isinstance(stdin, io.FileIO):
+        cmd_print += ' < ' + shlex.quote(str(stdin.name))
     ctx.log.debug('running: %s' % cmd_print)
     ctx.log.debug('workdir: %s' % os.getcwd())
 
