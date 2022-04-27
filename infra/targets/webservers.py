@@ -371,7 +371,7 @@ class WebServerRunner:
             correctly and perfom warmup run."""
 
             server_cmd = self.server.start_cmd(self, foreground=True)
-            server.run(server_cmd, wait=False)
+            server.run(server_cmd, wait=False, env=self.ctx.runenv)
 
             # Wait for server to come up
             starttime = time.time()
