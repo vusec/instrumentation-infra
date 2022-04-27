@@ -10,11 +10,13 @@ from hashlib import md5
 from urllib.request import urlretrieve
 from statistics import median, pstdev, mean
 from multiprocessing import cpu_count
+from typing import List, Dict, Union, Any
 from ..commands.report import outfile_path
+from ..instance import Instance
 from ..packages import Bash, Wrk, Netcat, Scons
-from ..parallel import ProcessPool, SSHPool, PrunPool
+from ..parallel import Pool, ProcessPool, SSHPool, PrunPool
 from ..target import Target
-from ..util import run, download, qjoin, param_attrs, FatalError, untar
+from ..util import run, download, qjoin, param_attrs, FatalError, untar, Namespace
 from .remote_runner import RemoteRunner, RemoteRunnerError
 from typing import List, Iterable
 
@@ -143,11 +145,11 @@ class WebServer(Target, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def server_bin(self, runner: 'WebServerRunner') -> str:
+    def server_bin(self, ctx, instance: Instance) -> str:
         """
         Retrieve path to the server binary file.
 
-        :param runner: the web server runner instance calling this function
+        :param instance: the instance for which this webserver is used
         :returns: the path to the server binary
         """
         pass
@@ -185,8 +187,9 @@ class WebServer(Target, metaclass=ABCMeta):
         """
         pass
 
+    @staticmethod
     @abstractmethod
-    def kill_cmd(self, runner: 'WebServerRunner') -> str:
+    def kill_cmd(runner: 'WebServerRunner') -> str:
         """
         Generate command to forcefully kill the running webserver.
 
@@ -286,6 +289,11 @@ class WebServer(Target, metaclass=ABCMeta):
 class WebServerRunner:
     comm_port = 40000
 
+    server: WebServer
+    ctx: Namespace
+    instance: Instance
+    pool: Pool
+
     @param_attrs
     def __init__(self, server, ctx, instance, pool):
         tmpdir = '/tmp/infra-%s-%s' % (server.name, instance.name)
@@ -356,6 +364,7 @@ class WebServerRunner:
             self.stop_server()
 
     def _run_bench_over_ssh(self):
+        assert isinstance(self.pool, SSHPool)
 
         def _start_server():
             """Start the server for benchmarking, verify it is behaving
@@ -418,8 +427,9 @@ class WebServerRunner:
                                                 url=url),
                     allow_error=True)
 
+            stats = {}
             if collect_stats:
-                stats = server.stop_monitoring()
+                stats: Dict[str, List[Union[int, float]]] = server.stop_monitoring()
 
             # Write results: wrk output and all of our collected stats
             resfile = lambda base: self.logfile('{base}.{cons}.{it}'
@@ -428,7 +438,7 @@ class WebServerRunner:
                 f.write(ret['stdout'])
             for stat in collect_stats:
                 with open(resfile(stat), 'w') as f:
-                    vals = stats[stat]
+                    vals = [str(v) for v in stats[stat]]
                     if isinstance(vals[0], float):
                         vals = ['%.3f' % v for v in vals]
                     f.write('\n'.join(map(str, vals + [''])))
@@ -444,7 +454,9 @@ class WebServerRunner:
 
         assert self.rundir.startswith(self.pool.tempdir)
 
-        tempfile = lambda *p: os.path.join(self.pool.tempdir, *p)
+        def tempfile(*p):
+            assert isinstance(self.pool, SSHPool)
+            return os.path.join(self.pool.tempdir, *p)
 
         client_node, server_node = self.ctx.args.ssh_nodes
         client_outfile = self.logfile('client_runner.out')
@@ -489,10 +501,10 @@ class WebServerRunner:
         self.pool.sync_to_nodes(os.path.join(curdir, rrunner_script))
 
         # Launch the remote runners so we can easily control each node.
-        client_job = self.pool.run(self.ctx, client_cmd, jobid='client',
+        client_job: Any = self.pool.run(self.ctx, client_cmd, jobid='client',
                 nnodes=1, outfile=client_outfile, nodes=client_node,
                 tunnel_to_nodes_dest=client_tunnel_dest)[0]
-        server_job = self.pool.run(self.ctx, server_cmd, jobid='server',
+        server_job: Any = self.pool.run(self.ctx, server_cmd, jobid='server',
                 nnodes=1, outfile=server_outfile, nodes=server_node,
                 tunnel_to_nodes_dest=server_tunnel_dest)[0]
 
@@ -526,7 +538,7 @@ class WebServerRunner:
 
             # Clean up any lingering server. # XXX hacky
             for s in (Nginx, ApacheHttpd, Lighttpd):
-                kill_cmd = s.kill_cmd(None, self)
+                kill_cmd = s.kill_cmd(self)
                 server.run(kill_cmd, allow_error=True)
 
             # Start actual server and benchmarking!
@@ -684,7 +696,7 @@ class WebServerRunner:
     def bash_command(self, script):
         if isinstance(self.pool, PrunPool):
             # escape for passing as: prun ... bash -c '<script>'
-            script = script.replace('$', '\$').replace('"', '\\"')
+            script = script.replace('$', '\\$').replace('"', '\\"')
 
         return ['bash', '-c', 'set -e; cd %s; %s' % (self.logdir, script)]
 
@@ -898,6 +910,8 @@ class Nginx(WebServer):
         'ngx_palloc_large' ':malloc' ':1',
     ))]
 
+    version: str
+
     @param_attrs
     def __init__(self, version, build_flags: List[str] = [], conf=''):
         super().__init__()
@@ -1017,7 +1031,8 @@ class Nginx(WebServer):
         return '{nginx} -p "{runner.rundir}" -c nginx.conf -s quit'\
                 .format(**locals())
 
-    def kill_cmd(self, runner):
+    @staticmethod
+    def kill_cmd(runner):
         return 'pkill -9 nginx'
 
 
@@ -1043,6 +1058,11 @@ class ApacheHttpd(WebServer):
         'apr_pcalloc'       ':calloc' ':1',
         'apr_pcalloc_debug' ':calloc' ':1',
     ))]
+
+    version: str
+    apr_version: str
+    apr_util_version: str
+    modules: List[str]
 
     @param_attrs
     def __init__(self, version: str, apr_version: str, apr_util_version: str,
@@ -1175,7 +1195,8 @@ class ApacheHttpd(WebServer):
                           'install', 'bin', 'httpd')
         return '{httpd} -d "{runner.rundir}" -k stop'.format(**locals())
 
-    def kill_cmd(self, runner):
+    @staticmethod
+    def kill_cmd(runner):
         return 'pkill -9 httpd'
 
 
@@ -1186,6 +1207,8 @@ class Lighttpd(WebServer):
 
     name = 'lighttpd'
 
+    version: str
+
     @param_attrs
     def __init__(self, version):
         super().__init__()
@@ -1195,7 +1218,9 @@ class Lighttpd(WebServer):
         yield Scons.default()
 
     def fetch(self, ctx):
-        minor_version = re.match(r'(\d+\.\d+)\.\d+', self.version).group(1)
+        m = re.match(r'(\d+\.\d+)\.\d+', self.version)
+        assert m
+        minor_version = m.group(1)
         download(ctx, 'https://download.lighttpd.net/lighttpd/releases-%s.x/%s' %
                       (minor_version, self.tar_name()))
 
@@ -1220,7 +1245,8 @@ class Lighttpd(WebServer):
 
         path = ctx.runenv.join_paths().get('PATH', [])
         cc = shutil.which(ctx.cc, path=path)
-        env = {
+        assert cc
+        env: Dict[str, Union[str, List[str]]] = {
             'CFLAGS': qjoin(ctx.cflags),
             'LDFLAGS': qjoin(ctx.ldflags),
         }
@@ -1287,7 +1313,8 @@ class Lighttpd(WebServer):
         # TODO better to read pidfile
         return 'pkill lighttpd'
 
-    def kill_cmd(self, runner):
+    @staticmethod
+    def kill_cmd(runner):
         return 'pkill -9 lighttpd'
 
 

@@ -12,7 +12,7 @@ import random
 from subprocess import Popen, STDOUT
 from abc import ABCMeta, abstractmethod
 from typing import Union, List, Optional, Iterator, Callable
-from .util import Namespace, run, require_program
+from .util import Namespace, run, require_program, FatalError
 
 
 # TODO: rewrite this to use
@@ -260,9 +260,10 @@ class SSHPool(Pool):
         self.has_created_tempdirs = False
 
     @property
-    def tempdir(self):
+    def tempdir(self) -> str:
         if not self.has_created_tempdirs:
             self.create_tempdirs()
+        assert self._tempdir is not None
         return self._tempdir
 
     def _ssh_cmd(self, node, cmd, extra_opts=None):
@@ -277,7 +278,7 @@ class SSHPool(Pool):
         for node in self.nodes:
             cmd = ['ssh', *self.ssh_opts, node, 'echo -n hi']
             p = run(self._ctx, cmd, stderr=STDOUT, silent=True)
-            if p.returncode or not p.stdout.endswith('hi'):
+            if p.returncode or not str(p.stdout).endswith('hi'):
                 self._ctx.log.error('Testing SSH node ' + node + ' failed:\n'
                         + p.stdout)
                 sys.exit(-1)

@@ -30,6 +30,7 @@ import sys
 import threading
 import time
 import traceback
+from typing import Any, Callable, Dict, List, Tuple, Union, Optional, overload, Literal
 
 
 class RemoteRunnerError(Exception):
@@ -50,6 +51,7 @@ class MonitorThread(threading.Thread):
     # Statistics that require looping over all monitored processes
     aggregated_stats = ('cpu-proc', 'rss', 'vms')
 
+    data: Dict[str, List[Union[int, float]]]
 
     def __init__(self, interval, pids=[], stats=('cpu', 'rss')):
         threading.Thread.__init__(self)
@@ -84,7 +86,7 @@ class MonitorThread(threading.Thread):
 
         aggr_stats = tuple(set(self.stats) & set(self.aggregated_stats))
         if aggr_stats:
-            aggr = {s: 0 for s in aggr_stats}
+            aggr: Dict[str, Union[int, float]] = {s: 0 for s in aggr_stats}
             for proc in self.procs:
                 with proc.oneshot():
                     if 'cpu-proc' in aggr:
@@ -144,11 +146,12 @@ class RemoteRunnerComms:
         pkg = json.dumps((func, args, kwargs))
         self.sock.sendall(pkg.encode('utf-8') + b'\n')
 
-    def recv(self):
+    def recv(self) -> Tuple[str, str, str]:
         if self.sock is None:
             self.log.warning('Could not receive data because there is no '
                              'connection')
             return
+        assert self.rsock is not None and self.wsock is not None
 
         pkg = self.rsock.readline()
         if not pkg:
@@ -156,6 +159,46 @@ class RemoteRunnerComms:
         self.log.debug(' < %s', pkg.rstrip())
         self.last_pkg = pkg.rstrip()
         return json.loads(pkg)
+
+
+def remotecall(func: Callable) -> Callable:
+    def remotecallwrapper(runner, *args, **kwargs):
+        assert runner.side in ('client', 'server'), runner.side
+        if runner.side == 'client':
+            runner.comms.send(func.__name__, *args, **kwargs)
+            status, msg, payload = runner.comms.recv()
+            if status != 'ok':
+                raise RemoteRunnerError('Got unexpected ' + status + ': ' +
+                        ' '.join(str(m) for m in msg) + '\n' +
+                        'returned payload: ' + str(payload))
+            return payload['rv']
+        else:
+            if runner.in_server_remotecall:
+                return func(runner, *args, **kwargs)
+            else:
+                runner.in_server_remotecall = True
+                rv = func(runner, *args, **kwargs)
+                runner.comms.send('ok', rv=rv)
+                runner.in_server_remotecall = False
+    return remotecallwrapper
+
+
+def clientonly(func: Callable):
+    def clientonlywrapper(runner, *args, **kwargs):
+        if runner.side != 'client':
+            runner._error('running client-only function on '
+                    + str(runner.side))
+        return func(runner, *args, **kwargs)
+    return clientonlywrapper
+
+
+def serveronly(func: Callable):
+    def serveronlywrapper(runner, *args, **kwargs):
+        if runner.side != 'server':
+            runner._error('running server-only function on '
+                    + str(runner.side))
+        return func(runner, *args, **kwargs)
+    return serveronlywrapper
 
 
 class RemoteRunner:
@@ -182,6 +225,7 @@ class RemoteRunner:
             self.runner_serve(host or '0.0.0.0', port)
 
     def _error(self, msg, **kwargs):
+        assert self.comms is not None
         msg = str(msg) + '\nduring handling of message:\n' + self.comms.last_pkg
         if self.side == 'server':
             self.comms.send('error', msg, **kwargs)
@@ -229,49 +273,11 @@ class RemoteRunner:
                     handler(*args, **kwargs)
             except Exception as e:
                 self._error('exception occurred:\n' + str(e))
-                raise e
 
             self.comms.close()
 
             if self.proc:
                 self.kill()
-
-    def remotecall(func):
-        def remotecallwrapper(runner, *args, **kwargs):
-            assert runner.side in ('client', 'server'), runner.side
-            if runner.side == 'client':
-                runner.comms.send(func.__name__, *args, **kwargs)
-                status, msg, payload = runner.comms.recv()
-                if status != 'ok':
-                    raise RemoteRunnerError('Got unexpected ' + status + ': ' +
-                            ' '.join(str(m) for m in msg) + '\n' +
-                            'returned payload: ' + str(payload))
-                return payload['rv']
-            else:
-                if runner.in_server_remotecall:
-                    return func(runner, *args, **kwargs)
-                else:
-                    runner.in_server_remotecall = True
-                    rv = func(runner, *args, **kwargs)
-                    runner.comms.send('ok', rv=rv)
-                    runner.in_server_remotecall = False
-        return remotecallwrapper
-
-    def clientonly(func):
-        def clientonlywrapper(runner, *args, **kwargs):
-            if runner.side != 'client':
-                self._error('running client-only function on '
-                        + str(runner.side))
-            return func(runner, *args, **kwargs)
-        return clientonlywrapper
-
-    def serveronly(func):
-        def serveronlywrapper(runner, *args, **kwargs):
-            if runner.side != 'server':
-                self._error('running server-only function on '
-                        + str(runner.side))
-            return func(runner, *args, **kwargs)
-        return serveronlywrapper
 
     @clientonly
     def close(self):
@@ -279,7 +285,8 @@ class RemoteRunner:
             self.runner_exit()
         except (KeyboardInterrupt, RemoteRunnerError):
             pass
-        self.comms.close()
+        if self.comms:
+            self.comms.close()
         self.comms = None
         self.side = None
 
@@ -300,8 +307,15 @@ class RemoteRunner:
     def runner_exit(self):
         self.running = False
 
+    @overload
+    def run(self, cmd, wait: Literal[True] = True, env={}, allow_error = False, ) -> Dict[str, Any]:
+        ...
+    @overload
+    def run(self, cmd, wait: Literal[False], env={}) -> None:
+        ...
+
     @remotecall
-    def run(self, cmd, env={}, wait=True, allow_error=False):
+    def run(self, cmd, wait=True, env={}, allow_error=False) -> Optional[Dict[str, Any]]:
         if self.proc is not None and self.proc.poll() is None:
             self._error('already running a process')
 
@@ -335,9 +349,11 @@ class RemoteRunner:
         return self.proc.poll()
 
     @remotecall
-    def proc_communicate(self, stdin=None, timeout=None):
+    def proc_communicate(self, stdin=None, timeout=None) -> Tuple[Optional[str], Optional[str]]:
         if self.proc is None:
             self._error('no process was running')
+
+        assert self.proc.stdout is not None and self.proc.stderr is not None
 
         # Bug in communicate() if stdout/stderr is closed (fixed in py3.9)
         if self.proc.stdout.closed and self.proc.stderr.closed:
@@ -353,7 +369,7 @@ class RemoteRunner:
                 return None, None
 
     @remotecall
-    def wait(self, timeout=None, output=True, stats=True, allow_error=False):
+    def wait(self, timeout=None, output=True, stats=True, allow_error=False) -> Dict[str, Any]:
         if self.proc is None:
             self._error('no process was running')
 
@@ -393,6 +409,7 @@ class RemoteRunner:
     def read_output_line(self):
         if self.proc is None:
             self._error('no process was running')
+        assert self.proc.stdout is not None
 
         line = self.proc.stdout.readline().rstrip()
         return line
@@ -408,7 +425,7 @@ class RemoteRunner:
         self.monitor_thread.start()
 
     @remotecall
-    def stop_monitoring(self):
+    def stop_monitoring(self) -> Any:
         if self.monitor_thread is None:
             self._error('no monitoring thread')
         self.monitor_thread.stop()
