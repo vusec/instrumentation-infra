@@ -30,7 +30,7 @@ import sys
 import threading
 import time
 import traceback
-from typing import Any, Callable, Dict, List, Tuple, Union, Optional, overload, Literal
+from typing import Any, Callable, Dict, List, Tuple, Union, Optional, overload
 
 
 class RemoteRunnerError(Exception):
@@ -306,13 +306,6 @@ class RemoteRunner:
     @remotecall
     def runner_exit(self):
         self.running = False
-
-    @overload
-    def run(self, cmd, wait: Literal[True] = True, env={}, allow_error = False, ) -> Dict[str, Any]:
-        ...
-    @overload
-    def run(self, cmd, wait: Literal[False], env={}) -> None:
-        ...
 
     @remotecall
     def run(self, cmd, wait=True, env={}, allow_error=False) -> Optional[Dict[str, Any]]:
