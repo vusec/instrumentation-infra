@@ -12,3 +12,7 @@ Web servers
 .. autoclass:: infra.targets.Nginx
 .. autoclass:: infra.targets.ApacheHttpd
 .. autoclass:: infra.targets.Lighttpd
+
+Juliet
+======
+.. autoclass:: infra.targets.Juliet
