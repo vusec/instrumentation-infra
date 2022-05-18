@@ -86,7 +86,7 @@ class SPEC2006(Target):
             raise FatalError('invalid source type "%s"' % source_type)
 
         if source_type == 'installed':
-            shrc = self.source + '/shrc'
+            shrc = source + '/shrc'
             if not os.path.exists(shrc):
                 shrc = os.path.abspath(shrc)
                 raise FatalError(shrc + ' is not a valid SPEC installation')
