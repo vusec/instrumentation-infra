@@ -32,8 +32,13 @@ OLD_LDFLAGS   := $(LDFLAGS)
 LDFLAGS        = -g -shared $(OLD_LDFLAGS)
 LDFLAGSGOLD    = -Wl,--no-undefined -L$(LLVM_PREFIX)/lib -l:LLVMgold.so -Wl,--rpath=$(LLVM_PREFIX)/lib
 ifeq ($(USE_BUILTINS),true)
+ifeq ($(USE_GOLD_PASSES),true)
+    BUILTIN_PREFIX  = $(shell $(PKG_CONFIG) llvm-passes-builtin-$(LLVM_VERSION)-gold --prefix)
+    CXXFLAGS       += $(shell $(PKG_CONFIG) llvm-passes-builtin-$(LLVM_VERSION)-gold --cxxflags)
+else
     BUILTIN_PREFIX  = $(shell $(PKG_CONFIG) llvm-passes-builtin-$(LLVM_VERSION) --prefix)
     CXXFLAGS       += $(shell $(PKG_CONFIG) llvm-passes-builtin-$(LLVM_VERSION) --cxxflags)
+endif
     LDFLAGS        += -L$(BUILTIN_PREFIX) -Wl,-whole-archive -lpasses-builtin -Wl,-no-whole-archive
     BUILTIN_DEP     = $(BUILTIN_PREFIX)/libpasses-builtin.a
 else
@@ -50,7 +55,10 @@ LIBOPT   := libpasses-opt.so
 
 all: $(OBJDIR)/$(LIBGOLD) $(OBJDIR)/$(LIBOPT)
 
+ifeq ($(USE_GOLD_PASSES),true)
 $(OBJDIR)/$(LIBGOLD): LDFLAGS += $(LDFLAGSGOLD)
+$(OBJDIR)/$(LIBGOLD): CXXFLAGS += -DUSE_GOLD_PASSES
+endif
 $(OBJDIR)/$(LIBGOLD) $(OBJDIR)/$(LIBOPT): $(OBJS) $(BUILTIN_DEP)
 	cd $(OBJDIR) && $(CXX) $(OBJNAMES) $(LDFLAGS) -o $(@F)
 
