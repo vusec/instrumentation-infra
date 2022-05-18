@@ -18,8 +18,8 @@ class LibElf(Package):
 
     def fetch(self, ctx):
         tarname = 'libelf-%s.tar.gz' % self.version
-        download(ctx, 'http://www.mr511.de/software/' + tarname)
-        run(ctx, ['tar', '-xzf', tarname])
+        download(ctx, 'https://web.archive.org/web/20160505164756if_/http://www.mr511.de/software/' + tarname)
+        run(ctx, ['tar', '-xf', tarname])
         shutil.move('libelf-' + self.version, 'src')
         os.remove(tarname)
 
