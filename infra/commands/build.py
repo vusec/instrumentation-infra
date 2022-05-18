@@ -131,6 +131,7 @@ class ExecHookCommand(Command):
 
     def run(self, ctx):
         instance = self.instances[ctx.args.instance]
+        ctx.args.dry_run = False
 
         absfile = os.path.abspath(ctx.args.targetfile)
         if not os.path.exists(absfile):
