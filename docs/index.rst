@@ -60,3 +60,8 @@ and for examples of how to invoke build and run commands.
    instances
    packages
    passes
+
+.. toctree::
+   :caption: Guides
+
+   guides/webservers
