@@ -143,6 +143,7 @@ disabled and disabled respectively::
 The ``--iterations`` option specifies the number of times to run the target, to
 be able to compute a median and standard deviation for the runtime.
 
+.. _usage-parallel:
 
 Parallel builds and runs
 ========================
