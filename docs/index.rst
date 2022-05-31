@@ -62,6 +62,7 @@ and for examples of how to invoke build and run commands.
    passes
 
 .. toctree::
+   :maxdepth: 1
    :caption: Guides
 
    guides/webservers

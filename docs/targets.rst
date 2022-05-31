@@ -6,6 +6,7 @@ SPEC
 ====
 .. autoclass:: infra.targets.SPEC2006
    :members: custom_allocs_flags
+.. autoclass:: infra.targets.SPEC2017
 
 Web servers
 ===========
