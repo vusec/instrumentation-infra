@@ -185,14 +185,14 @@ The ``report`` command
     ./setup.py report TARGET RUNDIRS -i INSTANCE --raw
     ./setup.py report TARGET RUNDIRS --help-fields
 
-``report`` dsiplays a table with benchmark results for the specified target,
+``report`` displays a table with benchmark results for the specified target,
 gathered from a given list of run directories that have been populated by a
 (parallel) ``run`` invocation. Each target defines a number of reportable
 fields that are measured during benchmarks, which are listed by
 ``--help-fields``.
 
 The report aggregates results by default, grouping them on the default field
-set by `<infra.Target.aggregation_field>`. This can be overridden using the
+set by ``infra.Target.aggregation_field``. This can be overridden using the
 ``--groupby`` option. The user must specify an aggregation function for each
 reported field in the ``-f|--field`` option. For instance, suppose we ran the
 ``clang`` and ``myinst`` instances of the ``spec2006`` target and want to

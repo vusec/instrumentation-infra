@@ -1,5 +1,5 @@
-Webserver benchmarking guide
-============================
+Webserver benchmarking
+======================
 
 The infra has built-in support for benchmarking webserver applications like
 Nginx. In such setups, the infra runs an instrumented version of the server
