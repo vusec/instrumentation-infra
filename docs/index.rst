@@ -65,4 +65,5 @@ and for examples of how to invoke build and run commands.
    :maxdepth: 1
    :caption: Guides
 
+   guides/spec
    guides/webservers

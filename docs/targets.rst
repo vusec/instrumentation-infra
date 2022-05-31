@@ -2,6 +2,8 @@
 Built-in targets
 ================
 
+.. _targets-spec:
+
 SPEC
 ====
 .. autoclass:: infra.targets.SPEC2006
