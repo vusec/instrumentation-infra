@@ -1,7 +1,8 @@
 import os
 import shutil
+from typing import List
 from ..package import Package
-from ..util import Namespace, run, download
+from ..util import Namespace, run, apply_patch, download
 from .gnu import AutoMake
 
 
@@ -57,10 +58,10 @@ class Gperftools(Package):
     :param libunwind_version: libunwind version to use
     """
 
-    def __init__(self, commit: str, libunwind_version='1.4-rc1'):
+    def __init__(self, commit: str, libunwind_version='1.4-rc1', patches: List[str] = []):
         self.commit = commit
         self.libunwind = LibUnwind(libunwind_version)
-        # TODO patches
+        self.patches = patches
 
     def ident(self):
         return 'gperftools-' + self.commit
@@ -80,7 +81,20 @@ class Gperftools(Package):
     def is_built(self, ctx):
         return os.path.exists('obj/.libs/libtcmalloc.so')
 
+    def _apply_patches(self, ctx):
+        os.chdir(self.path(ctx, 'src'))
+        config_root = os.path.dirname(os.path.abspath(__file__))
+        for path in self.patches:
+            if '/' not in path:
+                path = '%s/%s.patch' % (config_root, path)
+            if apply_patch(ctx, path, 1):
+                ctx.log.warning('applied patch %s to gperftools '
+                                'directory' % path)
+        os.chdir(self.path(ctx))
+
     def build(self, ctx):
+        self._apply_patches(ctx)
+
         if not os.path.exists('src/configure') or not os.path.exists('src/INSTALL'):
             os.chdir('src')
             run(ctx, 'autoreconf -vfi')
