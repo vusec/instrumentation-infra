@@ -56,6 +56,7 @@ class Gperftools(Package):
     :identifier: gperftools-<version>
     :param commit: git branch/commit to check out after cloning
     :param libunwind_version: libunwind version to use
+    :param patches: optional patches to apply before building
     """
 
     def __init__(self, commit: str, libunwind_version='1.4-rc1', patches: List[str] = []):
