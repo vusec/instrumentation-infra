@@ -111,6 +111,11 @@ of different runs, it's convenient to rename these directories manually after
 it's done (e.g., from ``results/run-2020-04-16.10-15-55`` to
 ``results/baseline``).
 
+.. note::
+
+    You need to pass the ``--parallel=proc`` argument to actually generate
+    results that can be reported.
+
 Parsing the results
 ^^^^^^^^^^^^^^^^^^^
 
