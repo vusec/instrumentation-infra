@@ -455,6 +455,7 @@ class SPEC2006(Target):
                 cflags = qjoin(ctx.cflags)
                 cxxflags = qjoin(ctx.cxxflags)
                 ldflags = qjoin(ctx.ldflags)
+                extra_libs = qjoin(ctx.extra_libs) if 'extra_libs' in ctx else None
                 fortranc = shutil.which('gfortran') or shutil.which('false')
                 print('CC          = %s %s' % (ctx.cc, cflags))
                 print('CXX         = %s %s' % (ctx.cxx, cxxflags))
@@ -463,6 +464,8 @@ class SPEC2006(Target):
                 print('CXXLD       = %s %s' % (ctx.cxx, ldflags))
                 print('COPTIMIZE   = -std=gnu89')
                 print('CXXOPTIMIZE = -std=c++98') # fix __float128 in old clang
+                if extra_libs:
+                    print('EXTRA_LIBS = %s' % (extra_libs))
 
                 # post-build hooks call back into the setup script
                 if ctx.hooks.post_build:
