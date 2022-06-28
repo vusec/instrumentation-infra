@@ -1,0 +1,12 @@
+diff --git a/ldso/dlstart.c b/ldso/dlstart.c
+index 4dbe1784..3cb3170a 100644
+--- a/ldso/dlstart.c
++++ b/ldso/dlstart.c
+@@ -17,6 +17,8 @@
+        *(fp) = static_func_ptr; } while(0)
+ #endif
+ 
++__asm__(".globl __dls2");
++
+ hidden void _dlstart_c(size_t *sp, size_t *dynv)
+ {
