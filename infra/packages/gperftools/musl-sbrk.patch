@@ -1,0 +1,14 @@
+diff --git a/src/malloc_hook_mmap_linux.h b/src/malloc_hook_mmap_linux.h
+index 1c4c766..e61e883 100755
+--- a/src/malloc_hook_mmap_linux.h
++++ b/src/malloc_hook_mmap_linux.h
+@@ -216,7 +216,8 @@ extern "C" void* mremap(void* old_addr, size_t old_size, size_t new_size,
+   return result;
+ }
+ 
+-#ifndef __UCLIBC__
++#if 0
++//#ifndef __UCLIBC__
+ // libc's version:
+ extern "C" void* __sbrk(ptrdiff_t increment);
+ 

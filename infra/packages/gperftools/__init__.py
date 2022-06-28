@@ -1,9 +1,9 @@
 import os
 import shutil
 from typing import List
-from ..package import Package
-from ..util import Namespace, run, apply_patch, download
-from .gnu import AutoMake
+from ...package import Package
+from ...util import Namespace, run, apply_patch, download
+from ..gnu import AutoMake
 
 
 class LibUnwind(Package):
@@ -67,6 +67,15 @@ class LibUnwind(Package):
 
 class Gperftools(Package):
     """
+
+    Finally, you may specify a list of patches to apply before building. These
+    may be paths to .patch files that will be applied with ``patch -p1``, or
+    choices from the following built-in patches:
+
+    - **musl-sbrk** disables the use of __sbrk which is glibc-specific (latest upstream has a better fix for this). This has been taken from https://github.com/vusec/typeisolation.
+
+    - **musl-test-build-hacks** modifies makefiles to not build tests (because they don't link with musl). This has been taken from https://github.com/vusec/typeisolation.
+
     :identifier: gperftools-<version>
     :param commit: git branch/commit to check out after cloning
     :param libunwind_version: libunwind version to use
