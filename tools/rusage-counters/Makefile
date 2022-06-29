@@ -1,6 +1,6 @@
 OBJDIR   ?= .
-CC       := gcc
-CXX      := g++
+CC       ?= clang
+CXX      ?= clang++
 CFLAGS   := -fPIC -O2 -Wall -Wextra
 CXXFLAGS := $(CFLAGS)
 LDFLAGS  :=

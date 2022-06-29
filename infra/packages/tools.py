@@ -35,6 +35,8 @@ class Tool(Package, metaclass=ABCMeta):
         os.chdir(self._srcpath(ctx))
         run(ctx, [
             'make',
+            'CC='+ctx.cc,
+            'CXX='+ctx.cxx,
             'OBJDIR=' + self.path(ctx, 'obj'),
             'INSTALLDIR=' + self.path(ctx, 'install'),
             *args
