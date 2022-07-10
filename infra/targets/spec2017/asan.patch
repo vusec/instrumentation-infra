@@ -1,0 +1,53 @@
+--- bad/benchspec/CPU/502.gcc_r/src/reload1.c   2022-07-06 10:00:38.064986081 +0200
++++ good/benchspec/CPU/502.gcc_r/src/reload1.c  2022-07-06 10:21:47.431981984 +0200
+@@ -1858,20 +1858,25 @@
+ /* We decided to spill hard register SPILLED, which has a size of
+    SPILLED_NREGS.  Determine how pseudo REG, which is live during the insn,
+    is affected.  We will add it to SPILLED_PSEUDOS if necessary, and we will
+    update SPILL_COST/SPILL_ADD_COST.  */
+ 
+ static void
+ count_spilled_pseudo (int spilled, int spilled_nregs, int reg)
+ {
+   int freq = REG_FREQ (reg);
+   int r = reg_renumber[reg];
++
++  // ASAN FIX: Avoid unused OOB read with r=-1 below.
++  if (ira_conflicts_p && r < 0)
++    return;
++
+   int nregs = hard_regno_nregs[r][PSEUDO_REGNO_MODE (reg)];
+ 
+   /* Ignore spilled pseudo-registers which can be here only if IRA is
+      used.  */
+   if ((ira_conflicts_p && r < 0)
+       || REGNO_REG_SET_P (&spilled_pseudos, reg)
+       || spilled + spilled_nregs <= r || r + nregs <= spilled)
+     return;
+ 
+   SET_REGNO_REG_SET (&spilled_pseudos, reg);
+--- bad/benchspec/CPU/525.x264_r/src/ldecod_src/biaridecod.c    2015-08-13 20:30:10.000000000 +0200
++++ good/benchspec/CPU/525.x264_r/src/ldecod_src/biaridecod.c   2022-07-06 10:45:32.831553037 +0200
+@@ -285,20 +285,22 @@
+     return 1;
+   }
+ }
+ 
+ /*!
+  ************************************************************************
+  * \brief
+  *    Initializes a given context with some pre-defined probability state
+  ************************************************************************
+  */
++// ASAN FIX: pstate is created from oob memory.
++__attribute__((no_sanitize_address))
+ void biari_init_context (int qp, BiContextTypePtr ctx, const signed char* ini)
+ {
+   int pstate = ((ini[0]* qp )>>4) + ini[1];
+ 
+   if ( pstate >= 64 )
+   {
+     pstate = imin(126, pstate);
+     ctx->state = (uint16) (pstate - 64);
+     ctx->MPS   = 1;
+   }
