@@ -1,0 +1,29 @@
+--- spec2006-1.2/benchspec/CPU2006/447.dealII/src/include/grid/tria_accessor.h        2005-06-03 04:43:52.000000000 +0200
++++ spec2006-fixed/benchspec/CPU2006/447.dealII/src/include/grid/tria_accessor.h      2022-07-11 15:53:59.585052637 +0200
+@@ -29,25 +29,21 @@
+ class Quad;
+ class Hexahedron;
+ 
+ template <int celldim, int dim> class TriaObjectAccessor;
+ template <int dim>              class TriaObjectAccessor<0, dim>;
+ template <int dim>              class TriaObjectAccessor<1, dim>;
+ template <int dim>              class TriaObjectAccessor<2, dim>;
+ template <int dim>              class TriaObjectAccessor<3, dim>;
+ 
+ 
+-namespace std
+-{
+-  template<class T1, class T2>
+-  struct pair;
+-}
++#include <utility>
+ 
+ // note: the file tria_accessor.templates.h is included at the end of
+ // this file.  this includes a lot of templates. originally, this was
+ // only done in debug mode, but led to cyclic reduction problems and
+ // so is now on by default.
+ 
+ 
+ /**
+  * Implements the accessor class used by TriaRawIterator and derived
+  * classes.
