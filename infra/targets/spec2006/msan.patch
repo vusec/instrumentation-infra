@@ -1,0 +1,72 @@
+--- spec2006-1.2/benchspec/CPU2006/403.gcc/src/sbitmap.c	2005-06-03 04:43:52.000000000 +0200
++++ spec2006-fixed/benchspec/CPU2006/403.gcc/src/sbitmap.c	2022-07-11 21:58:17.655489468 +0200
+@@ -69,20 +69,21 @@
+      one pointer).  Neither is a bad idea, but this is simpler for now.  */
+   {
+     /* Based on DEFAULT_ALIGNMENT computation in obstack.c.  */
+     struct { char x; SBITMAP_ELT_TYPE y; } align;
+     int alignment = (char *) & align.y - & align.x;
+     vector_bytes = (vector_bytes + alignment - 1) & ~ (alignment - 1);
+   }
+ 
+   amt = vector_bytes + (n_vecs * elm_bytes);
+   bitmap_vector = (sbitmap *) xmalloc (amt);
++  memset(bitmap_vector, 0, amt);
+ 
+   for (i = 0, offset = vector_bytes; i < n_vecs; i++, offset += elm_bytes)
+     {
+       sbitmap b = (sbitmap) ((char *) bitmap_vector + offset);
+ 
+       bitmap_vector[i] = b;
+       b->n_bits = n_elms;
+       b->size = size;
+       b->bytes = bytes;
+     }
+--- spec2006-1.2/benchspec/CPU2006/403.gcc/src/final.c	2005-06-03 04:43:52.000000000 +0200
++++ spec2006-fixed/benchspec/CPU2006/403.gcc/src/final.c	2022-07-11 22:07:24.645521334 +0200
+@@ -1013,20 +1013,21 @@
+ 		    max_skip = LABEL_ALIGN_AFTER_BARRIER_MAX_SKIP;
+ 		  }
+ 		break;
+ 	      }
+ 	}
+     }
+ #ifdef HAVE_ATTR_length
+ 
+   /* Allocate the rest of the arrays.  */
+   insn_lengths = (int *) xmalloc (max_uid * sizeof (*insn_lengths));
++  memset(insn_lengths, 0, max_uid * sizeof (*insn_lengths));
+   insn_lengths_max_uid = max_uid;
+   /* Syntax errors can lead to labels being outside of the main insn stream.
+      Initialize insn_addresses, so that we get reproducible results.  */
+   INSN_ADDRESSES_ALLOC (max_uid);
+ 
+   varying_length = (char *) xcalloc (max_uid, sizeof (char));
+ 
+   /* Initialize uid_align.  We scan instructions
+      from end to start, and keep in align_tab[n] the last seen insn
+      that does an alignment of at least n+1, i.e. the successor
+--- spec2006-1.2/benchspec/CPU2006/403.gcc/src/ggc-page.c	2005-06-03 04:43:52.000000000 +0200
++++ spec2006-fixed/benchspec/CPU2006/403.gcc/src/ggc-page.c	2022-07-11 22:39:17.994018831 +0200
+@@ -646,20 +646,21 @@
+ 
+       char *allocation, *a, *enda;
+       size_t alloc_size, head_slop, tail_slop;
+       int multiple_pages = (entry_size == G.pagesize);
+ 
+       if (multiple_pages)
+ 	alloc_size = GGC_QUIRE_SIZE * G.pagesize;
+       else
+ 	alloc_size = entry_size + G.pagesize - 1;
+       allocation = xmalloc (alloc_size);
++      memset(allocation, 0, alloc_size);
+ 
+       page = (char *) (((size_t) allocation + G.pagesize - 1) & -G.pagesize);
+       head_slop = page - allocation;
+       if (multiple_pages)
+ 	tail_slop = ((size_t) allocation + alloc_size) & (G.pagesize - 1);
+       else
+ 	tail_slop = alloc_size - entry_size - head_slop;
+       enda = allocation + alloc_size - tail_slop;
+ 
+       /* We allocated N pages, which are likely not aligned, leaving
