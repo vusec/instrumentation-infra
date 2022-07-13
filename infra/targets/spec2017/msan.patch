@@ -1,0 +1,132 @@
+diff --git a/benchspec/CPU/500.perlbench_r/src/perl.c b/benchspec/CPU/500.perlbench_r/src/perl.c
+index 8b724929..ec3b9a1c 100644
+--- a/benchspec/CPU/500.perlbench_r/src/perl.c
++++ b/benchspec/CPU/500.perlbench_r/src/perl.c
+@@ -3697,20 +3697,21 @@ S_init_main_stash(pTHX)
+     /* We must init $/ before switches are processed. */
+     sv_setpvs(get_sv("/", GV_ADD), "\n");
+ }
+ 
+ STATIC PerlIO *
+ S_open_script(pTHX_ const char *scriptname, bool dosearch, bool *suidscript)
+ {
+     int fdscript = -1;
+     PerlIO *rsfp = NULL;
+     Stat_t tmpstatbuf;
++    memset(&tmpstatbuf, 0, sizeof(Stat_t));
+     int fd;
+ 
+     PERL_ARGS_ASSERT_OPEN_SCRIPT;
+ 
+     if (PL_e_script) {
+ 	PL_origfilename = savepvs("-e");
+     }
+     else {
+         const char *s;
+         UV uv;
+diff --git a/benchspec/CPU/500.perlbench_r/src/pp_ctl.c b/benchspec/CPU/500.perlbench_r/src/pp_ctl.c
+index bcd51da5..219842f5 100644
+--- a/benchspec/CPU/500.perlbench_r/src/pp_ctl.c
++++ b/benchspec/CPU/500.perlbench_r/src/pp_ctl.c
+@@ -3583,20 +3583,21 @@ S_doeval(pTHX_ int gimme, CV* outside, U32 seq, HV *hh)
+     PL_parser->lex_state = LEX_NOTPARSING;	/* $^S needs this. */
+ 
+     PUTBACK;
+     return TRUE;
+ }
+ 
+ STATIC PerlIO *
+ S_check_type_and_open(pTHX_ SV *name)
+ {
+     Stat_t st;
++    memset(&st, 0, sizeof(Stat_t));
+     STRLEN len;
+     PerlIO * retio;
+     const char *p = SvPV_const(name, len);
+     int st_rc;
+ 
+     PERL_ARGS_ASSERT_CHECK_TYPE_AND_OPEN;
+ 
+     /* checking here captures a reasonable error message when
+      * PERL_DISABLE_PMC is true, but when PMC checks are enabled, the
+      * user gets a confusing message about looking for the .pmc file
+diff --git a/benchspec/CPU/505.mcf_r/src/implicit.c b/benchspec/CPU/505.mcf_r/src/implicit.c
+index b00332ea..2480818b 100644
+--- a/benchspec/CPU/505.mcf_r/src/implicit.c
++++ b/benchspec/CPU/505.mcf_r/src/implicit.c
+@@ -390,20 +390,21 @@ LONG num_threads;
+ {
+   LONG i;
+   *max_redcost = 0;
+   for (i = 0; i < num_threads; i++)
+   {
+     if (arcs_pointer_sorted[i][0]->flow > *max_redcost)
+       *max_redcost = arcs_pointer_sorted[i][0]->flow;
+   }
+ }
+ 
++__attribute__((no_sanitize("memory")))
+ #ifdef _PROTO_
+ LONG switch_arcs(network_t* net, LONG *num_del_arcs, arc_t** deleted_arcs, arc_t* arcnew, int thread, LONG max_new_par_residual_new_arcs, LONG size_del, LONG num_threads)
+ #else
+ LONG switch_arcs(net, num_del_arcs, deleted_arcs, arcnew, thread, max_new_par_residual_new_arcs, size_del, num_threads)
+ network_t* net;
+ LONG *num_del_arcs;
+ arc_t** deleted_arcs;
+ arc_t* arcnew;
+ int thread;
+ LONG max_new_par_residual_new_arcs;
+diff --git a/benchspec/CPU/520.omnetpp_r/src/simulator/cmdenv.cc b/benchspec/CPU/520.omnetpp_r/src/simulator/cmdenv.cc
+index c0a84394..62107a5d 100644
+--- a/benchspec/CPU/520.omnetpp_r/src/simulator/cmdenv.cc
++++ b/benchspec/CPU/520.omnetpp_r/src/simulator/cmdenv.cc
+@@ -551,20 +551,21 @@ void Cmdenv::deinstallSignalHandler()
+ }
+ 
+ //-----------------------------------------------------
+ 
+ void Cmdenv::putsmsg(const char *s)
+ {
+     ::fprintf(fout, "\n<!> %s\n\n", s);
+     ::fflush(fout);
+ }
+ 
++__attribute__((no_sanitize("memory")))
+ void Cmdenv::sputn(const char *s, int n)
+ {
+     if (disable_tracing)
+         return;
+ 
+     EnvirBase::sputn(s, n);
+ 
+     cModule *ctxmod = simulation.getContextModule();  //FIXME shouldn't this be "component" ?
+     if (!ctxmod || (opt_modulemsgs && ctxmod->isEvEnabled()) || simulation.getContextType()==CTX_FINISH)
+     {
+diff --git a/benchspec/CPU/538.imagick_r/src/magick/memory.c b/benchspec/CPU/538.imagick_r/src/magick/memory.c
+index b370a85a..836f37a2 100644
+--- a/benchspec/CPU/538.imagick_r/src/magick/memory.c
++++ b/benchspec/CPU/538.imagick_r/src/magick/memory.c
+@@ -273,20 +273,23 @@ MagickExport void *AcquireAlignedMemory(const size_t count,const size_t quantum)
+       {
+         p=malloc(extent);
+         if (p != NULL)
+           {
+             memory=(void *) AlignedExtent((size_t) p+sizeof(void *),alignment);
+             *((void **) memory-1)=p;
+           }
+       }
+   }
+ #endif
++  // Fixes uninitialized reads in all of imagick.
++  if (memory)
++    memset(memory, 0, size);
+   return(memory);
+ }
+ 
+ #if defined(MAGICKCORE_ZERO_CONFIGURATION_SUPPORT)
+ /*
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ %                                                                             %
+ %                                                                             %
+ %                                                                             %
+ +   A c q u i r e B l o c k                                                   %
