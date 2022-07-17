@@ -14,3 +14,4 @@ from .apache import ApacheBench, APR, APRUtil
 from .wrk import Wrk, Wrk2
 from .scons import Scons
 from .crosstoolng import CrosstoolNG, CustomToolchain
+from .relink import Relink
