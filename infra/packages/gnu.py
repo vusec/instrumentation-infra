@@ -238,6 +238,9 @@ class BinUtils(Package):
             s += '-gold'
         return s
 
+    def dependencies(self):
+        yield TexInfo('6.8')
+
     def fetch(self, ctx):
         tarname = 'binutils-%s.tar.bz2' % self.version
         download(ctx, 'http://ftp.gnu.org/gnu/binutils/' + tarname)
@@ -308,3 +311,14 @@ class Netcat(GNUTarPackage):
         run(ctx, ['tar', '-xf', tarname])
         shutil.move('netcat-' + self.version, 'src')
         os.remove(tarname)
+
+
+class TexInfo(GNUTarPackage):
+    """
+    :identifier: texinfo-<version>
+    :param version: version to download
+    """
+    name = 'texinfo'
+    built_path = 'texindex/texindex'
+    installed_path = 'bin/makeinfo'
+    tar_compression = 'gz'
