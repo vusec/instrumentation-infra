@@ -70,9 +70,6 @@ class LLVM(Package):
         suffix = '-lld' if self.lld else ''
         return 'llvm-' + self.version + suffix
 
-    def prefix(self, ctx):
-        return os.path.join(ctx.paths.installroot, self.ident())
-
     def dependencies(self):
         # TODO: prune these
         yield Bash('4.3')
