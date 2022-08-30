@@ -994,32 +994,44 @@ class Nginx(WebServer):
 
         runner.ctx.log.debug('creating nginx.conf')
         a = runner.ctx.args
-        config_template = '''
-        error_log {runner.rundir}/error.log error;
-        lock_file {runner.rundir}/nginx.lock;
-        pid {runner.rundir}/nginx.pid;
-        worker_processes {a.workers};
-        worker_cpu_affinity auto;
-        events {{
-            worker_connections {a.worker_connections};
-            use epoll;
-        }}
-        http {{
-            server {{
-                listen {a.port};
-                server_name localhost;
-                sendfile on;
-                access_log off;
-                keepalive_requests 500;
-                keepalive_timeout 500ms;
-                location / {{
-                    root {runner.rundir}/www;
+        
+        use_template = False
+        if self.conf == '':
+            use_template = True
+        elif self.conf != '' and not os.path.exists(self.conf):
+            runner.ctx.log.debug(f"nginx config file at {self.conf} does not exist")
+            use_template = True
+            
+        if use_template:
+            config_template = '''
+            error_log {runner.rundir}/error.log error;
+            lock_file {runner.rundir}/nginx.lock;
+            pid {runner.rundir}/nginx.pid;
+            worker_processes {a.workers};
+            worker_cpu_affinity auto;
+            events {{
+                worker_connections {a.worker_connections};
+                use epoll;
+            }}
+            http {{
+                server {{
+                    listen {a.port};
+                    server_name localhost;
+                    sendfile on;
+                    access_log off;
+                    keepalive_requests 500;
+                    keepalive_timeout 500ms;
+                    location / {{
+                        root {runner.rundir}/www;
+                    }}
                 }}
             }}
-        }}
-        '''
-        with open('nginx.conf', 'w') as f:
-            f.write(config_template.format(**locals()))
+            '''
+            with open('nginx.conf', 'w') as f:
+                f.write(config_template.format(**locals()))
+        else:
+            shutil.copyfile(self.conf, 'nginx.conf')
+            runner.ctx.log.debug(f"nginx is using config file at {self.conf}")
 
     def pid_file(self, runner):
         return '{runner.rundir}/nginx.pid'.format(**locals())
