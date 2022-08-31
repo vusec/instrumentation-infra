@@ -1348,7 +1348,7 @@ def stdev_percent(numbers):
 
 def _fetch_apache(ctx, repo, basename, dest):
     tarname = basename + '.tar.bz2'
-    download(ctx, 'http://apache.cs.uu.nl/%s/%s' % (repo, tarname))
+    download(ctx, 'https://archive.apache.org/dist/%s/%s' % (repo, tarname))
     untar(ctx, tarname, dest)
 
 
