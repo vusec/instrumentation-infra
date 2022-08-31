@@ -1084,7 +1084,10 @@ class ApacheHttpd(WebServer):
 
     @param_attrs
     def __init__(self, version: str, apr_version: str, apr_util_version: str,
-                 modules=['few']):
+                 modules=['few'], build_flags: List[str] = []):
+        self.name = self.name + '-' + version
+        self.build_flags = build_flags
+        self.modules = modules
         super().__init__()
 
     def fetch(self, ctx):
@@ -1148,8 +1151,10 @@ class ApacheHttpd(WebServer):
                   '--prefix=' + prefix,
                   '--with-apr=' + prefix,
                   '--with-apr-util=' + prefix,
-                  '--enable-modules=none',
-                  '--enable-mods-static=' + qjoin(self.modules)], env=env)
+                  '--enable-modules=few',
+                  '--enable-mods-static=' + qjoin(self.modules),
+                  *self.build_flags], env=env)
+
         run(ctx, 'make -j%d' % ctx.jobs)
         run(ctx, 'make install')
         os.chdir('..')
