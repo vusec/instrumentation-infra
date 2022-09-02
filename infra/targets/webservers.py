@@ -114,6 +114,9 @@ class WebServer(Target, metaclass=ABCMeta):
                 help='if specified, run the server without any forking '
                      '(1 worker max)\n'
                      'NOTE: only supported for --parallel=ssh and nginx!')
+        parser.add_argument('--config', type=str, default = '',
+                help='Config file to be used instead of the default template\n'
+                'NOTE: use absolute path')
 
 
         # bench-client options
@@ -1151,7 +1154,7 @@ class ApacheHttpd(WebServer):
                   '--prefix=' + prefix,
                   '--with-apr=' + prefix,
                   '--with-apr-util=' + prefix,
-                  '--enable-modules=few',
+                  '--enable-modules=none', # only build static
                   '--enable-mods-static=' + qjoin(self.modules),
                   *self.build_flags], env=env)
 
@@ -1180,8 +1183,14 @@ class ApacheHttpd(WebServer):
         rootdir = self.path(runner.ctx, runner.instance.name, 'install')
         copytree(rootdir, runner.stagedir)
 
-        runner.ctx.log.debug('creating httpd.conf')
         a = runner.ctx.args
+
+        if os.path.exists(a.config):
+            runner.ctx.log.debug(f"Found configuration file: {runner.ctx.args.config}")
+            shutil.copyfile(a.config, 'conf/httpd.conf')
+            return
+
+        runner.ctx.log.debug('creating httpd.conf from template')
         total_threads = a.workers * a.worker_threads
         config_template = '''
         Listen {a.port}
