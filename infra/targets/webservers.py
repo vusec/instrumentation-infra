@@ -1236,6 +1236,7 @@ class Lighttpd(WebServer):
 
     @param_attrs
     def __init__(self, version):
+        self.name += '-' + version
         super().__init__()
 
     def dependencies(self):
@@ -1274,6 +1275,7 @@ class Lighttpd(WebServer):
         env: Dict[str, Union[str, List[str]]] = {
             'CFLAGS': qjoin(ctx.cflags),
             'LDFLAGS': qjoin(ctx.ldflags),
+            'ASAN_OPTIONS': 'detect_leaks=0'  # Lighttphd suffers from memory leaks 
         }
         run(ctx, ['scons', '-j', ctx.jobs,
                   'CC=' + cc,
@@ -1296,8 +1298,15 @@ class Lighttpd(WebServer):
                 help='number of concurrent connections to the server (default 2048)')
 
     def populate_stagedir(self, runner):
-        runner.ctx.log.debug('creating lighttpd.conf')
         a = runner.ctx.args
+
+        if os.path.exists(a.config):
+            runner.ctx.log.debug(f"Found configuration file: {a.config}")
+            runner.ctx.log.debug(f"Port: {a.port}")
+            shutil.copyfile(a.config, 'lighttpd.conf')
+            return
+
+        runner.ctx.log.debug('creating lighttpd.conf from template')
         max_fds = 2 * a.server_connections
         config_template = '''
         var.rundir             = "{runner.rundir}"
