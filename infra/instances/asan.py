@@ -27,9 +27,9 @@ class ASan(Clang):
     """
     @param_attrs
     def __init__(self, llvm: LLVM, *, temporal=True, stack=True, glob=True,
-                 check_writes=True, check_reads=True, lto=False, redzone=None):
+                 check_writes=True, check_reads=True, lto=False, redzone=None, optlevel=2):
         assert llvm.compiler_rt, 'ASan needs LLVM with runtime support'
-        super().__init__(llvm, lto=lto)
+        super().__init__(llvm, lto=lto, optlevel=optlevel)
         assert not check_reads or check_writes, 'will not check reads without writes'
         if redzone is not None:
             assert isinstance(redzone, int), 'redzone size must be a number'
