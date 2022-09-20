@@ -955,6 +955,9 @@ class Nginx(WebServer):
         run(ctx, ['make', '-j%d' % ctx.jobs, '--always-make'])
 
     def should_configure(self, ctx):
+        if not os.path.exists('Makefile'):
+            return True
+
         try:
             with open('flags_hash') as f:
                 old_hash = f.read()
