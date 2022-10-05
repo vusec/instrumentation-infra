@@ -1,0 +1,13 @@
+diff --git a/include/llvm/LTO/Config.h b/include/llvm/LTO/Config.h
+index 0a3e52316460..3e5d1fc3adad 100644
+--- a/include/llvm/LTO/Config.h
++++ b/include/llvm/LTO/Config.h
+@@ -139,7 +139,7 @@ struct Config {
+   /// Time trace granularity.
+   unsigned TimeTraceGranularity = 500;
+
+-  bool ShouldDiscardValueNames = true;
++  bool ShouldDiscardValueNames = false;
+   DiagnosticHandlerFunction DiagHandler;
+
+   /// If this field is set, LTO will write input file paths and symbol
