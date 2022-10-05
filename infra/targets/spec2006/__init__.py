@@ -456,14 +456,22 @@ class SPEC2006(Target):
                 cxxflags = qjoin(ctx.cxxflags)
                 ldflags = qjoin(ctx.ldflags)
                 extra_libs = qjoin(ctx.extra_libs) if 'extra_libs' in ctx else None
+                coptimize = qjoin(ctx.coptimize) if 'coptimize' in ctx else '-std=gnu89'
+                cxxoptimize = qjoin(ctx.cxxoptimize) if 'cxxoptimize' in ctx else '-std=c++98'
+                foptimize = qjoin(ctx.foptimize) if 'foptimize' in ctx else None
+                f77optimize = qjoin(ctx.f77optimize) if 'f77optimize' in ctx else None
                 fortranc = shutil.which('gfortran') or shutil.which('false')
                 print('CC          = %s %s' % (ctx.cc, cflags))
                 print('CXX         = %s %s' % (ctx.cxx, cxxflags))
                 print('FC          = %s' % fortranc)
                 print('CLD         = %s %s' % (ctx.cc, ldflags))
                 print('CXXLD       = %s %s' % (ctx.cxx, ldflags))
-                print('COPTIMIZE   = -std=gnu89')
-                print('CXXOPTIMIZE = -std=c++98') # fix __float128 in old clang
+                print('COPTIMIZE   = %s' % (coptimize))
+                print('CXXOPTIMIZE = %s' % (cxxoptimize))
+                if foptimize:
+                    print('FOPTIMIZE   = %s' % (foptimize))
+                if f77optimize:
+                    print('F77OPTIMIZE = %s' % (f77optimize))
                 if extra_libs:
                     print('EXTRA_LIBS = %s' % (extra_libs))
 
