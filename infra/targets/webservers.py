@@ -91,9 +91,9 @@ class WebServer(Target, metaclass=ABCMeta):
                 help='Statistics to collect of server while running benchmarks '
                      '(disabled if not specified)\n'
                      'NOTE: only supported for --parallel=ssh!\n'
-                     'cpu: CPU utilization of entire server (0..100%)\n'
+                     'cpu: CPU utilization of entire server (0..100%%)\n'
                      'cpu-proc: sum of CPU utilization of all server processes '
-                     '(0..nproc*100%)\n'
+                     '(0..nproc*100%%)\n'
                      'rss: sum of Resident Set Size of all server processes\n'
                      'vms: sum of Virtual Memory Size of all server processes\n')
         parser.add_argument('--collect-stats-interval',
