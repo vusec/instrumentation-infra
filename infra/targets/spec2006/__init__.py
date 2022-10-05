@@ -455,6 +455,7 @@ class SPEC2006(Target):
                 cflags = qjoin(ctx.cflags)
                 cxxflags = qjoin(ctx.cxxflags)
                 ldflags = qjoin(ctx.ldflags)
+                extra_libs = qjoin(ctx.extra_libs) if 'extra_libs' in ctx else None
                 fortranc = shutil.which('gfortran') or shutil.which('false')
                 print('CC          = %s %s' % (ctx.cc, cflags))
                 print('CXX         = %s %s' % (ctx.cxx, cxxflags))
@@ -463,6 +464,8 @@ class SPEC2006(Target):
                 print('CXXLD       = %s %s' % (ctx.cxx, ldflags))
                 print('COPTIMIZE   = -std=gnu89')
                 print('CXXOPTIMIZE = -std=c++98') # fix __float128 in old clang
+                if extra_libs:
+                    print('EXTRA_LIBS = %s' % (extra_libs))
 
                 # post-build hooks call back into the setup script
                 if ctx.hooks.post_build:
@@ -483,24 +486,50 @@ class SPEC2006(Target):
                 print('default=base=default=default:')
                 print('PORTABILITY    = -DSPEC_CPU_LP64')
                 print('')
-                print('400.perlbench=default=default=default:')
-                print('CPORTABILITY   = -DSPEC_CPU_LINUX_X64')
-                print('')
-                print('462.libquantum=default=default=default:')
-                print('CPORTABILITY   = -DSPEC_CPU_LINUX')
-                print('')
-                print('464.h264ref=default=default=default:')
-                print('CPORTABILITY   = -fsigned-char')
-                print('')
-                print('482.sphinx3=default=default=default:')
-                print('CPORTABILITY   = -fsigned-char')
-                print('')
-                print('483.xalancbmk=default=default=default:')
-                print('CXXPORTABILITY = -DSPEC_CPU_LINUX')
-                print('')
-                print('481.wrf=default=default=default:')
-                print('wrf_data_header_size = 8')
-                print('CPORTABILITY   = -DSPEC_CPU_CASE_FLAG -DSPEC_CPU_LINUX')
+
+                benchmark_flags = {
+                        '400.perlbench=default=default=default': {
+                            'CPORTABILITY': ['-DSPEC_CPU_LINUX_X64']
+                        },
+                        '462.libquantum=default=default=default': {
+                            'CPORTABILITY': ['-DSPEC_CPU_LINUX']
+                        },
+                        '464.h264ref=default=default=default': {
+                            'CPORTABILITY': ['-fsigned-char']
+                        },
+                        '482.sphinx3=default=default=default': {
+                            'CPORTABILITY': ['-fsigned-char']
+                        },
+                        '482.sphinx3=default=default=default': {
+                            'CPORTABILITY': ['-fsigned-char']
+                        },
+                        '483.xalancbmk=default=default=default': {
+                            'CXXPORTABILITY': ['-DSPEC_CPU_LINUX']
+                        },
+                        '481.wrf=default=default=default': {
+                            'extra_lines': ['wrf_data_header_size = 8'],
+                            'CPORTABILITY': ['-DSPEC_CPU_CASE_FLAG', '-DSPEC_CPU_LINUX']
+                        }
+                }
+
+                if 'benchmark_flags' in ctx:
+                    for benchmark, flags in ctx.benchmark_flags.items():
+                        if benchmark not in benchmark_flags:
+                            benchmark_flags[benchmark] = {}
+                        for flag, value in flags.items():
+                            if flag not in benchmark_flags[benchmark]:
+                                benchmark_flags[benchmark][flag] = []
+                            benchmark_flags[benchmark][flag].extend(value)
+
+                for benchmark, flags in benchmark_flags.items():
+                    print('%s:' % benchmark)
+                    for flag, value in flags.items():
+                        if flag == 'extra_lines':
+                            for line in value:
+                                print(line)
+                        else:
+                            print('%s   = %s' % (flag, qjoin(value)))
+                    print('')
 
         return config_name
 

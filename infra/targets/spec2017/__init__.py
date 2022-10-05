@@ -430,23 +430,45 @@ class SPEC2017(Target):
                 print('default:')
                 print('     EXTRA_PORTABILITY = -DSPEC_LP64')
                 print('')
-                print('500.perlbench_r,600.perlbench_s:')
-                print('     PORTABILITY   = -DSPEC_LINUX_X64')
-                print('')
-                print('523.xalancbmk_r,623.xalancbmk_s:')
-                print('     PORTABILITY   = -DSPEC_LINUX')
-                print('')
-                print('502.gcc_r,602.gcc_s=peak:')
-                print('     LDOPTIMIZE    = -z muldefs')
-                print('')
 
-                # print('#--------- Baseline Tuning Flags -------')
-                # print('default=base:')
-                # print('    OPTIMIZE        = -flto -g %{olevel} -march=native')
-                # print('')
-                print('intrate,intspeed:')
-                print('      LDCFLAGS        = -z muldefs')
-                print('')
+
+                benchmark_flags = {
+                        '500.perlbench_r,600.perlbench_s': {
+                            'PORTABILITY': ['-DSPEC_LINUX_X64'],
+                        },
+                        '523.xalancbmk_r,623.xalancbmk_s': {
+                            'PORTABILITY': ['-DSPEC_LINUX'],
+                        },
+                        '502.gcc_r,602.gcc_s=peak': {
+                            'LDOPTIMIZE': ['-z', 'muldefs'],
+                        },
+                        # Baseline Tuning Flags
+                        # 'default=base': {
+                        #     'OPTIMIZE': ['-flto', '-g', '%{olevel}', '-march=native'],
+                        # },
+                        'intrate,intspeed': {
+                            'LDCFLAGS': ['-z', 'muldefs'],
+                        },
+                }
+
+                if 'benchmark_flags' in ctx:
+                    for benchmark, flags in ctx.benchmark_flags.items():
+                        if benchmark not in benchmark_flags:
+                            benchmark_flags[benchmark] = {}
+                        for flag, value in flags.items():
+                            if flag not in benchmark_flags[benchmark]:
+                                benchmark_flags[benchmark][flag] = []
+                            benchmark_flags[benchmark][flag].extend(value)
+
+                for benchmark, flags in benchmark_flags.items():
+                    print('%s:' % benchmark)
+                    for flag, value in flags.items():
+                        if flag == 'extra_lines':
+                            for line in value:
+                                print(line)
+                        else:
+                            print('%s   = %s' % (flag, qjoin(value)))
+                    print('')
 
         return config_name
 
