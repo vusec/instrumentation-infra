@@ -497,7 +497,10 @@ class SPEC2006(Target):
 
                 benchmark_flags = {
                         '400.perlbench=default=default=default': {
-                            'CPORTABILITY': ['-DSPEC_CPU_LINUX_X64']
+                            'CPORTABILITY': ['-DSPEC_CPU_LINUX_X64'] if 'arch' in ctx and ctx.arch == 'x86_64' else ['-DSPEC_CPU_LINUX']
+                        },
+                        '403.gcc=default=default=default': {
+                            'CPORTABILITY': ['-DSPEC_CPU_LINUX']
                         },
                         '462.libquantum=default=default=default': {
                             'CPORTABILITY': ['-DSPEC_CPU_LINUX']
