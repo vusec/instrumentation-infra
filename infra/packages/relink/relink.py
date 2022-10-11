@@ -55,6 +55,10 @@ else:
 os.close(tmp_fd)
 os.chmod(tmp_name, st.st_mode)
 
+# The current prelink cannot handle this debugging section, so we remove it.
+# (TODO: Verify that this is only for the case of ARMv8.5 ?)
+os.system(f"/usr/bin/strip --remove-section=.debug_line_str {tmp_name}")
+
 # prelink the binary
 ret = os.system(f"{prelinkbin} -r {args.address} {tmp_name}")
 if ret != 0:
