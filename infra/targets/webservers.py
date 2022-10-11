@@ -18,7 +18,6 @@ from ..parallel import Pool, ProcessPool, SSHPool, PrunPool
 from ..target import Target
 from ..util import run, download, qjoin, param_attrs, FatalError, untar, Namespace
 from .remote_runner import RemoteRunner, RemoteRunnerError
-from typing import List, Iterable
 
 
 class WebServer(Target, metaclass=ABCMeta):
