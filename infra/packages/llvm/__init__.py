@@ -73,7 +73,7 @@ class LLVM(Package):
     def dependencies(self):
         # TODO: prune these
         yield Bash('4.3')
-        yield CoreUtils('9.0')
+        yield CoreUtils('9.1')
         yield self.binutils
         yield Make('4.3')
         yield AutoMake.default()
