@@ -109,7 +109,7 @@ class Juliet(Target):
         return os.path.exists(self.zip_name)
 
     def fetch(self, ctx: Namespace):
-        url = f'https://samate.nist.gov/SRD/testsuites/juliet/{self.zip_name}'
+        url = f'https://samate.nist.gov/SARD/downloads/test-suites/{self.zip_name}'
         download(ctx, url)
 
     def build(self, ctx: Namespace, instance: Instance,
