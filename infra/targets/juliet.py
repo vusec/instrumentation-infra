@@ -58,7 +58,7 @@ class Juliet(Target):
 
     name = 'juliet'
 
-    zip_name = 'Juliet_Test_Suite_v1.3_for_C_Cpp.zip'
+    zip_name = '2017-10-01-juliet-test-suite-for-c-cplusplus-v1-3.zip'
 
     def __init__(self, mitigation_return_code: Optional[int] = None):
         self.mitigation_return_code = mitigation_return_code
