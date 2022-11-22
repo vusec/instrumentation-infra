@@ -88,6 +88,7 @@ class SPEC2017(Target):
                   noise in performance measurements), implies :class:`Nothp`
                   dependency if ``True``
     :param force_cpu: bind runspec to this cpu core (-1 to disable)
+    :param default_benchmarks: specify benchmarks run by default
     """
 
     name = 'spec2017'
@@ -107,7 +108,8 @@ class SPEC2017(Target):
                        source: str,
                        patches: List[str] = [],
                        nothp: bool = True,
-                       force_cpu: int = 0):
+                       force_cpu: int = 0,
+                       default_benchmarks: List[str] = ['intspeed_pure_c', 'intspeed_pure_cpp','fpspeed_pure_c']):
         if source_type not in ('isofile', 'mounted', 'installed', 'tarfile', 'git'):
             raise FatalError('invalid source type "%s"' % source_type)
 
@@ -122,16 +124,17 @@ class SPEC2017(Target):
         self.patches = patches
         self.nothp = nothp
         self.force_cpu = force_cpu
+        self.default_benchmarks = default_benchmarks
 
     def add_build_args(self, parser):
         parser.add_argument('--benchmarks',
-                nargs='+', metavar='BENCHMARK', default=['pure_c', 'pure_cpp'],
+                nargs='+', metavar='BENCHMARK', default=self.default_benchmarks,
                 choices=self.benchmarks,
                 help='which benchmarks to build')
 
     def add_run_args(self, parser):
         parser.add_argument('--benchmarks',
-                nargs='+', metavar='BENCHMARK', default=['pure_c', 'pure_cpp'],
+                nargs='+', metavar='BENCHMARK', default=self.default_benchmarks,
                 choices=self.benchmarks,
                 help='which benchmarks to run')
         parser.add_argument('--test', action='store_true',
