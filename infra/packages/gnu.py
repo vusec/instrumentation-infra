@@ -204,8 +204,8 @@ class AutoMake(GNUTarPackage):
                     os.symlink(target, link)
 
     @classmethod
-    def default(cls, automake_version = '1.15.1',
-                     autoconf_version = '2.69',
+    def default(cls, automake_version = '1.16.5',
+                     autoconf_version = '2.71',
                      m4_version = '1.4.19',
                      libtool_version: Optional[str] = '2.4.6') -> 'AutoMake':
         """
