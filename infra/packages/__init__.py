@@ -14,7 +14,8 @@ from .apache import ApacheBench, APR, APRUtil
 from .wrk import Wrk, Wrk2
 from .scons import Scons
 from .FFMalloc import FFMalloc
-from .InstrumentPass import InstrumentPass
+from .VeriPatchPass import VeriPatchPass
 from .MyLLVM import MyLLVM
 from .SVF import SVF
 from .UBStar import UBStar
+from .SPDLog import SPDLog

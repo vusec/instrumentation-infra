@@ -13,7 +13,7 @@ class FFMalloc(Package):
 
     def repo_path(self, ctx):
         """Retrieve the path to the git submodule path"""
-        return os.path.join(ctx.paths.root, "VeriPatch", self.name)
+        return os.path.join(ctx.paths.root, "external", self.name)
 
     def lib_path(self, ctx):
         """Return full path to library file"""
