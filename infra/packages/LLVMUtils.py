@@ -1,14 +1,15 @@
-"""This file contains class definition for the infrastructure-compatible FFMalloc unit"""
+"""This file holds the configuration & build commands for the LLVMUtils library"""
+
 import os
 from ..package import Package
 from ..util import run
 
 
-class FFMalloc(Package):
-    """Define package for FFMalloc fast-forward one-time allocator"""
+class LLVMUtils(Package):
+    """Package container for the LLVMUtils."""
 
-    name = "FFMalloc"
-    ffmalloc_lib = "libffmallocst.so"
+    name = "LLVMUtils"
+    utils_lib = "libLLVMUtils.so"
     rebuild = False
     reinstall = False
 
@@ -26,16 +27,26 @@ class FFMalloc(Package):
         return True
 
     def build(self, ctx):
-        """Use the provided build makefile"""
         os.chdir(self.root_dir(ctx))
-        run(ctx, ["make", "sharedst"])
+        run(
+            ctx,
+            [
+                "cmake",
+                "-G",
+                "Unix Makefiles",
+                "-B",
+                "build",
+                f"-DCMAKE_INSTALL_PREFIX={self.root_dir(ctx)}",
+            ],
+        )
+        run(ctx, ["cmake", "--build", "build", "--", f"-j{ctx.jobs}"])
 
     def is_built(self, ctx):
         return not self.rebuild
 
     def install(self, ctx):
         os.chdir(self.root_dir(ctx))
-        run(ctx, ["make", "install_st", f"INSTALL_TARGET={self.root_dir(ctx)}"])
+        run(ctx, ["cmake", "--install", "build"])
         ctx.ldflags += [f"-L{os.path.join(self.root_dir(ctx), 'lib')}"]
 
     def install_env(self, ctx):
@@ -47,15 +58,10 @@ class FFMalloc(Package):
     def is_installed(self, ctx):
         return not self.reinstall
 
-    def prepare_run(self, ctx):
-        """Insert FFMalloc into LD_PRELOAD"""
-        ld_preload = os.getenv("LD_PRELOAD", "").split(":")
-        ctx.log.debug(f"Old LD_PRELOAD value: {ld_preload}")
-        ctx.runenv.setdefault("LD_PRELOAD", ld_preload).insert(0, self.ffmalloc_lib)
-
     def clean(self, ctx):
         os.chdir(self.root_dir(ctx))
-        run(ctx, ["make", "clean"], allow_error=True)
+        run(ctx, ["cmake ", "--build", "build", "--target", "clean"], allow_error=True)
 
     def is_clean(self, ctx):
+        """False if package path still exists"""
         return False

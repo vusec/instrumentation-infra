@@ -193,7 +193,7 @@ class Setup:
                                if c.description is None]
             MyCompleter().__call__(parser, exclude=['--help'] + silent_commands)
         except ImportError:
-            pass
+            self.ctx.log.warning("Failed to set Python command-line autocompletion")
 
         self.ctx.args = parser.parse_args()
 

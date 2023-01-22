@@ -16,48 +16,29 @@ class UBStar(Package):
         UBStar instance: Instance of UBStar package"""
 
     name = "UBStar"
-    ubstar_dir = "UBStar"
     rtlib = "librt.so"
     wraplib = "libwrap.so"
-    install_target = "install"
+    rebuild = False
+    reinstall = False
 
-    def repo_path(self, ctx):
+    def root_dir(self, ctx):
         """Retrieve the path to the git submodule path"""
         return os.path.join(ctx.paths.root, "external", self.name)
 
-    def rtlib_path(self, ctx):
-        """Get full path to runtime library"""
-        return os.path.join(self.repo_path(ctx), "dist", "lib", self.rtlib)
-
-    def wraplib_path(self, ctx):
-        """Get full path to interceptor library"""
-        return os.path.join(self.repo_path(ctx), "dist", "lib", self.wraplib)
-
     def ident(self):
-        """Return package's name"""
         return self.name
 
-    def __init__(self, ffmalloc, settings: Namespace):
-        """Depends on FFMalloc and receives defaults settings dictionary"""
+    def __init__(self, settings: Namespace):
         super().__init__()
-        self.ffmalloc = ffmalloc
         self.settings = settings
 
-    def dependencies(self):
-        """UBStar depends on FFMalloc"""
-        yield self.ffmalloc
-
     def fetch(self, ctx):
-        """Synchronising & updating git submodules"""
-        run(ctx, ["git", "submodule", "sync"])  # Sync submodules
-        run(ctx, ["git", "submodule", "update", "--init"])  # Git pull submodules
+        pass
 
     def is_fetched(self, ctx):
-        """Check if Makefile exists"""
-        return os.path.exists(os.path.join(self.repo_path(ctx), "Makefile"))
+        return True
 
     def build(self, ctx):
-        """Compile the C source files (only compile, don't generate/verify)"""
         # Handle command line configuration
         cflags = [f"-DHEAP_REDZONE_SIZE={self.settings.redzone_size}"]  # Always pass
         if self.settings.use_ffmalloc:
@@ -72,29 +53,32 @@ class UBStar(Package):
             cflags += ["-DSKIP_WHITELIST"]  # Don't whitelist shared library static memory space
 
         # Go to root dir and call "make only-compile"
-        os.chdir(self.repo_path(ctx))
+        os.chdir(self.root_dir(ctx))
         run(ctx, ["make", "only-compile", f"CFLAGS={qjoin(cflags)}"])
 
     def is_built(self, ctx):
-        """Check if library .so files exist"""
-        return (
-            False
-            if self.settings.rebuild
-            else (os.path.exists(self.rtlib_path(ctx)) and os.path.exists(self.wraplib_path(ctx)))
-        )
+        return not self.settings.rebuild and not self.rebuild
 
     def install(self, ctx):
-        """Run make install to the infrastructure's target"""
-        os.chdir(self.repo_path(ctx))
-        run(ctx, ["make", "install", f"INSTALL_TARGET={self.path(ctx, self.install_target)}"])
+        os.chdir(self.root_dir(ctx))
+        run(
+            ctx,
+            [
+                "make",
+                "install",
+                f"INSTALL_TARGET={self.root_dir(ctx)}",
+            ],
+        )
+        ctx.ldflags += [f"-L{os.path.join(self.root_dir(ctx), 'lib')}"]
+
+    def install_env(self, ctx):
+        prevlibpath = os.getenv("LD_LIBRARY_PATH", "").split(":")
+        libpath = os.path.join(self.root_dir(ctx), "lib")
+        if os.path.exists(libpath):
+            ctx.runenv.setdefault("LD_LIBRARY_PATH", prevlibpath).insert(0, libpath)
 
     def is_installed(self, ctx):
-        """Check if dynamic library files exist in the infrastructure's build tree"""
-        return (
-            False
-            if self.settings.reinstall
-            else os.path.exists(self.path(ctx, self.install_target))
-        )
+        return not self.settings.reinstall and not self.reinstall
 
     def prepare_run(self, ctx):
         """Insert UBStar (and optionally FFMalloc) into LD_PRELOAD"""
@@ -102,5 +86,11 @@ class UBStar(Package):
         ctx.log.debug(f"Old LD_PRELOAD value: {ld_preload}")
         ctx.runenv.setdefault("LD_PRELOAD", ld_preload).insert(0, self.wraplib)
 
-        if self.settings.use_ffmalloc:
-            self.ffmalloc.prepare_run(ctx)
+    def clean(self, ctx):
+        """Call make clean & delete symlink"""
+        os.chdir(self.root_dir(ctx))
+        run(ctx, ["make", "clean-c"], allow_error=True)
+
+    def is_clean(self, ctx):
+        """False if package path still exists"""
+        return False
