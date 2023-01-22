@@ -19,5 +19,3 @@ from .MyLLVM import MyLLVM
 from .SVF import SVF
 from .UBStar import UBStar
 from .SPDLog import SPDLog
-from .LLVMUtils import LLVMUtils
-from .TargetAnalysis import TargetAnalysis
