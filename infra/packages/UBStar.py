@@ -1,6 +1,7 @@
 """This file holds the configuration & build commands for the UBStar sanitiser library"""
 
 import os
+import shutil
 from ..package import Package
 from ..util import run, Namespace, qjoin
 
@@ -20,6 +21,7 @@ class UBStar(Package):
     wraplib = "libwrap.so"
     rebuild = False
     reinstall = False
+    clean_first = False
 
     def root_dir(self, ctx):
         """Retrieve the path to the git submodule path"""
@@ -39,6 +41,10 @@ class UBStar(Package):
         return True
 
     def build(self, ctx):
+        # If cleaning before building remove all build files and such
+        if self.settings.clean_first or self.clean_first:
+            self.clean(ctx)
+
         # Handle command line configuration
         cflags = [f"-DHEAP_REDZONE_SIZE={self.settings.redzone_size}"]  # Always pass
         if self.settings.use_ffmalloc:
@@ -90,7 +96,17 @@ class UBStar(Package):
         """Call make clean & delete symlink"""
         os.chdir(self.root_dir(ctx))
         run(ctx, ["make", "clean-c"], allow_error=True)
+        shutil.rmtree(os.path.join(self.root_dir(ctx), "lib"), ignore_errors=True)
+        shutil.rmtree(os.path.join(self.root_dir(ctx), "dist", "lib"), ignore_errors=True)
+        shutil.rmtree(os.path.join(self.root_dir(ctx), "dist", "obj"), ignore_errors=True)
+        if os.path.exists(os.path.join(self.root_dir(ctx), "dist", "Makefile.basic")):
+            os.remove(os.path.join(self.root_dir(ctx), "dist", "Makefile.basic"))
 
     def is_clean(self, ctx):
         """False if package path still exists"""
-        return False
+        return not self.clean_first or (
+            not os.path.exists(os.path.join(self.root_dir(ctx), "lib"))
+            and not os.path.exists(os.path.join(self.root_dir(ctx), "dist", "lib"))
+            and not os.path.exists(os.path.join(self.root_dir(ctx), "dist", "obj"))
+            and not os.path.exists(os.path.join(self.root_dir(ctx), "dist", "Makefile.basic"))
+        )

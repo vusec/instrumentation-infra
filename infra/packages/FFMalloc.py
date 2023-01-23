@@ -1,5 +1,6 @@
 """This file contains class definition for the infrastructure-compatible FFMalloc unit"""
 import os
+import shutil
 from ..package import Package
 from ..util import run
 
@@ -11,6 +12,7 @@ class FFMalloc(Package):
     ffmalloc_lib = "libffmallocst.so"
     rebuild = False
     reinstall = False
+    clean_first = False
 
     def root_dir(self, ctx):
         """Retrieve the path to the git submodule path"""
@@ -27,6 +29,10 @@ class FFMalloc(Package):
 
     def build(self, ctx):
         """Use the provided build makefile"""
+        # If cleaning before building remove all build files and such
+        if self.clean_first:
+            self.clean(ctx)
+
         os.chdir(self.root_dir(ctx))
         run(ctx, ["make", "sharedst"])
 
@@ -56,6 +62,13 @@ class FFMalloc(Package):
     def clean(self, ctx):
         os.chdir(self.root_dir(ctx))
         run(ctx, ["make", "clean"], allow_error=True)
+        shutil.rmtree(os.path.join(self.root_dir(ctx), "lib"), ignore_errors=True)
+        shutil.rmtree(os.path.join(self.root_dir(ctx), "obj"), ignore_errors=True)
+        shutil.rmtree(os.path.join(self.root_dir(ctx), self.ffmalloc_lib), ignore_errors=True)
 
     def is_clean(self, ctx):
-        return False
+        return not self.clean_first or (
+            not os.path.exists(os.path.join(self.root_dir(ctx), "lib"))
+            and not os.path.exists(os.path.join(self.root_dir(ctx), "obj"))
+            and not os.path.exists(os.path.join(self.root_dir(ctx), self.ffmalloc_lib))
+        )
