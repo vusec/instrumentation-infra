@@ -30,9 +30,6 @@ class FFMalloc(Package):
     def build(self, ctx):
         """Use the provided build makefile"""
         # If cleaning before building remove all build files and such
-        if self.clean_first:
-            self.clean(ctx)
-
         os.chdir(self.root_dir(ctx))
         run(ctx, ["make", "sharedst"])
 
@@ -67,7 +64,7 @@ class FFMalloc(Package):
         shutil.rmtree(os.path.join(self.root_dir(ctx), self.ffmalloc_lib), ignore_errors=True)
 
     def is_clean(self, ctx):
-        return not self.clean_first or (
+        return (
             not os.path.exists(os.path.join(self.root_dir(ctx), "lib"))
             and not os.path.exists(os.path.join(self.root_dir(ctx), "obj"))
             and not os.path.exists(os.path.join(self.root_dir(ctx), self.ffmalloc_lib))

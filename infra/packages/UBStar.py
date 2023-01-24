@@ -41,10 +41,6 @@ class UBStar(Package):
         return True
 
     def build(self, ctx):
-        # If cleaning before building remove all build files and such
-        if self.settings.clean_first or self.clean_first:
-            self.clean(ctx)
-
         # Handle command line configuration
         cflags = [f"-DHEAP_REDZONE_SIZE={self.settings.redzone_size}"]  # Always pass
         if self.settings.use_ffmalloc:
@@ -104,7 +100,7 @@ class UBStar(Package):
 
     def is_clean(self, ctx):
         """False if package path still exists"""
-        return not self.clean_first or (
+        return (
             not os.path.exists(os.path.join(self.root_dir(ctx), "lib"))
             and not os.path.exists(os.path.join(self.root_dir(ctx), "dist", "lib"))
             and not os.path.exists(os.path.join(self.root_dir(ctx), "dist", "obj"))
