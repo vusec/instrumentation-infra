@@ -19,9 +19,6 @@ class UBStar(Package):
     name = "UBStar"
     rtlib = "librt.so"
     wraplib = "libwrap.so"
-    rebuild = False
-    reinstall = False
-    clean_first = False
 
     def root_dir(self, ctx):
         """Retrieve the path to the git submodule path"""
@@ -59,7 +56,11 @@ class UBStar(Package):
         run(ctx, ["make", "only-compile", f"CFLAGS={qjoin(cflags)}"])
 
     def is_built(self, ctx):
-        return not self.settings.rebuild and not self.rebuild
+        return (
+            os.path.exists(os.path.join(self.root_dir(ctx), "dist", "lib"))
+            and os.path.exists(os.path.join(self.root_dir(ctx), "dist", "obj"))
+            and os.path.exists(os.path.join(self.root_dir(ctx), "dist", "Makefile.basic"))
+        )
 
     def install(self, ctx):
         os.chdir(self.root_dir(ctx))
@@ -80,7 +81,7 @@ class UBStar(Package):
             ctx.runenv.setdefault("LD_LIBRARY_PATH", prevlibpath).insert(0, libpath)
 
     def is_installed(self, ctx):
-        return not self.settings.reinstall and not self.reinstall
+        return os.path.exists(os.path.join(self.root_dir(ctx), "lib"))
 
     def prepare_run(self, ctx):
         """Insert UBStar (and optionally FFMalloc) into LD_PRELOAD"""
