@@ -77,7 +77,7 @@ class LLVM(Package):
         yield self.binutils
         yield Make('4.3')
         yield AutoMake.default()
-        yield CMake('3.14.0')
+        yield CMake('3.16.3')
         yield Ninja('1.8.2')
 
     def fetch(self, ctx):
