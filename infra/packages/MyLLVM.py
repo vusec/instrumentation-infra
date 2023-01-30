@@ -107,7 +107,18 @@ class MyLLVM(packages.LLVM):
                 ctx.runenv.setdefault("LD_LIBRARY_PATH", prevlibpath).insert(0, compiler_rt_path)
 
         ctx.runenv.setdefault("LLVM_DIR", llvmDir)
-        ctx.runenv.setdefault("CC", f"{llvmDir}/bin/clang")
-        ctx.runenv.setdefault("CXX", f"{llvmDir}/bin/clang++")
-        ctx.runenv.setdefault("LD", f"{llvmDir}/bin/lld")
         ctx.cc = f"{llvmDir}/bin/clang"
+        ctx.cxx = f"{llvmDir}/bin/clang++"
+        ctx.cpp = f"{llvmDir}/bin/clang-cpp"
+        ctx.ld = f"{llvmDir}/bin/ld.lld"
+        ctx.ar = f"{llvmDir}/bin/llvm-ar"
+        ctx.nm = f"{llvmDir}/bin/llvm-nm"
+        ctx.ranlib = f"{llvmDir}/bin/llvm-ranlib"
+
+        ctx.runenv.setdefault("CC", ctx.cc)
+        ctx.runenv.setdefault("CXX", ctx.cxx)
+        ctx.runenv.setdefault("CPP", ctx.cpp)
+        ctx.runenv.setdefault("LD", ctx.ld)
+        ctx.runenv.setdefault("AR", ctx.ar)
+        ctx.runenv.setdefault("NM", ctx.nm)
+        ctx.runenv.setdefault("RANLIB", ctx.ranlib)
