@@ -58,7 +58,7 @@ class Juliet(Target):
 
     name = 'juliet'
 
-    zip_name = '2017-10-01-juliet-test-suite-for-c-cplusplus-v1-3.zip'
+    zip_name = 'Juliet_Test_Suite_v1.3_for_C_Cpp.zip'
 
     def __init__(self, mitigation_return_code: Optional[int] = None):
         self.mitigation_return_code = mitigation_return_code
@@ -109,7 +109,7 @@ class Juliet(Target):
         return os.path.exists(self.zip_name)
 
     def fetch(self, ctx: Namespace):
-        url = f'https://samate.nist.gov/SARD/downloads/test-suites/{self.zip_name}'
+        url = f'https://zenodo.org/record/4701387/files/{self.zip_name}?download=1'
         download(ctx, url)
 
     def build(self, ctx: Namespace, instance: Instance,
