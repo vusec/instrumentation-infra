@@ -100,7 +100,7 @@ class MyLLVM(LLVM):
             '../src/llvm'
         ])
         run(ctx, 'cmake --build . -- -j %d' % ctx.jobs)
-            
+
     def build(self, ctx):
         if self.sys_llvm:
             ctx.log.info("Using system LLVM (from $LLVM_DIR); skipping build()")
@@ -132,6 +132,7 @@ class MyLLVM(LLVM):
 
         else:
             ctx.log.info("Configuring new LLVM package")
+            ctx.ld = self.path(ctx, "bin", "ld.lld")
             super().configure(ctx)
 
     def install_env(self, ctx):

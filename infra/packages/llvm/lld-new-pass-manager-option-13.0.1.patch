@@ -1,0 +1,77 @@
+diff --git a/lld/ELF/Config.h b/lld/ELF/Config.h
+index e1abb4dfab36..3075397a7252 100644
+--- a/lld/ELF/Config.h
++++ b/lld/ELF/Config.h
+@@ -140,6 +140,7 @@ struct Configuration {
+   std::vector<llvm::StringRef> undefined;
+   std::vector<SymbolVersion> dynamicList;
+   std::vector<uint8_t> buildIdVector;
++  std::vector<llvm::StringRef> PassPlugins;
+   llvm::MapVector<std::pair<const InputSectionBase *, const InputSectionBase *>,
+                   uint64_t>
+       callGraphProfile;
+diff --git a/lld/ELF/Driver.cpp b/lld/ELF/Driver.cpp
+index 594c20016827..18dda7a502bf 100644
+--- a/lld/ELF/Driver.cpp
++++ b/lld/ELF/Driver.cpp
+@@ -1265,6 +1265,8 @@ static void readConfigs(opt::InputArgList &args) {
+       error(arg->getSpelling() + ": unknown plugin option '" + arg->getValue() +
+             "'");
+ 
++  config->PassPlugins = args::getStrings(args, OPT_load_pass_plugins);
++
+   // Parse -mllvm options.
+   for (auto *arg : args.filtered(OPT_mllvm))
+     parseClangOption(arg->getValue(), arg->getSpelling());
+diff --git a/lld/ELF/LTO.cpp b/lld/ELF/LTO.cpp
+index e8710e3bdb4f..ddcdf6f5894b 100644
+--- a/lld/ELF/LTO.cpp
++++ b/lld/ELF/LTO.cpp
+@@ -149,6 +149,8 @@ static lto::Config createConfig() {
+ 
+   c.SampleProfile = std::string(config->ltoSampleProfile);
+   c.UseNewPM = config->ltoNewPassManager;
++  for (llvm::StringRef &PluginFN : config->PassPlugins)
++    c.PassPlugins.push_back(std::string(PluginFN));
+   c.DebugPassManager = config->ltoDebugPassManager;
+   c.DwoDir = std::string(config->dwoDir);
+ 
+diff --git a/lld/ELF/Options.td b/lld/ELF/Options.td
+index f0e4c11b79eb..60e55416e68a 100644
+--- a/lld/ELF/Options.td
++++ b/lld/ELF/Options.td
+@@ -719,3 +719,5 @@ defm check_dynamic_relocations: BB<"check-dynamic-relocations",
+     "Perform additional validation of the written dynamic relocations",
+     "Do not perform additional validation of the written dynamic relocations">,
+   Flags<[HelpHidden]>;
++
++defm load_pass_plugins: Eq<"load-pass-plugin", "Load passes from plugin library">;
+diff --git a/llvm/examples/Bye/Bye.cpp b/llvm/examples/Bye/Bye.cpp
+index 78b4363123c3..c91fc8626242 100644
+--- a/llvm/examples/Bye/Bye.cpp
++++ b/llvm/examples/Bye/Bye.cpp
+@@ -50,6 +50,11 @@ static llvm::RegisterStandardPasses RegisterBye(
+     [](const llvm::PassManagerBuilder &Builder,
+        llvm::legacy::PassManagerBase &PM) { PM.add(new LegacyBye()); });
+ 
++static llvm::RegisterStandardPasses RegisterByeLTO(
++    llvm::PassManagerBuilder::EP_ModuleOptimizerEarly,
++    [](const llvm::PassManagerBuilder &Builder,
++       llvm::legacy::PassManagerBase &PM) { PM.add(new LegacyBye()); });
++
+ /* New PM Registration */
+ llvm::PassPluginLibraryInfo getByePluginInfo() {
+   return {LLVM_PLUGIN_API_VERSION, "Bye", LLVM_VERSION_STRING,
+diff --git a/llvm/test/Feature/load_extension.ll b/llvm/test/Feature/load_extension.ll
+index 2e1080ceaf97..973aa3b12000 100644
+--- a/llvm/test/Feature/load_extension.ll
++++ b/llvm/test/Feature/load_extension.ll
+@@ -5,6 +5,8 @@
+ ; RUN: llvm-lto2 run %t.o %loadbye -wave-goodbye -use-new-pm=0 -o %t -r %t.o,somefunk,plx -r %t.o,junk,plx 2>&1 | FileCheck %s
+ ; RUN: llvm-lto2 run %t.o %loadbye %loadnewpmbye -wave-goodbye -use-new-pm -o %t -r %t.o,somefunk,plx -r %t.o,junk,plx 2>&1 | FileCheck %s
+ ; RUN: llvm-lto2 run %t.o %loadbye %loadnewpmbye -opt-pipeline="goodbye" -wave-goodbye -use-new-pm -o %t -r %t.o,somefunk,plx -r %t.o,junk,plx 2>&1 | FileCheck %s
++; RUN: ld.lld -%loadnewpmbye --lto-newpm-passes="goodbye" -mllvm=%loadbye -mllvm=-wave-goodbye %t.o 2>&1 | FileCheck %s
++; RUN: ld.lld -mllvm=%loadbye -mllvm=-wave-goodbye -plugin-opt=legacy-pass-manager %t.o 2>&1 | FileCheck %s
+ ; REQUIRES: plugins, examples
+ ; UNSUPPORTED: windows
+ ; CHECK: Bye
