@@ -40,7 +40,7 @@ class MyLLVM(LLVM):
     def path(self, ctx, *args):
         if self.sys_llvm:
             return os.path.join(self.llvm_dir, *args)
-        return super().path(ctx, *args)            
+        return super().path(ctx, *args)
 
     def goto_rootdir(self, ctx):
         if self.sys_llvm:
@@ -72,9 +72,9 @@ class MyLLVM(LLVM):
             run(ctx, ["git", "clone", "git@github.com:llvm/llvm-project.git", clonedir])
             os.chdir(clonedir)
             run(ctx, ["git", "checkout", "release/%d.x" % major_version])
-            
+
         return get('src')
-            
+
     def myBuild(self, ctx):
         os.chdir('src')
         config_path = os.path.dirname(os.path.abspath(__file__))
