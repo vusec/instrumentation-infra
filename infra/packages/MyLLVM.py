@@ -3,12 +3,13 @@
 import os
 
 from ..packages import LLVM
+from ..util import run, apply_patch
 
 
 class MyLLVM(LLVM):
     """Class for holding LLVM object"""
 
-    def __init__(self, force_new_llvm: bool = False):
+    def __init__(self, force_new_llvm: bool = True):
         self.llvm_dir = os.getenv("LLVM_DIR")
         self.sys_llvm = not force_new_llvm and self.llvm_dir and os.path.exists(self.llvm_dir)
 
@@ -29,7 +30,7 @@ class MyLLVM(LLVM):
                     "-DLLVM_ENABLE_PROJECTS=clang;lld;compiler-rt",
                     "-DLLVM_ENABLE_PLUGINS=ON",
                     "-DLLVM_REQUIRES_RTTI=ON",
-                    "DLLVM_ENABLE_ZLIB=FORCE_ON",
+                    "-DLLVM_ENABLE_ZLIB=FORCE_ON",
                 ],
             )
 
@@ -37,7 +38,9 @@ class MyLLVM(LLVM):
         return self.name
 
     def path(self, ctx, *args):
-        return os.path.join(self.llvm_dir, *args) if self.sys_llvm else super().path(ctx, args)
+        if self.sys_llvm:
+            return os.path.join(self.llvm_dir, *args)
+        return super().path(ctx, *args)            
 
     def goto_rootdir(self, ctx):
         if self.sys_llvm:
@@ -62,17 +65,48 @@ class MyLLVM(LLVM):
 
     def fetch(self, ctx):
         if self.sys_llvm:
-            ctx.log.info("Using system LLVM (from $LLVM_DIR); skipping fetch()")
-        else:
+            return ctx.log.info("Using system LLVM (from $LLVM_DIR); skipping fetch()")
+        def get(clonedir):
             ctx.log.info("Fetching new LLVM package")
-            super().fetch(ctx)
+            major_version = int(self.version.split(".")[0])
+            run(ctx, ["git", "clone", "git@github.com:llvm/llvm-project.git", clonedir])
+            os.chdir(clonedir)
+            run(ctx, ["git", "checkout", "release/%d.x" % major_version])
+            
+        return get('src')
+            
+    def myBuild(self, ctx):
+        os.chdir('src')
+        config_path = os.path.dirname(os.path.abspath(__file__))
+        for path in self.patches:
+            if '/' not in path:
+                path = '%s/%s-%s.patch' % (config_path, path, self.version)
+            apply_patch(ctx, path, 1)
+        os.chdir('..')
 
+        os.makedirs('obj', exist_ok=True)
+        os.chdir('obj')
+        run(ctx, [
+            'cmake',
+            '-G', 'Ninja',
+            '-DCMAKE_INSTALL_PREFIX=' + self.path(ctx, 'install'),
+            '-DLLVM_BINUTILS_INCDIR=' + self.binutils.path(ctx, 'install/include'),
+            '-DCMAKE_BUILD_TYPE=Release',
+            '-DLLVM_ENABLE_ASSERTIONS=On',
+            '-DLLVM_OPTIMIZED_TABLEGEN=On',
+            '-DCMAKE_C_COMPILER=gcc',
+            '-DCMAKE_CXX_COMPILER=g++', # must be the same as used for compiling passes
+            *self.build_flags,
+            '../src/llvm'
+        ])
+        run(ctx, 'cmake --build . -- -j %d' % ctx.jobs)
+            
     def build(self, ctx):
         if self.sys_llvm:
             ctx.log.info("Using system LLVM (from $LLVM_DIR); skipping build()")
         else:
             ctx.log.info("Building new LLVM package")
-            super().build(ctx)
+            self.myBuild(ctx)
 
     def install(self, ctx):
         if self.sys_llvm:
