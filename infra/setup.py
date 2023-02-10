@@ -76,13 +76,17 @@ class Setup:
             'runenv':      Namespace({}),
             'cc':          'cc',
             'cxx':         'c++',
+            'cpp':         'cpp',
+            'ld':          'ld',
             'ar':          'ar',
             'nm':          'nm',
             'ranlib':      'ranlib',
             'cflags':      [],
             'cxxflags':    [],
+            'cppflags':    [],
             'ldflags':     [],
             'lib_ldflags': [],
+            'ldlibs':      [],
             'hooks':       Namespace({
                                'post_build': []
                            }),
@@ -108,21 +112,24 @@ class Setup:
 
     ``ctx.runenv`` defines environment variables for :func:`util.run`, which is
     a wrapper for :func:`subprocess.run` that does logging and other useful
-    things. 
+    things.
 
-    ``ctx.{cc,cxx,ar,nm,ranlib}`` define default tools of the compiler
+    ``ctx.{cc,cxx,cpp,ld,ar,nm,ranlib}`` define default tools of the compiler
     toolchain, and should be used by target definitions to configure build
     scripts. ``ctx.{c,cxx,ld}flags`` similarly define build flags for targets
     in a list and should be joined into a string using :func:`util.qjoin` when
     being passed as a string to a build script by a target definition.
 
-    ``ctx.{c,cxx,ld}flags`` should be set by instances to define flags for
+    ``ctx.{c,cxx,cpp,ld}flags`` should be set by instances to define flags for
     compiling targets.
+
+    ``ctx.ldlibs`` list of libraries to link to target (space-separated)
 
     ``ctx.lib_ldflags`` is a special set of linker flags set by some packages,
     and is passed when linking target libraries that will later be (statically)
     linked into the binary. In practice it is either empty or ``['-flto']`` when
-    compiling with LLVM.
+    compiling with LLVM. Also useful to separate linker flags when runnign LTO
+    passed for targets using ``./configure`` scripts.
 
     ``ctx.hooks.post_build`` defines a list of post-build hooks, which are
     python functions called with the path to the binary as the only parameter.
@@ -147,27 +154,33 @@ class Setup:
                            setup script for build hooks.
         """
         self.setup_path = os.path.abspath(setup_path)
-        self.instances = Index('instance')
-        self.targets = Index('target')
-        self.commands = Index('command')
-        self.packages = LazyIndex('package', self._find_package)
+        self.instances = Index("instance")
+        self.targets = Index("target")
+        self.commands = Index("command")
+        self.packages = LazyIndex("package", self._find_package)
         self.ctx = Namespace()
         self._init_context()
 
     def _parse_argv(self):
         parser = argparse.ArgumentParser(
-                description='Frontend for building/running instrumented benchmarks.')
+            description="Frontend for building/running instrumented benchmarks."
+        )
 
         # global options
-        parser.add_argument('-v', '--verbosity', default='info',
-                choices=['critical', 'error', 'warning', 'info', 'debug'],
-                help='set logging verbosity (default info)')
-
+        parser.add_argument(
+            "-v",
+            "--verbosity",
+            default="info",
+            choices=["critical", "error", "warning", "info", "debug"],
+            help="set logging verbosity (default info)",
+        )
 
         subparsers = parser.add_subparsers(
-                title='subcommands', metavar='COMMAND', dest='command',
-                description='run with "<command> --help" to see options for '
-                            'individual commands')
+            title="subcommands",
+            metavar="COMMAND",
+            dest="command",
+            description='run with "<command> --help" to see options for ' "individual commands",
+        )
         subparsers.required = True
 
         for name, command in self.commands.items():
@@ -185,25 +198,24 @@ class Setup:
                     completions = super().filter_completions(completions)
                     if completions:
                         for i, value in enumerate(completions):
-                            if not value.startswith('-'):
+                            if not value.startswith("-"):
                                 return completions[i:] + completions[:i]
                     return completions
 
-            silent_commands = [c.name for c in self.commands.values()
-                               if c.description is None]
-            MyCompleter().__call__(parser, exclude=['--help'] + silent_commands)
+            silent_commands = [c.name for c in self.commands.values() if c.description is None]
+            MyCompleter()(parser, exclude=["--help"] + silent_commands)
         except ImportError:
             self.ctx.log.warning("Failed to set Python command-line autocompletion")
 
         self.ctx.args = parser.parse_args()
 
-        if 'jobs' in self.ctx.args:
+        if "jobs" in self.ctx.args:
             self.ctx.jobs = self.ctx.args.jobs
 
-    def _complete_pkg(self, prefix, parsed_args, **kwargs):
+    def _complete_pkg(self, prefix, _parsed_args, **_kwargs):
         objs = list(self.targets.values())
         objs += list(self.instances.values())
-        for package in self._get_deps(objs):
+        for package in get_deps(objs):
             name = package.ident()
             if name.startswith(prefix):
                 yield name
@@ -215,28 +227,32 @@ class Setup:
         paths.setup = self.setup_path
         paths.root = os.path.dirname(self.setup_path)
         paths.infra = os.path.dirname(os.path.dirname(__file__))
-        paths.buildroot = os.path.join(paths.root, 'build')
-        paths.log = os.path.join(paths.buildroot, 'log')
-        paths.debuglog = os.path.join(paths.log, 'debug.txt')
-        paths.runlog = os.path.join(paths.log, 'commands.txt')
-        paths.packages = os.path.join(paths.buildroot, 'packages')
-        paths.targets = os.path.join(paths.buildroot, 'targets')
-        paths.pool_results = os.path.join(paths.root, 'results')
+        paths.buildroot = os.path.join(paths.root, "build")
+        paths.log = os.path.join(paths.buildroot, "log")
+        paths.debuglog = os.path.join(paths.log, "debug.txt")
+        paths.runlog = os.path.join(paths.log, "commands.txt")
+        paths.packages = os.path.join(paths.buildroot, "packages")
+        paths.targets = os.path.join(paths.buildroot, "targets")
+        paths.pool_results = os.path.join(paths.root, "results")
 
         self.ctx.runenv = Namespace()
-        self.ctx.cc = 'cc'
-        self.ctx.cxx = 'c++'
-        self.ctx.ar = 'ar'
-        self.ctx.nm = 'nm'
-        self.ctx.ranlib = 'ranlib'
+        self.ctx.cc = "cc"
+        self.ctx.cxx = "c++"
+        self.ctx.cpp = "cpp"
+        self.ctx.ld = "ld"
+        self.ctx.ar = "ar"
+        self.ctx.nm = "nm"
+        self.ctx.ranlib = "ranlib"
         self.ctx.cflags = []
         self.ctx.cxxflags = []
+        self.ctx.cppflags = []
         self.ctx.ldflags = []
         self.ctx.lib_ldflags = []
+        self.ctx.ldlibs = []
 
         self.ctx.starttime = None
         self.ctx.workdir = None
-        self.ctx.log = logging.getLogger('autosetup')
+        self.ctx.log = logging.getLogger("autosetup")
 
     def _create_dirs(self):
         os.makedirs(self.ctx.paths.log, exist_ok=True)
@@ -244,8 +260,8 @@ class Setup:
         os.makedirs(self.ctx.paths.targets, exist_ok=True)
 
     def _initialize_logger(self):
-        fmt = '%(asctime)s [%(levelname)s] %(message)s'
-        datefmt = '%H:%M:%S'
+        fmt = "%(asctime)s [%(levelname)s] %(message)s"
+        datefmt = "%H:%M:%S"
 
         log = self.ctx.log
         log.setLevel(logging.DEBUG)
@@ -258,16 +274,16 @@ class Setup:
         log.addHandler(termlog)
 
         # always write debug log to file
-        debuglog = logging.FileHandler(self.ctx.paths.debuglog, mode='w')
+        debuglog = logging.FileHandler(self.ctx.paths.debuglog, mode="w")
         debuglog.setLevel(logging.DEBUG)
-        debuglog.setFormatter(logging.Formatter(fmt, '%Y-%m-%d ' + datefmt))
+        debuglog.setFormatter(logging.Formatter(fmt, "%Y-%m-%d " + datefmt))
         log.addHandler(debuglog)
 
         # colorize log if supported
         try:
             import coloredlogs
-            coloredlogs.install(logger=log, fmt=fmt, datefmt=datefmt,
-                                level=termlog.level)
+
+            coloredlogs.install(logger=log, fmt=fmt, datefmt=datefmt, level=termlog.level)
         except ImportError:
             pass
 
@@ -289,7 +305,7 @@ class Setup:
         :param instance: The instance to register.
         """
         if not isinstance(instance.name, str):
-            raise TypeError('Instance must have name of type str.')
+            raise TypeError("Instance must have name of type str.")
 
         self.instances[instance.name] = instance
 
@@ -301,7 +317,7 @@ class Setup:
         :param target: The target to register.
         """
         if not isinstance(target.name, str):
-            raise TypeError('Target must have name of type str.')
+            raise TypeError("Target must have name of type str.")
 
         self.targets[target.name] = target
 
@@ -309,6 +325,7 @@ class Setup:
         for package in get_deps(*self.targets.all(), *self.instances.all()):
             if package.ident() == name:
                 return package
+        return None
 
     def _run_command(self):
         try:
@@ -316,9 +333,9 @@ class Setup:
         except FatalError as e:
             self.ctx.log.error(str(e))
         except KeyboardInterrupt:
-            self.ctx.log.warning('exiting because of keyboard interrupt')
-        except Exception as e:
-            self.ctx.log.critical('unkown error\n' + traceback.format_exc().rstrip())
+            self.ctx.log.warning("exiting because of keyboard interrupt")
+        except Exception:
+            self.ctx.log.critical("unkown error\n" + traceback.format_exc().rstrip())
 
     def main(self):
         """

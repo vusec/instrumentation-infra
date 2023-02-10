@@ -9,7 +9,7 @@ from ..util import run, apply_patch
 class MyLLVM(LLVM):
     """Class for holding LLVM object"""
 
-    def __init__(self, force_new_llvm: bool = True):
+    def __init__(self, force_new_llvm: bool = False):
         self.llvm_dir = os.getenv("LLVM_DIR")
         self.sys_llvm = not force_new_llvm and self.llvm_dir and os.path.exists(self.llvm_dir)
 
@@ -66,40 +66,45 @@ class MyLLVM(LLVM):
     def fetch(self, ctx):
         if self.sys_llvm:
             return ctx.log.info("Using system LLVM (from $LLVM_DIR); skipping fetch()")
+
         def get(clonedir):
             ctx.log.info("Fetching new LLVM package")
             major_version = int(self.version.split(".")[0])
             run(ctx, ["git", "clone", "git@github.com:llvm/llvm-project.git", clonedir])
             os.chdir(clonedir)
-            run(ctx, ["git", "checkout", "release/%d.x" % major_version])
+            run(ctx, ["git", "checkout", f"release/{major_version}.x"])
 
-        return get('src')
+        return get("src")
 
     def myBuild(self, ctx):
-        os.chdir('src')
+        os.chdir("src")
         config_path = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
-            if '/' not in path:
-                path = '%s/%s-%s.patch' % (config_path, path, self.version)
+            if "/" not in path:
+                path = f"{config_path}/{path}-{self.version}.patch"
             apply_patch(ctx, path, 1)
-        os.chdir('..')
+        os.chdir("..")
 
-        os.makedirs('obj', exist_ok=True)
-        os.chdir('obj')
-        run(ctx, [
-            'cmake',
-            '-G', 'Ninja',
-            '-DCMAKE_INSTALL_PREFIX=' + self.path(ctx, 'install'),
-            '-DLLVM_BINUTILS_INCDIR=' + self.binutils.path(ctx, 'install/include'),
-            '-DCMAKE_BUILD_TYPE=Release',
-            '-DLLVM_ENABLE_ASSERTIONS=On',
-            '-DLLVM_OPTIMIZED_TABLEGEN=On',
-            '-DCMAKE_C_COMPILER=gcc',
-            '-DCMAKE_CXX_COMPILER=g++', # must be the same as used for compiling passes
-            *self.build_flags,
-            '../src/llvm'
-        ])
-        run(ctx, 'cmake --build . -- -j %d' % ctx.jobs)
+        os.makedirs("obj", exist_ok=True)
+        os.chdir("obj")
+        run(
+            ctx,
+            [
+                "cmake",
+                "-G",
+                "Ninja",
+                "-DCMAKE_INSTALL_PREFIX=" + self.path(ctx, "install"),
+                "-DLLVM_BINUTILS_INCDIR=" + self.binutils.path(ctx, "install/include"),
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DLLVM_ENABLE_ASSERTIONS=On",
+                "-DLLVM_OPTIMIZED_TABLEGEN=On",
+                "-DCMAKE_C_COMPILER=gcc",
+                "-DCMAKE_CXX_COMPILER=g++",  # must be the same as used for compiling passes
+                *self.build_flags,
+                "../src/llvm",
+            ],
+        )
+        run(ctx, f"cmake --build . -- -j {ctx.jobs}")
 
     def build(self, ctx):
         if self.sys_llvm:
@@ -116,56 +121,65 @@ class MyLLVM(LLVM):
             super().install(ctx)
 
     def configure(self, ctx):
-        if self.sys_llvm:
-            ctx.log.info("Configuring system LLVM (from $LLVM_DIR) into CTX")
-            ctx.log.debug(f"Current CTX: {ctx}")
+        ctx.log.info("Configuring LLVM into CTX")
+        ctx.log.debug(f"Current CTX: {ctx}")
 
-            ctx.cc = self.path(ctx, "bin", "clang")
-            ctx.cxx = self.path(ctx, "bin", "clang++")
-            ctx.ld = self.path(ctx, "bin", "ld.lld")
-            ctx.ar = self.path(ctx, "bin", "llvm-ar")
-            ctx.nm = self.path(ctx, "bin", "llvm-nm")
-            ctx.ranlib = self.path(ctx, "bin", "llvm-ranlib")
+        llvm_dir = self.path(ctx) if self.sys_llvm else self.path(ctx, "install")
+        if not os.path.exists(llvm_dir):
+            raise Exception("Failed to find LLVM_DIR!")
 
-            ctx.log.info("System LLVM configuration completed")
-            ctx.log.debug(f"System LLVM configured: new CTX: {ctx}")
+        ctx.cc = os.path.join(llvm_dir, "bin", "clang")
+        ctx.cxx = os.path.join(llvm_dir, "bin", "clang++")
+        ctx.cpp = os.path.join(llvm_dir, "bin", "clang-cpp")
+        ctx.ld = os.path.join(llvm_dir, "bin", "ld.lld")
+        ctx.ar = os.path.join(llvm_dir, "bin", "llvm-ar")
+        ctx.nm = os.path.join(llvm_dir, "bin", "llvm-nm")
+        ctx.ranlib = os.path.join(llvm_dir, "bin", "llvm-ranlib")
 
-        else:
-            ctx.log.info("Configuring new LLVM package")
-            ctx.ld = self.path(ctx, "bin", "ld.lld")
-            super().configure(ctx)
+        ctx.cflags = []
+        ctx.cxxflags = []
+        ctx.ldflags = []
+        ctx.lib_ldflags = []
+
+        ctx.log.info("LLVM configuration completed")
+        ctx.log.debug(f"LLVM configured: new CTX: {ctx}")
 
     def install_env(self, ctx):
-        if self.sys_llvm:
-            ctx.log.info(f"Installing system LLVM ({self.llvm_dir}) into running env")
-            ctx.log.debug(f"Current running env: {ctx.runenv}")
+        ctx.log.info("Installing LLVM into running env")
+        ctx.log.debug(f"Current running env: {ctx.runenv}")
 
-            # Get current user's environment variables for $PATH and $LD_LIBRARY_PATH
-            bin_path = os.getenv("PATH", "").split(":")
-            lib_path = os.getenv("LD_LIBRARY_PATH", "").split(":")
-            ctx.log.debug(f"Environment $PATH: {bin_path}")
-            ctx.log.debug(f"Environment $LD_LIBRARY_PATH: {lib_path}")
+        llvm_dir = self.path(ctx) if self.sys_llvm else self.path(ctx, "install")
+        if not os.path.exists(llvm_dir):
+            raise Exception("Failed to find LLVM_DIR!")
 
-            # Set LLVM libraries to insert into environment
-            llvm_bin = self.path(ctx, "bin")
-            llvm_lib = self.path(ctx, "lib")
-            ctx.log.debug(f"LLVM_BIN: {llvm_bin}\nLLVM_LIB: {llvm_lib}")
+        # Set LLVM libraries to insert into environment
+        llvm_bin = os.path.join(llvm_dir, "bin")
+        llvm_lib = os.path.join(llvm_dir, "lib")
+        ctx.log.debug(f"LLVM_BIN: {llvm_bin}\nLLVM_LIB: {llvm_lib}")
+        if not os.path.exists(llvm_bin) or not os.path.exists(llvm_lib):
+            raise Exception("Using system LLVM no $LLVM_DIR/bin or $LLVM_DIR/lib")
 
-            if not os.path.exists(llvm_bin) or not os.path.exists(llvm_lib):
-                raise Exception("Using system LLVM no $LLVM_DIR/bin or $LLVM_DIR/lib")
+        # Set variables in running environment
+        ctx.runenv.LLVM_DIR = llvm_dir
+        ctx.runenv.CC = os.path.join(llvm_dir, "bin", "clang")
+        ctx.runenv.CXX = os.path.join(llvm_dir, "bin", "clang++")
+        ctx.runenv.CPP = os.path.join(llvm_dir, "bin", "clang-cpp")
+        ctx.runenv.LD = os.path.join(llvm_dir, "bin", "ld.lld")
+        ctx.runenv.AR = os.path.join(llvm_dir, "bin", "llvm-ar")
+        ctx.runenv.NM = os.path.join(llvm_dir, "bin", "llvm-nm")
+        ctx.runenv.RANLIB = os.path.join(llvm_dir, "bin", "llvm-ranlib")
 
-            # Set variables in running environment
-            ctx.runenv.setdefault("LLVM_DIR", self.llvm_dir)
-            ctx.runenv.setdefault("LLVM_HOME", os.getenv("LLVM_HOME"))
-            ctx.runenv.setdefault("LLVM_OBJ", os.getenv("LLVM_OBJ"))
-            ctx.runenv.setdefault("LLVM_SRC", os.getenv("LLVM_SRC"))
-            ctx.runenv.setdefault("PATH", bin_path).insert(0, llvm_bin)
-            ctx.runenv.setdefault("LD_LIBRARY_PATH", lib_path).insert(0, llvm_lib)
-            ctx.log.debug(f"System LLVM installed: new runenv: {ctx.runenv}")
+        # Get current user's environment variables for $PATH and $LD_LIBRARY_PATH
+        bin_path = os.getenv("PATH", "").split(":")
+        lib_path = os.getenv("LD_LIBRARY_PATH", "").split(":")
+        ctx.log.debug(f"Environment $PATH: {bin_path}")
+        ctx.log.debug(f"Environment $LD_LIBRARY_PATH: {lib_path}")
 
-        else:
-            ctx.log.info("Installing new LLVM package into environment")
-            super().install_env(ctx)
+        ctx.runenv.setdefault("PATH", bin_path).insert(0, llvm_bin)
+        ctx.runenv.setdefault("LIBRARY_PATH", lib_path).insert(0, llvm_lib)
+        ctx.runenv.setdefault("LD_LIBRARY_PATH", lib_path).insert(0, llvm_lib)
+
+        ctx.log.debug(f"LLVM installed: new runenv: {ctx.runenv}")
 
     def clean(self, ctx):
         if self.sys_llvm:
