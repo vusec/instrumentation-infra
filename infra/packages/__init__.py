@@ -17,3 +17,4 @@ from .VeriPatchPass import VeriPatchPass
 from .MyLLVM import MyLLVM
 from .SVF import SVF
 from .SPDLog import SPDLog
+from .libPNG import libPNG
