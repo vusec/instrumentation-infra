@@ -1,0 +1,65 @@
+--- a/include/llvm/IR/ValueMap.h
++++ b/include/llvm/IR/ValueMap.h
+@@ -76,61 +76,61 @@ struct ValueMapConfig {
+   static mutex_type *getMutex(const ExtraDataT &/*Data*/) { return nullptr; }
+ };
+ 
+ /// See the file comment.
+ template<typename KeyT, typename ValueT, typename Config =ValueMapConfig<KeyT> >
+ class ValueMap {
+   friend class ValueMapCallbackVH<KeyT, ValueT, Config>;
+   typedef ValueMapCallbackVH<KeyT, ValueT, Config> ValueMapCVH;
+   typedef DenseMap<ValueMapCVH, ValueT, DenseMapInfo<ValueMapCVH> > MapT;
+   typedef DenseMap<const Metadata *, TrackingMDRef> MDMapT;
+   typedef typename Config::ExtraData ExtraData;
+   MapT Map;
+   std::unique_ptr<MDMapT> MDMap;
+   ExtraData Data;
+ 
+   bool MayMapMetadata = true;
+ 
+   ValueMap(const ValueMap&) = delete;
+   ValueMap& operator=(const ValueMap&) = delete;
+ public:
+   typedef KeyT key_type;
+   typedef ValueT mapped_type;
+   typedef std::pair<KeyT, ValueT> value_type;
+   typedef unsigned size_type;
+ 
+   explicit ValueMap(unsigned NumInitBuckets = 64)
+       : Map(NumInitBuckets), Data() {}
+   explicit ValueMap(const ExtraData &Data, unsigned NumInitBuckets = 64)
+       : Map(NumInitBuckets), Data(Data) {}
+ 
+-  bool hasMD() const { return MDMap; }
++  bool hasMD() const { return bool(MDMap); }
+   MDMapT &MD() {
+     if (!MDMap)
+       MDMap.reset(new MDMapT);
+     return *MDMap;
+   }
+ 
+   bool mayMapMetadata() const { return MayMapMetadata; }
+   void enableMapMetadata() { MayMapMetadata = true; }
+   void disableMapMetadata() { MayMapMetadata = false; }
+ 
+   /// Get the mapped metadata, if it's in the map.
+   Optional<Metadata *> getMappedMD(const Metadata *MD) const {
+     if (!MDMap)
+       return None;
+     auto Where = MDMap->find(MD);
+     if (Where == MDMap->end())
+       return None;
+     return Where->second.get();
+   }
+ 
+   typedef ValueMapIterator<MapT, KeyT> iterator;
+   typedef ValueMapConstIterator<MapT, KeyT> const_iterator;
+   inline iterator begin() { return iterator(Map.begin()); }
+   inline iterator end() { return iterator(Map.end()); }
+   inline const_iterator begin() const { return const_iterator(Map.begin()); }
+   inline const_iterator end() const { return const_iterator(Map.end()); }
+ 
+   bool empty() const { return Map.empty(); }
+   size_type size() const { return Map.size(); }
+ 
