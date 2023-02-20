@@ -17,7 +17,7 @@ class MyLLVM(LLVM):
         if self.sys_llvm:
             self.name = "SystemLLVM"
             self.version = "13.0.1"
-            self.compiler_rt = False
+            self.compiler_rt = True
             self.lld = True
 
         else:
