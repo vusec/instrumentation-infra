@@ -1,0 +1,83 @@
+diff --git a/llvm/include/llvm/Passes/PassBuilder.h b/llvm/include/llvm/Passes/PassBuilder.h
+index fae3e2cd2e0b..0110a8fcfdc9 100644
+--- a/llvm/include/llvm/Passes/PassBuilder.h
++++ b/llvm/include/llvm/Passes/PassBuilder.h
+@@ -621,6 +621,24 @@ public:
+     OptimizerLastEPCallbacks.push_back(C);
+   }
+ 
++   /// Register a callback for a default optimizer pipeline extension point
++  ///
++  /// This extension point allows adding optimizations at the start of the full
++  /// LTO pipeline.
++  void registerFullLinkTimeOptimizationEarlyEPCallback(
++      const std::function<void(ModulePassManager &, OptimizationLevel)> &C) {
++    FullLinkTimeOptimizationEarlyEPCallbacks.push_back(C);
++  }
++
++  /// Register a callback for a default optimizer pipeline extension point
++  ///
++  /// This extension point allows adding optimizations at the end of the full
++  /// LTO pipeline.
++  void registerFullLinkTimeOptimizationLastEPCallback(
++      const std::function<void(ModulePassManager &, OptimizationLevel)> &C) {
++    FullLinkTimeOptimizationLastEPCallbacks.push_back(C);
++  }
++
+   /// Register a callback for parsing an AliasAnalysis Name to populate
+   /// the given AAManager \p AA
+   void registerParseAACallback(
+@@ -744,6 +762,10 @@ private:
+       VectorizerStartEPCallbacks;
+   SmallVector<std::function<void(ModulePassManager &, OptimizationLevel)>, 2>
+       OptimizerLastEPCallbacks;
++  SmallVector<std::function<void(ModulePassManager &, OptimizationLevel)>, 2>
++      FullLinkTimeOptimizationEarlyEPCallbacks;
++  SmallVector<std::function<void(ModulePassManager &, OptimizationLevel)>, 2>
++      FullLinkTimeOptimizationLastEPCallbacks;
+   // Module callbacks
+   SmallVector<std::function<void(ModulePassManager &, OptimizationLevel)>, 2>
+       PipelineStartEPCallbacks;
+diff --git a/llvm/lib/Passes/PassBuilder.cpp b/llvm/lib/Passes/PassBuilder.cpp
+index 0bc955dbbfea..d16c4658585b 100644
+--- a/llvm/lib/Passes/PassBuilder.cpp
++++ b/llvm/lib/Passes/PassBuilder.cpp
+@@ -1489,6 +1489,9 @@ PassBuilder::buildPerModuleDefaultPipeline(OptimizationLevel Level,
+   // Convert @llvm.global.annotations to !annotation metadata.
+   MPM.addPass(Annotation2MetadataPass());
+ 
++  for (auto &C : FullLinkTimeOptimizationEarlyEPCallbacks)
++    C(MPM, Level);
++
+   // Force any function attributes we want the rest of the pipeline to observe.
+   MPM.addPass(ForceFunctionAttrsPass());
+ 
+@@ -1664,7 +1667,8 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
+     // Run a second time to clean up any type tests left behind by WPD for use
+     // in ICP.
+     MPM.addPass(LowerTypeTestsPass(nullptr, nullptr, true));
+-
++    for (auto &C : FullLinkTimeOptimizationLastEPCallbacks)
++      C(MPM, Level);
+     // Emit annotation remarks.
+     addAnnotationRemarksPass(MPM);
+ 
+@@ -1742,6 +1746,8 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
+     // pipeline).
+     MPM.addPass(LowerTypeTestsPass(nullptr, nullptr, true));
+ 
++    for (auto &C : FullLinkTimeOptimizationLastEPCallbacks)
++      C(MPM, Level);
+     // Emit annotation remarks.
+     addAnnotationRemarksPass(MPM);
+ 
+@@ -1905,6 +1911,9 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
+   if (PTO.MergeFunctions)
+     MPM.addPass(MergeFunctionsPass());
+ 
++  for (auto &C : FullLinkTimeOptimizationLastEPCallbacks)
++      C(MPM, Level);
++
+   // Emit annotation remarks.
+   addAnnotationRemarksPass(MPM);
+ 
