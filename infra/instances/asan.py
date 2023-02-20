@@ -61,7 +61,8 @@ class ASan(Clang):
 
     def configure(self, ctx):
         super().configure(ctx)
-        cflags = ['-fsanitize=address']
+        cflags = ['-g']
+        cflags += ['-fsanitize=address']
         if not self.stack:
             cflags = ['-mllvm', '-asan-stack=0']
         if not self.glob:
@@ -73,6 +74,7 @@ class ASan(Clang):
             cflags += ['-mllvm', '-asan-instrument-atomics=false']
         ctx.cflags += cflags
         ctx.cxxflags += cflags
+        ctx.ldflags += ['-g']
         ctx.ldflags += ['-fsanitize=address']
 
     def prepare_run(self, ctx):
