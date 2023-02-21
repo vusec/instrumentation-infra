@@ -10,10 +10,10 @@ from .util import FatalError, Namespace, Index, param_attrs
 
 
 class Command(metaclass=ABCMeta):
-    name = ''
-    description = ''
+    name = ""
+    description = ""
 
-    _max_default_jobs = 16
+    _max_default_jobs = 64
 
     @param_attrs
     def set_maps(self, instances: Index, targets: Index, packages: Index):
@@ -29,53 +29,63 @@ class Command(metaclass=ABCMeta):
 
     def enable_run_log(self, ctx):
         os.chdir(ctx.paths.root)
-        ctx.runlog = open(ctx.paths.runlog, 'w')
+        ctx.runlog = open(ctx.paths.runlog, "w")
 
     def add_pool_args(self, parser):
-        parser.add_argument('--parallel', choices=('proc', 'ssh', 'prun'),
-                default=None,
-                help='build benchmarks in parallel ("proc" for local '
-                     'processes, "prun" for DAS cluster)')
-        parser.add_argument('--parallelmax', metavar='PROCESSES_OR_NODES',
-                type=int, default=None,
-                help='limit simultaneous node reservations (default: %d for '
-                     'proc, 64 for prun)' % cpu_count())
-        parser.add_argument('--ssh-nodes', nargs='+', default='',
-                help='ssh remotes to run jobs on (for --parallel=ssh)')
-        parser.add_argument('--prun-opts', default='',
-                help='additional options for prun (for --parallel=prun)')
+        parser.add_argument(
+            "--parallel",
+            choices=("proc", "ssh", "prun"),
+            default=None,
+            help='build benchmarks in parallel ("proc" for local '
+            'processes, "prun" for DAS cluster)',
+        )
+        parser.add_argument(
+            "--parallelmax",
+            metavar="PROCESSES_OR_NODES",
+            type=int,
+            default=None,
+            help="limit simultaneous node reservations (default: %d for "
+            "proc, 64 for prun)" % cpu_count(),
+        )
+        parser.add_argument(
+            "--ssh-nodes",
+            nargs="+",
+            default="",
+            help="ssh remotes to run jobs on (for --parallel=ssh)",
+        )
+        parser.add_argument(
+            "--prun-opts", default="", help="additional options for prun (for --parallel=prun)"
+        )
 
     def make_pool(self, ctx):
         prun_opts = shlex.split(ctx.args.prun_opts)
 
-        if ctx.args.parallel == 'proc':
+        if ctx.args.parallel == "proc":
             if len(prun_opts):
-                raise FatalError('--prun-opts not supported for --parallel=proc')
+                raise FatalError("--prun-opts not supported for --parallel=proc")
             if ctx.args.ssh_nodes:
-                raise FatalError('--ssh-nodes not supported for --parallel=proc')
-            pmax = cpu_count() if ctx.args.parallelmax is None \
-                   else ctx.args.parallelmax
+                raise FatalError("--ssh-nodes not supported for --parallel=proc")
+            pmax = cpu_count() if ctx.args.parallelmax is None else ctx.args.parallelmax
             return ProcessPool(ctx.log, pmax)
 
-        if ctx.args.parallel == 'ssh':
+        if ctx.args.parallel == "ssh":
             if len(prun_opts):
-                raise FatalError('--prun-opts not supported for --parallel=ssh')
+                raise FatalError("--prun-opts not supported for --parallel=ssh")
             if not ctx.args.ssh_nodes:
-                raise FatalError('--ssh-nodes required for --parallel=ssh')
-            pmax = len(ctx.args.ssh_nodes) if ctx.args.parallelmax is None \
-                   else ctx.args.parallelmax
+                raise FatalError("--ssh-nodes required for --parallel=ssh")
+            pmax = len(ctx.args.ssh_nodes) if ctx.args.parallelmax is None else ctx.args.parallelmax
             return SSHPool(ctx, ctx.log, pmax, ctx.args.ssh_nodes)
 
-        if ctx.args.parallel == 'prun':
+        if ctx.args.parallel == "prun":
             if ctx.args.ssh_nodes:
-                raise FatalError('--ssh-nodes not supported for --parallel=prun')
+                raise FatalError("--ssh-nodes not supported for --parallel=prun")
             pmax = 64 if ctx.args.parallelmax is None else ctx.args.parallelmax
             return PrunPool(ctx.log, pmax, prun_opts)
 
         if ctx.args.parallelmax:
-            raise FatalError('--parallelmax not supported for --parallel=none')
+            raise FatalError("--parallelmax not supported for --parallel=none")
         if len(prun_opts):
-            raise FatalError('--prun-opts not supported for --parallel=none')
+            raise FatalError("--prun-opts not supported for --parallel=none")
 
     def call_with_pool(self, fn, args, pool):
         # FIXME: this is dirty and could be improved by having a default
@@ -100,7 +110,7 @@ def get_deps(*objs):
 
     def add_dep(dep, visited):
         if dep in visited:
-            raise FatalError('recursive dependency %s' % dep)
+            raise FatalError("recursive dependency %s" % dep)
         visited.add(dep)
 
         for nested_dep in dep.dependencies():

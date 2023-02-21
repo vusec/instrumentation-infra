@@ -60,7 +60,7 @@ class Setup:
         Namespace({
             'log':         logging.Logger(...),
             'args':        argparse.Namespace(...),
-            'jobs':        8,
+            'jobs':        64,
             'paths':       Namespace({
                                'root':         '/project',
                                'setup':        '/project/setup.py',
@@ -145,7 +145,7 @@ class Setup:
     ``valgrind``.
     """
 
-    _max_default_jobs = 16
+    _max_default_jobs = 64
 
     def __init__(self, setup_path: str):
         """
