@@ -125,8 +125,8 @@ class MyLLVM(LLVM):
         ctx.log.debug(f"Current CTX: {ctx}")
 
         llvm_dir = self.path(ctx) if self.sys_llvm else self.path(ctx, "install")
-        if not os.path.exists(llvm_dir):
-            raise Exception("Failed to find LLVM_DIR!")
+        # if not os.path.exists(llvm_dir):
+        #     raise Exception("Failed to find LLVM_DIR!")
 
         ctx.cc = os.path.join(llvm_dir, "bin", "clang")
         ctx.cxx = os.path.join(llvm_dir, "bin", "clang++")
