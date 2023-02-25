@@ -263,6 +263,18 @@ def run(
     renv = os.environ.copy()
     renv.update(logenv)
 
+    repro_command = 'cd \'%s\'; ' % os.getcwd()
+    for env_var, env_value in renv.items():
+        # Skip this huge variable that only affects 'ls'.
+        if env_var == "LS_COLORS":
+            continue
+        # Avoid all the locale spam.
+        if env_var.startswith("LC_"):
+            continue
+        repro_command += '%s=\'%s\' ' % (env_var, env_value)
+    repro_command += cmd_print
+    ctx.log.debug('full command: %s' % repro_command)
+
     log_output = False
     if defer or silent:
         kwargs.setdefault("stdout", subprocess.PIPE)

@@ -1,0 +1,25 @@
+--- a/include/llvm/IR/ValueMap.h
++++ b/include/llvm/IR/ValueMap.h
+@@ -92,21 +92,21 @@
+   typedef KeyT key_type;
+   typedef ValueT mapped_type;
+   typedef std::pair<KeyT, ValueT> value_type;
+   typedef unsigned size_type;
+ 
+   explicit ValueMap(unsigned NumInitBuckets = 64)
+       : Map(NumInitBuckets), Data() {}
+   explicit ValueMap(const ExtraData &Data, unsigned NumInitBuckets = 64)
+       : Map(NumInitBuckets), Data(Data) {}
+ 
+-  bool hasMD() const { return MDMap; }
++  bool hasMD() const { return bool(MDMap); }
+   MDMapT &MD() {
+     if (!MDMap)
+       MDMap.reset(new MDMapT);
+     return *MDMap;
+   }
+ 
+   typedef ValueMapIterator<MapT, KeyT> iterator;
+   typedef ValueMapConstIterator<MapT, KeyT> const_iterator;
+   inline iterator begin() { return iterator(Map.begin()); }
+   inline iterator end() { return iterator(Map.end()); }
