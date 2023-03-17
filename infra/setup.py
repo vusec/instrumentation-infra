@@ -88,7 +88,8 @@ class Setup:
             'lib_ldflags': [],
             'ldlibs':      [],
             'hooks':       Namespace({
-                               'post_build': []
+                               'post_build': [],
+                               'pre_build': [],
                            }),
             'starttime':   datetime.datetime
         })
@@ -133,6 +134,9 @@ class Setup:
 
     ``ctx.hooks.post_build`` defines a list of post-build hooks, which are
     python functions called with the path to the binary as the only parameter.
+
+    ``ctx.hooks.pre_build`` defines a list of pre-build hooks, which are python
+    functions called with the path to the binary as the only parameter.
 
     ``ctx.starttime`` is set to ``datetime.datetime.now()``.
 
@@ -221,7 +225,7 @@ class Setup:
                 yield name
 
     def _init_context(self):
-        self.ctx.hooks = Namespace(post_build=[])
+        self.ctx.hooks = Namespace(post_build=[], pre_build=[])
 
         self.ctx.paths = paths = Namespace()
         paths.setup = self.setup_path

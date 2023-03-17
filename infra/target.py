@@ -76,7 +76,7 @@ class Target(metaclass=ABCMeta):
         return isinstance(other, self.__class__) and other.name == self.name
 
     def __hash__(self):
-        return hash('target-' + self.name)
+        return hash("target-" + self.name)
 
     def add_build_args(self, parser: argparse.ArgumentParser):
         """
@@ -210,8 +210,9 @@ class Target(metaclass=ABCMeta):
         """
         pass
 
-    def parse_outfile(self, ctx: Namespace, instance_name: str,
-                      outfile: str) -> Iterator[Dict[str, Any]]:
+    def parse_outfile(
+        self, ctx: Namespace, instance_name: str, outfile: str
+    ) -> Iterator[Dict[str, Any]]:
         """
         Callback method for :func:`commands.report.parse_logs`. Used by report
         command to get reportable results.
@@ -255,11 +256,19 @@ class Target(metaclass=ABCMeta):
         """
         raise NotImplementedError(self.__class__.__name__)
 
-    def run_hooks_post_build(self, ctx, instance):
+    def run_hooks_post_build(self, ctx: Namespace, instance: Instance):
         if ctx.hooks.post_build:
             for binary in self.binary_paths(ctx, instance):
                 absbin = os.path.abspath(binary)
                 basedir = os.path.dirname(absbin)
                 for hook in ctx.hooks.post_build:
+                    ctx.log.info(f"Running post-build hook {hook} on {absbin} in {basedir}")
                     os.chdir(basedir)
                     hook(ctx, absbin)
+
+    def run_hooks_pre_build(self, ctx: Namespace, _instance: Instance):
+        if ctx.hooks.pre_build:
+            self.goto_rootdir(ctx)  # Run hooks in target root
+            for hook in ctx.hooks.pre_build:
+                ctx.log.info(f"Running pre-build hook {hook} in {self.path(ctx)}")
+                hook(ctx, self.path(ctx))

@@ -552,6 +552,15 @@ class SPEC2006(Target):
     # exec-hook setup command instead
     def run_hooks_post_build(self, ctx, instance):
         pass
+    
+    def run_hooks_pre_build(self, ctx, instance):
+        if ctx.hooks.pre_build:
+            for bench in self._get_benchmarks(ctx, instance):
+                path = self._install_path(ctx, 'benchspec', 'CPU2006', bench)
+                os.chdir(path)
+                for hook in ctx.hooks.pre_build:
+                    ctx.log.info(f"Running hook {hook} on {bench} in {path}")
+                    hook(ctx, path)
 
     def _get_benchmarks(self, ctx, instance):
         benchmarks = set()

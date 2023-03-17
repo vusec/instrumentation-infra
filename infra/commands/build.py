@@ -118,6 +118,7 @@ class BuildCommand(Command):
                 ctx.log.info("building %s-%s" % (target.name, instance.name))
                 if not ctx.args.dry_run:
                     target.goto_rootdir(ctx)
+                    target.run_hooks_pre_build(ctx, instance)
                     self.call_with_pool(target.build, (ctx, instance), pool)
                     target.run_hooks_post_build(ctx, instance)
 
@@ -134,7 +135,7 @@ class ExecHookCommand(Command):
     description = None
 
     def add_args(self, parser):
-        parser.add_argument("hooktype", choices=["post-build"], help="hook type")
+        parser.add_argument("hooktype", choices=["post-build", "pre-build"], help="hook type")
         parser.add_argument(
             "instance", metavar="INSTANCE", choices=self.instances, help=" | ".join(self.instances)
         )
