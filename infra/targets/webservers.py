@@ -213,8 +213,14 @@ class WebServer(Target, metaclass=ABCMeta):
         """
         start_cmd = self.start_cmd(runner)
         pid_file = self.pid_file(runner)
-        return '''
-        {start_cmd}
+        libs = runner.ctx.runenv.get("LD_PRELOAD")
+        preload = ''
+        if libs is not None:
+            preload = f'LD_PRELOAD={":".join(libs)}'
+            runner.ctx.runenv["LD_PRELOAD"] = ""
+
+        return f'''
+        {preload} {start_cmd}
         echo -n "=== started server on port {runner.ctx.args.port}, "
         echo "pid $(cat "{pid_file}")"
         '''.format(**locals())
