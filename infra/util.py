@@ -57,40 +57,40 @@ class Namespace(dict):
         return new
 
 
-def add_cflag(ctx: Namespace, flag: str):
+def add_cflag(ctx: Namespace, flag: Union[List[str], str]):
     """Add flag to ctx.cflags if new"""
-    if flag not in ctx.cflags:
-        ctx.cflags.append(flag)
+    for f in flag if isinstance(flag, list) else [flag]:
+        ctx.cflags.append(f)
 
 
-def add_cxxflag(ctx: Namespace, flag: str):
+def add_cxxflag(ctx: Namespace, flag: Union[List[str], str]):
     """Add flag to ctx.cxxflags if new"""
-    if flag not in ctx.cxxflags:
-        ctx.cxxflags.append(flag)
+    for f in flag if isinstance(flag, list) else [flag]:
+        ctx.cxxflags.append(f)
 
 
-def add_c_cxxflag(ctx: Namespace, flag: str):
+def add_c_cxxflag(ctx: Namespace, flag: Union[List[str], str]):
     """Add a flag both to ctx.cflags & ctx.cxxflags if new"""
     add_cflag(ctx, flag)
     add_cxxflag(ctx, flag)
 
 
-def add_cppflag(ctx: Namespace, flag: str):
+def add_cppflag(ctx: Namespace, flag: Union[List[str], str]):
     """Add flag to ctx.cppflags if new"""
-    if flag not in ctx.cppflags:
-        ctx.cppflags.append(flag)
+    for f in flag if isinstance(flag, list) else [flag]:
+        ctx.cppflags.append(f)
 
 
-def add_ldflag(ctx: Namespace, flag: str):
+def add_ldflag(ctx: Namespace, flag: Union[List[str], str]):
     """Add flag to ctx.ldflags if new"""
-    if flag not in ctx.ldflags:
-        ctx.ldflags.append(flag)
+    for f in flag if isinstance(flag, list) else [flag]:
+        ctx.ldflags.append(f)
 
 
-def add_lib_ldflag(ctx: Namespace, flag: str, also_ldflag: bool = False):
+def add_lib_ldflag(ctx: Namespace, flag: Union[List[str], str], also_ldflag: bool = False):
     """Add flag to ctx.lib_ldflags if new"""
-    if flag not in ctx.lib_ldflags:
-        ctx.lib_ldflags.append(flag)
+    for f in flag if isinstance(flag, list) else [flag]:
+        ctx.lib_ldflags.append(f)
     if also_ldflag:
         add_ldflag(ctx, flag)
 
@@ -105,8 +105,7 @@ def add_ldlib(ctx: Namespace, lib_name: str):
         flag = flag[:-3]
     if flag.endswith(".a"):  # Strip .a from libname
         flag = flag[:-2]
-    if flag not in ctx.ldlibs:
-        ctx.ldlibs.append(flag)
+    ctx.ldlibs.append(flag)
 
 
 class Index:
@@ -263,7 +262,7 @@ def run(
     renv = os.environ.copy()
     renv.update(logenv)
 
-    repro_command = 'cd \'%s\'; ' % os.getcwd()
+    repro_command = "cd '%s'; " % os.getcwd()
     for env_var, env_value in renv.items():
         # Skip this huge variable that only affects 'ls'.
         if env_var == "LS_COLORS":
@@ -271,9 +270,9 @@ def run(
         # Avoid all the locale spam.
         if env_var.startswith("LC_"):
             continue
-        repro_command += '%s=\'%s\' ' % (env_var, env_value)
+        repro_command += "%s='%s' " % (env_var, env_value)
     repro_command += cmd_print
-    ctx.log.debug('full command: %s' % repro_command)
+    ctx.log.debug("full command: %s" % repro_command)
 
     log_output = False
     if defer or silent:
