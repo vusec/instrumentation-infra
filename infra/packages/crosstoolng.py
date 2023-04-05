@@ -2,8 +2,8 @@ import os
 import shutil
 from typing import Optional
 
-from infra.infra.package import Package
-from infra.infra.util import run
+from ..package import Package
+from ..util import run
 
 class CrosstoolNG(Package):
     """
