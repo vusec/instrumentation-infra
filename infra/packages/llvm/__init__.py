@@ -1,6 +1,6 @@
 import os
 import shutil
-from typing import List, Iterable
+from typing import List, Iterable, Optional
 from ...package import Package
 from ...util import Namespace, run, apply_patch, download, param_attrs
 from ..gnu import Bash, CoreUtils, BinUtils, Make, AutoMake
@@ -50,6 +50,7 @@ class LLVM(Package):
 
     def __init__(self, version: str,
                        compiler_rt: bool,
+                       commit: Optional[str] = None,
                        lld: bool = False,
                        patches: List[str] = [],
                        build_flags: List[str] = []):
@@ -62,6 +63,7 @@ class LLVM(Package):
         self.lld = lld
         self.patches = patches
         self.build_flags = build_flags
+        self.commit = commit
 
         if compiler_rt and version == '4.0.0':
             patches.append('compiler-rt-typefix')
@@ -81,6 +83,17 @@ class LLVM(Package):
         yield Ninja('1.8.2')
 
     def fetch(self, ctx):
+        if self.commit is not None:
+            run(ctx, ['git', 'clone', 'https://github.com/llvm/llvm-project.git', 'src'])
+            os.chdir('src')
+            run(ctx, ['git', 'checkout', self.commit])
+
+            # unsure if this is the 'proper' way, only tested with LLVM 3.8
+            shutil.copytree('clang', 'llvm/tools/clang')
+            if self.compiler_rt:
+                shutil.copytree('compiler-rt', 'llvm/projects/compiler-rt')
+            return
+
         def get(repo, clonedir):
             basedir = os.path.dirname(clonedir)
             if basedir:
@@ -146,7 +159,7 @@ class LLVM(Package):
             '-DCMAKE_C_COMPILER=gcc',
             '-DCMAKE_CXX_COMPILER=g++', # must be the same as used for compiling passes
             *self.build_flags,
-            '../src'
+            '../src/llvm' if self.commit else '../src'
         ])
         run(ctx, 'cmake --build . -- -j %d' % ctx.jobs)
 
