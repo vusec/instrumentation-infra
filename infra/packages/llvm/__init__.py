@@ -141,9 +141,21 @@ class LLVM(Package):
         os.chdir('src')
         config_path = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
+            original_dir = None
+            if isinstance(path, tuple):
+                # if path is a tuple then you can specify the directory to apply the path
+                # to at index 0 and the actual path at index 1
+                # e.g. ('llvm', 'patches/LLVM-uniqueptr-fix.patch'))
+                original_dir = os.getcwd()
+                patch_dir, path = path
+                os.chdir(patch_dir)
+
             if '/' not in path:
                 path = '%s/%s-%s.patch' % (config_path, path, self.version)
             apply_patch(ctx, path, 1)
+
+            if original_dir:
+                os.chdir(original_dir)
         os.chdir('..')
 
         os.makedirs('obj', exist_ok=True)
