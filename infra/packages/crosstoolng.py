@@ -138,8 +138,8 @@ class CustomToolchain(Package):
     def install(self, ctx):
         os.makedirs('install', exist_ok=True)
 
-        sysroot_dir = self.path(ctx, f"obj/{self.arch}-unknown-linux-gnu/x86_64-unknown-linux-gnu/sysroot")
-        cxx_include_dir = self.path(ctx, f"obj/{self.arch}-unknown-linux-gnu/x86_64-unknown-linux-gnu/include/c++")
+        sysroot_dir = self.path(ctx, f"obj/{self.arch}-unknown-linux-gnu/{self.arch}-unknown-linux-gnu/sysroot")
+        cxx_include_dir = self.path(ctx, f"obj/{self.arch}-unknown-linux-gnu/{self.arch}-unknown-linux-gnu/include/c++")
         gcc_lib_dir = self.path(ctx, f"obj/{self.arch}-unknown-linux-gnu/lib/gcc")
 
         shutil.copytree(sysroot_dir, self.path(ctx, 'install/sysroot'))
