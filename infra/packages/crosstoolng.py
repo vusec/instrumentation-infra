@@ -60,11 +60,13 @@ class CustomToolchain(Package):
 
     def __init__(self,
             arch: str = 'x86_64',
-            glibc_version: Optional[str] = None,
+            glibc_version: str = None,
+            glibc_min_kernel_version: Optional[str] = None,
             glibc_path: Optional[str] = None):
         self.arch = arch
         self.glibc_version = glibc_version
         self.glibc_path = glibc_path
+        self.glibc_min_kernel_version = glibc_min_kernel_version
 
         self.crosstoolNG = CrosstoolNG()
 
@@ -101,6 +103,11 @@ class CustomToolchain(Package):
         if self.glibc_version:
             run(ctx, ['sed', '-i',
                 's/CT_GLIBC_VERSION=.*/CT_GLIBC_VERSION="%s"/' % self.glibc_version,
+                '.config'])
+
+        if self.glibc_min_kernel_version:
+            run(ctx, ['sed', '-i',
+                's/CT_GLIBC_MIN_KERNEL=.*/CT_GLIBC_MIN_KERNEL="%s"/' % self.glibc_min_kernel_version,
                 '.config'])
 
         if self.glibc_path:
