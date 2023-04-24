@@ -136,6 +136,19 @@ class CustomToolchain(Package):
                 's/CT_GLIBC_EXTRA_CONFIG_ARRAY=.*/CT_GLIBC_EXTRA_CONFIG_ARRAY=("--without-selinux")/',
                 '.config'])
 
+        run(ctx, ['sed', '-i',
+            's/# CT_DEBUG_CT is not set/CT_DEBUG_CT=y/',
+            '.config'])
+        run(ctx, ['bash', '-c', 'echo CT_DEBUG_CT_SAVE_STEPS=y >> .config'])
+        run(ctx, ['bash', '-c', 'echo CT_DEBUG_CT_SAVE_STEPS_GZIP=n >> .config'])
+
+        run(ctx, ['sed', '-i',
+            's/CT_DEBUG_GDB=y/# CT_DEBUG_GDB is not set/',
+            '.config'])
+        run(ctx, ['sed', '-i',
+            's/CT_GDB_GDBSERVER=y/# CT_GDB_GDBSERVER is not set/',
+            '.config'])
+
         run(ctx, [ct_ng_bin, 'build', 'CT_JOBS=%d' % ctx.jobs,
             f"CT_PREFIX={obj_dir}"])
 
