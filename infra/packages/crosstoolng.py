@@ -93,8 +93,11 @@ class CustomToolchain(Package):
 
         ct_ng_bin = self.crosstoolNG.path(ctx, 'install/bin/ct-ng')
 
+        ctx = ctx.copy()
         if 'LIBRARY_PATH' in ctx.runenv:
             del ctx.runenv['LIBRARY_PATH']
+        if 'LD_LIBRARY_PATH' in ctx.runenv:
+            del ctx.runenv['LD_LIBRARY_PATH']
 
         run(ctx, [ct_ng_bin, f"{self.arch}-unknown-linux-gnu"])
 
@@ -172,7 +175,7 @@ class CustomToolchain(Package):
         shutil.copytree(cxx_include_dir, self.path(ctx, 'install/sysroot/usr/include/c++'))
         shutil.copytree(gcc_lib_dir, self.path(ctx, 'install/sysroot/lib/gcc'))
 
-    def configure(self, ctx):
+    def configure_flags(self, ctx):
         """
         Set build/link flags in **ctx**. Should be called from the
         ``configure`` method of an instance.
@@ -209,5 +212,21 @@ class CustomToolchain(Package):
         ctx.cflags += cflags
         ctx.cxxflags += cxxflags
         ctx.ldflags += ldflags
+
+    def package_configure(self, ctx):
+        """
+        Set build/link flags in **ctx** for packages that are to be linked against
+        this glibc.
+        """
+        self.configure(ctx)
+
+    def configure(self, ctx):
+        """
+        Set build/link flags in **ctx**. Should be called from the
+        ``configure`` method of an instance.
+
+        :param ctx: the configuration context
+        """
+        self.configure_flags(ctx)
 
         ctx.runenv.LIBRARY_PATH = self.path(ctx, 'install/sysroot/usr/lib')
