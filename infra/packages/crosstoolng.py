@@ -93,6 +93,9 @@ class CustomToolchain(Package):
 
         ct_ng_bin = self.crosstoolNG.path(ctx, 'install/bin/ct-ng')
 
+        if 'LIBRARY_PATH' in ctx.runenv:
+            del ctx.runenv['LIBRARY_PATH']
+
         run(ctx, [ct_ng_bin, f"{self.arch}-unknown-linux-gnu"])
 
         # CT_ZLIB_VERSION 1.2.12 download no longer exists
@@ -199,8 +202,12 @@ class CustomToolchain(Package):
             f'--sysroot={host_sysroot}',
             f'-Wl,-rpath={target_sysroot}/lib64',
             f'-Wl,--dynamic-linker={target_sysroot}/lib64/ld-{self.glibc_version}.so',
+            '-Wl,--start-group',
         ]
+        ctx.extra_libs = ['-lgcc', '-lstdc++', '-lgcc_s', '-lc', '-lm', '-Wl,--end-group']
 
         ctx.cflags += cflags
         ctx.cxxflags += cxxflags
         ctx.ldflags += ldflags
+
+        ctx.runenv.LIBRARY_PATH = self.path(ctx, 'install/sysroot/usr/lib')
