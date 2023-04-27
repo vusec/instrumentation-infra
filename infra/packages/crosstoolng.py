@@ -187,6 +187,15 @@ class CustomToolchain(Package):
         # on a different device than compiling.
         target_sysroot = host_sysroot
 
+        ld_path = f'{target_sysroot}/lib64/ld-{self.glibc_version}.so'
+        if not os.path.exists(ld_path):
+            if self.arch == 'x86_64':
+                ld_path = f'{target_sysroot}/lib64/ld-linux-{self.arch}.so.2'
+            elif self.arch == 'aarch64':
+                ld_path = f'{target_sysroot}/lib64/ld-linux-{self.arch}.so.1'
+
+        assert os.path.exists(ld_path)
+
         cflags = [
             f'-I{host_sysroot}/usr/include',
             f'--sysroot={host_sysroot}',
@@ -204,7 +213,7 @@ class CustomToolchain(Package):
             f'-L{host_sysroot}/usr/lib64',
             f'--sysroot={host_sysroot}',
             f'-Wl,-rpath={target_sysroot}/lib64',
-            f'-Wl,--dynamic-linker={target_sysroot}/lib64/ld-{self.glibc_version}.so',
+            f'-Wl,--dynamic-linker={ld_path}',
             '-Wl,--start-group',
         ]
         ctx.extra_libs = ['-lgcc', '-lstdc++', '-lgcc_s', '-lc', '-lm', '-Wl,--end-group']
