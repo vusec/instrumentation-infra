@@ -223,6 +223,23 @@ class Juliet(Target):
                         *ctx.ldflags
                     ], **kwargs_bad)
 
+    def binary_paths(self, ctx: Namespace, instance: Instance):
+        paths = []
+
+        for cwe in self.parse_cwe_list(ctx.args.cwe):
+            bdir = Path(self.path(ctx))
+            objdir = bdir / 'obj' / instance.name / cwe
+
+            gooddir = objdir / 'good'
+            for testpath in gooddir.iterdir():
+                paths.append(testpath)
+
+            baddir = objdir / 'bad'
+            for testpath in baddir.iterdir():
+                paths.append(testpath)
+
+        return paths
+
     def run(self, ctx: Namespace, instance: Instance):
         for cwe in self.parse_cwe_list(ctx.args.cwe):
             self.run_cwe(ctx, instance, cwe)
