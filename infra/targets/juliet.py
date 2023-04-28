@@ -184,10 +184,22 @@ class Juliet(Target):
                 goodbin = gooddir / testname
                 badbin = baddir / testname
 
-                if testpath.suffix == '.c':
-                    compiler = [ctx.cc, *ctx.cflags]
+                # janky way to support 'cc' and 'cxx' with spaces
+                cc = ctx.cc
+                if ' ' in cc:
+                    cc = cc.split(' ')
                 else:
-                    compiler = [ctx.cxx, *ctx.cxxflags]
+                    cc = [cc]
+                cxx = ctx.cxx
+                if ' ' in cxx:
+                    cxx = cxx.split(' ')
+                else:
+                    cxx = [cxx]
+
+                if testpath.suffix == '.c':
+                    compiler = [*cc, *ctx.cflags]
+                else:
+                    compiler = [*cxx, *ctx.cxxflags]
 
                 compiler += ['-DINCLUDEMAIN']
                 compiler += ['-I', str(incdir)]
