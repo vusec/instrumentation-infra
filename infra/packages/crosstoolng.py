@@ -83,24 +83,7 @@ class CustomToolchain(Package):
     def fetch(self, ctx):
         pass
 
-    def is_built(self, ctx):
-        return os.path.exists(self.path(ctx, 'obj', f"{self.arch}-unknown-linux-gnu"))
-
-    def build(self, ctx):
-        obj_dir = self.path(ctx, 'obj')
-        os.makedirs('obj', exist_ok=True)
-        os.chdir('obj')
-
-        ct_ng_bin = self.crosstoolNG.path(ctx, 'install/bin/ct-ng')
-
-        ctx = ctx.copy()
-        if 'LIBRARY_PATH' in ctx.runenv:
-            del ctx.runenv['LIBRARY_PATH']
-        if 'LD_LIBRARY_PATH' in ctx.runenv:
-            del ctx.runenv['LD_LIBRARY_PATH']
-
-        run(ctx, [ct_ng_bin, f"{self.arch}-unknown-linux-gnu"])
-
+    def patch_config_file(self, ctx):
         # CT_ZLIB_VERSION 1.2.12 download no longer exists
         run(ctx, ['sed', '-i',
             's/CT_ZLIB_VERSION=.*/CT_ZLIB_VERSION="1.2.13"/',
@@ -155,6 +138,26 @@ class CustomToolchain(Package):
             's/CT_GDB_GDBSERVER=y/# CT_GDB_GDBSERVER is not set/',
             '.config'])
 
+    def is_built(self, ctx):
+        return os.path.exists(self.path(ctx, 'obj', f"{self.arch}-unknown-linux-gnu"))
+
+    def build(self, ctx):
+        obj_dir = self.path(ctx, 'obj')
+        os.makedirs('obj', exist_ok=True)
+        os.chdir('obj')
+
+        ct_ng_bin = self.crosstoolNG.path(ctx, 'install/bin/ct-ng')
+
+        ctx = ctx.copy()
+        if 'LIBRARY_PATH' in ctx.runenv:
+            del ctx.runenv['LIBRARY_PATH']
+        if 'LD_LIBRARY_PATH' in ctx.runenv:
+            del ctx.runenv['LD_LIBRARY_PATH']
+
+        run(ctx, [ct_ng_bin, f"{self.arch}-unknown-linux-gnu"])
+
+        self.patch_config_file(ctx)
+
         run(ctx, [ct_ng_bin, 'build', 'CT_JOBS=%d' % ctx.jobs,
             f"CT_PREFIX={obj_dir}"])
 
@@ -194,7 +197,8 @@ class CustomToolchain(Package):
             elif self.arch == 'aarch64':
                 ld_path = f'{target_sysroot}/lib64/ld-linux-{self.arch}.so.1'
 
-        assert os.path.exists(ld_path)
+        if self.is_installed(ctx):
+            assert os.path.exists(ld_path)
 
         cflags = [
             f'-I{host_sysroot}/usr/include',
@@ -214,9 +218,7 @@ class CustomToolchain(Package):
             f'--sysroot={host_sysroot}',
             f'-Wl,-rpath={target_sysroot}/lib64',
             f'-Wl,--dynamic-linker={ld_path}',
-            '-Wl,--start-group',
         ]
-        ctx.extra_libs = ['-lgcc', '-lstdc++', '-lgcc_s', '-lc', '-lm', '-Wl,--end-group']
 
         ctx.cflags += cflags
         ctx.cxxflags += cxxflags
@@ -227,7 +229,7 @@ class CustomToolchain(Package):
         Set build/link flags in **ctx** for packages that are to be linked against
         this glibc.
         """
-        self.configure(ctx)
+        self.configure_flags(ctx)
 
     def configure(self, ctx):
         """
@@ -237,5 +239,8 @@ class CustomToolchain(Package):
         :param ctx: the configuration context
         """
         self.configure_flags(ctx)
+
+        ctx.ldflags += ['-Wl,--start-group']
+        ctx.extra_libs = ['-lgcc', '-lstdc++', '-lgcc_s', '-lc', '-lm', '-Wl,--end-group']
 
         ctx.runenv.LIBRARY_PATH = self.path(ctx, 'install/sysroot/usr/lib')
