@@ -1,7 +1,7 @@
-diff --git a/projects/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cc b/projects/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cc
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cc b/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cc
 index 54da635d71f..ace3ccb40b0 100644
---- a/projects/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cc
-+++ b/projects/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cc
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cc
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cc
 @@ -1158,8 +1158,7 @@ CHECK_SIZE_AND_OFFSET(ipc_perm, uid);
  CHECK_SIZE_AND_OFFSET(ipc_perm, gid);
  CHECK_SIZE_AND_OFFSET(ipc_perm, cuid);
@@ -12,10 +12,10 @@ index 54da635d71f..ace3ccb40b0 100644
  CHECK_SIZE_AND_OFFSET(ipc_perm, mode);
  #endif
 
-diff --git a/projects/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h b/projects/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h b/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h
 index f89a11312d8..f6f986f40db 100644
---- a/projects/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h
-+++ b/projects/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h
 @@ -213,26 +213,13 @@ namespace __sanitizer {
      u64 __unused1;
      u64 __unused2;

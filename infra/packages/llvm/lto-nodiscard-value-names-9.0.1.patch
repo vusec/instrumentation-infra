@@ -1,7 +1,7 @@
-diff --git a/include/llvm/LTO/Config.h b/include/llvm/LTO/Config.h
+diff --git a/llvm/include/llvm/LTO/Config.h b/llvm/include/llvm/LTO/Config.h
 index 57bba5e..9ac5c73 100644
---- a/include/llvm/LTO/Config.h
-+++ b/include/llvm/LTO/Config.h
+--- a/llvm/include/llvm/LTO/Config.h
++++ b/llvm/include/llvm/LTO/Config.h
 @@ -93,7 +93,7 @@ struct Config {
    /// Statistics output file path.
    std::string StatsFile;

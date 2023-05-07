@@ -1,7 +1,7 @@
-diff --git a/lib/LTO/LTOBackend.cpp b/lib/LTO/LTOBackend.cpp
+diff --git a/llvm/lib/LTO/LTOBackend.cpp b/llvm/lib/LTO/LTOBackend.cpp
 index 0c395f9bbf28..4747f48b3a28 100644
---- a/lib/LTO/LTOBackend.cpp
-+++ b/lib/LTO/LTOBackend.cpp
+--- a/llvm/lib/LTO/LTOBackend.cpp
++++ b/llvm/lib/LTO/LTOBackend.cpp
 @@ -23,6 +23,7 @@
  #include "llvm/Bitcode/BitcodeWriter.h"
  #include "llvm/IR/LLVMRemarkStreamer.h"
@@ -65,10 +65,10 @@ index 0c395f9bbf28..4747f48b3a28 100644
    passes.run(Mod);
  }
 
-diff --git a/tools/gold/CMakeLists.txt b/tools/gold/CMakeLists.txt
+diff --git a/llvm/tools/gold/CMakeLists.txt b/llvm/tools/gold/CMakeLists.txt
 index 72f76558c088..0c0ecc6370f2 100644
---- a/tools/gold/CMakeLists.txt
-+++ b/tools/gold/CMakeLists.txt
+--- a/llvm/tools/gold/CMakeLists.txt
++++ b/llvm/tools/gold/CMakeLists.txt
 @@ -1,4 +1,6 @@
 -set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/gold.exports)
 +# Enabling this will cause a lot of symbols to miss from LLVMgold.so which we
@@ -77,10 +77,10 @@ index 72f76558c088..0c0ecc6370f2 100644
 
  if( LLVM_ENABLE_PIC AND LLVM_BINUTILS_INCDIR )
    include_directories( ${LLVM_BINUTILS_INCDIR} )
-diff --git a/tools/gold/gold-plugin.cpp b/tools/gold/gold-plugin.cpp
+diff --git a/llvm/tools/gold/gold-plugin.cpp b/llvm/tools/gold/gold-plugin.cpp
 index 0124e0a93e8a..7cc12c830992 100644
---- a/tools/gold/gold-plugin.cpp
-+++ b/tools/gold/gold-plugin.cpp
+--- a/llvm/tools/gold/gold-plugin.cpp
++++ b/llvm/tools/gold/gold-plugin.cpp
 @@ -31,6 +31,7 @@
  #include "llvm/Support/TargetSelect.h"
  #include "llvm/Support/Threading.h"

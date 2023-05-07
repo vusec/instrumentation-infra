@@ -1,7 +1,7 @@
-diff --git a/lib/Support/Statistic.cpp b/lib/Support/Statistic.cpp
+diff --git a/llvm/lib/Support/Statistic.cpp b/llvm/lib/Support/Statistic.cpp
 index e9308ab575ab..7981fac8f01c 100644
---- a/lib/Support/Statistic.cpp
-+++ b/lib/Support/Statistic.cpp
+--- a/llvm/lib/Support/Statistic.cpp
++++ b/llvm/lib/Support/Statistic.cpp
 @@ -47,6 +47,25 @@ static cl::opt<bool> StatsAsJSON("stats-json",
                                   cl::desc("Display statistics as json data"),
                                   cl::Hidden);

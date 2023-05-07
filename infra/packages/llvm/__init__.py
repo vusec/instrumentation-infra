@@ -87,11 +87,6 @@ class LLVM(Package):
             run(ctx, ['git', 'clone', 'https://github.com/llvm/llvm-project.git', 'src'])
             os.chdir('src')
             run(ctx, ['git', 'checkout', self.commit])
-
-            # unsure if this is the 'proper' way, only tested with LLVM 3.8
-            shutil.copytree('clang', 'llvm/tools/clang')
-            if self.compiler_rt:
-                shutil.copytree('compiler-rt', 'llvm/projects/compiler-rt')
             return
 
         def get(repo, clonedir):
@@ -117,21 +112,28 @@ class LLVM(Package):
             shutil.move(dirname, clonedir)
             os.remove(tarname)
 
-        # download and unpack sources
-        get('llvm', 'src')
-
         major_version = int(self.version.split('.')[0])
-        if major_version >= 8:
-            get('clang', 'src/tools/clang')
-        else:
-            get('cfe', 'src/tools/clang')
 
-        if self.compiler_rt:
-            get('compiler-rt', 'src/projects/compiler-rt')
-        if self.lld:
-            get('lld', 'src/projects/lld')
+        # starting with 9.0.1 the llvm-project is available completely
+        # specifically with 15+ the separate tarballs are pretty broken
+        if major_version >= 9:
+            get('llvm-project', 'src')
+        else:
+            # download and unpack sources
+            get('llvm', 'src')
+
+            if major_version >= 8:
+                get('clang', 'src/tools/clang')
+            else:
+                get('cfe', 'src/tools/clang')
+
+            if self.compiler_rt:
+                get('compiler-rt', 'src/projects/compiler-rt')
+            if self.lld:
+                get('lld', 'src/projects/lld')
 
     def build(self, ctx):
+        major_version = int(self.version.split('.')[0])
         # TODO: verify that any applied patches are in self.patches, error
         # otherwise
 
@@ -160,19 +162,44 @@ class LLVM(Package):
 
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
-        run(ctx, [
-            'cmake',
-            '-G', 'Ninja',
-            '-DCMAKE_INSTALL_PREFIX=' + self.path(ctx, 'install'),
-            '-DLLVM_BINUTILS_INCDIR=' + self.binutils.path(ctx, 'install/include'),
-            '-DCMAKE_BUILD_TYPE=Release',
-            '-DLLVM_ENABLE_ASSERTIONS=On',
-            '-DLLVM_OPTIMIZED_TABLEGEN=On',
-            '-DCMAKE_C_COMPILER=gcc',
-            '-DCMAKE_CXX_COMPILER=g++', # must be the same as used for compiling passes
-            *self.build_flags,
-            '../src/llvm' if self.commit else '../src'
-        ])
+        if self.commit or major_version >= 9:
+            projects = ['clang']
+            if self.lld:
+                projects.append('lld')
+            projects = ','.join(projects)
+            runtimes = []
+            if self.compiler_rt:
+                runtimes.append('compiler-rt')
+            runtimes = ','.join(runtimes)
+            run(ctx, [
+                'cmake',
+                '-G', 'Ninja',
+                '-DCMAKE_INSTALL_PREFIX=' + self.path(ctx, 'install'),
+                '-DLLVM_BINUTILS_INCDIR=' + self.binutils.path(ctx, 'install/include'),
+                f'-DLLVM_ENABLE_PROJECTS={projects}',
+                f'-DLLVM_ENABLE_RUNTIMES={runtimes}',
+                '-DCMAKE_BUILD_TYPE=Release',
+                '-DLLVM_ENABLE_ASSERTIONS=On',
+                '-DLLVM_OPTIMIZED_TABLEGEN=On',
+                '-DCMAKE_C_COMPILER=gcc',
+                '-DCMAKE_CXX_COMPILER=g++', # must be the same as used for compiling passes
+                *self.build_flags,
+                '../src/llvm'
+            ])
+        else:
+            run(ctx, [
+                'cmake',
+                '-G', 'Ninja',
+                '-DCMAKE_INSTALL_PREFIX=' + self.path(ctx, 'install'),
+                '-DLLVM_BINUTILS_INCDIR=' + self.binutils.path(ctx, 'install/include'),
+                '-DCMAKE_BUILD_TYPE=Release',
+                '-DLLVM_ENABLE_ASSERTIONS=On',
+                '-DLLVM_OPTIMIZED_TABLEGEN=On',
+                '-DCMAKE_C_COMPILER=gcc',
+                '-DCMAKE_CXX_COMPILER=g++', # must be the same as used for compiling passes
+                *self.build_flags,
+                '../src'
+            ])
         run(ctx, 'cmake --build . -- -j %d' % ctx.jobs)
 
     def install(self, ctx):

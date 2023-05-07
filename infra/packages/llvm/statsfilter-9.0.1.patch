@@ -1,5 +1,5 @@
---- a/lib/Support/Statistic.cpp
-+++ b/lib/Support/Statistic.cpp
+--- a/llvm/lib/Support/Statistic.cpp
++++ b/llvm/lib/Support/Statistic.cpp
 @@ -46,6 +46,25 @@ static cl::opt<bool> Stats("stats",
  static cl::opt<bool> StatsAsJSON("stats-json",
                                   cl::desc("Display statistics as json data"));
