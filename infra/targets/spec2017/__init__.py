@@ -11,7 +11,7 @@ from ...commands.report import outfile_path, parse_all_results
 from ...util import FatalError, run, apply_patch, qjoin, require_program
 from ...target import Target
 from ...packages import Bash, Nothp, ReportableTool, RusageCounters
-from ...parallel import PrunPool
+from ...parallel import PrunPool, ProcessPool
 from .benchmark_sets import benchmark_sets
 
 
@@ -289,7 +289,12 @@ class SPEC2017(Target):
         if self.nothp:
             wrapper += ' nothp'
         if self.force_cpu >= 0:
-            wrapper += ' taskset -c %d' % self.force_cpu
+            if isinstance(pool, ProcessPool) and pool.parallelmax > 1:
+                ctx.log.warning(f'Ignoring force_cpu={self.force_cpu} for '
+                                f'SPEC2017 because using parallel=proc with '
+                                f'parallelmax > 1')
+            else:
+                wrapper += ' taskset -c %d' % self.force_cpu
 
         cmd = '{wrapper} runcpu --config={config} --nobuild {runargs} {{bench}}'
         cmd = cmd.format(**locals())
