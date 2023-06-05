@@ -469,6 +469,13 @@ def outfile_path(ctx: Namespace, target: Target, instance: Instance,
     path = os.path.join(ctx.paths.pool_results, rundir, target.name,
                         instance.name, *args)
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    # Maintain a 'last' symlink to latest results
+    symname = os.path.join(ctx.paths.pool_results, 'last')
+    if os.path.exists(symname):
+        os.unlink(symname)
+    os.symlink(os.path.join(ctx.paths.pool_results, rundir), symname, target_is_directory=True)
+
     return path
 
 
