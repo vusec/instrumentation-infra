@@ -65,9 +65,6 @@ class Target(metaclass=ABCMeta):
     #: :class:`str` The target's name, must be unique.
     name = None
 
-    #: A mapping of fields that can be reported to their descriptions.
-    reportable_fields = {}
-
     #: :class:`str` The default reportable field to group by when
     #               aggregating results.
     aggregation_field = None
@@ -77,6 +74,19 @@ class Target(metaclass=ABCMeta):
 
     def __hash__(self):
         return hash("target-" + self.name)
+
+    def reportable_fields(self) -> Dict[str, str]:
+        """
+        Run-time statistics reported by this target. Examples include the
+        runtime of the benchmark, its memory or CPU utilization, or
+        benchmarks-specific measurements such as throughput and latency of
+        requests.
+
+        The format is a dictionary mapping the name of the statistic to a
+        (human-readable) description. For each entry, the name is looked up
+        in the logs and saved per run.
+        """
+        return {}
 
     def add_build_args(self, parser: argparse.ArgumentParser):
         """

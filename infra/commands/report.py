@@ -400,7 +400,7 @@ def report_table(ctx, nonhuman_header, human_header, data_rows, title,
 
 def _reportable_fields(target):
     return {
-        **target.reportable_fields,
+        **target.reportable_fields(),
         'outfile': 'log file containing the result',
     }
 

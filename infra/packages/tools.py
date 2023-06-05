@@ -1,9 +1,11 @@
 import os
 from os.path import exists, join
-from abc import ABCMeta
-from ..commands.report import parse_results
+from abc import ABCMeta, abstractmethod
+from collections import defaultdict
+from typing import Dict
+from ..commands.report import Result, parse_results
 from ..package import Package
-from ..util import Namespace, run
+from ..util import FatalError, Namespace, run
 
 
 class Tool(Package, metaclass=ABCMeta):
@@ -41,6 +43,49 @@ class Tool(Package, metaclass=ABCMeta):
         ])
 
 
+class ReportableTool(Tool, metaclass=ABCMeta):
+    """
+    Tool that adds reportable run-time statistics.
+
+    For example, a wrapper program, or a static library linked into the target.
+
+    Tools that derive from this class must specify all fields that may be
+    reported at runtime. By default logfiles are parsed using
+    :func:`parse_results`, searching for the section name corresponding to
+    `cls.name`.
+
+    """
+    @staticmethod
+    @abstractmethod
+    def reportable_fields() -> Dict[str, str]:
+        pass
+
+    @classmethod
+    def parse_results(cls, ctx: Namespace, path: str, allow_missing: bool = True) -> Result:
+        """
+        Parse any results containing counters by this package.
+
+        :param ctx: the configuration context
+        :param path: path to file to parse
+        :returns: counter results
+        """
+        all_results = list(parse_results(ctx, path, cls.name))
+        if not all_results:
+            if allow_missing:
+                return {}
+            else:
+                raise FatalError(f'Failure while parsing results: required '
+                                 f'reporter {cls.name} is missing from logs '
+                                 f'at {path}.')
+
+        aggregated_results = defaultdict(int)
+        for results in all_results:
+            for counter, value in results.items():
+                aggregated_results[counter] += value
+
+        return aggregated_results
+
+
 class Nothp(Tool):
     """
     :identifier: nothp
@@ -50,7 +95,7 @@ class Nothp(Tool):
     installed = ['bin/nothp']
 
 
-class RusageCounters(Tool):
+class RusageCounters(ReportableTool):
     """
     Utility library for targets that want to measure resource counters:
 
@@ -70,15 +115,20 @@ class RusageCounters(Tool):
     built = ['librusagecounters.a']
     installed = ['lib/librusagecounters.a']
 
-    #: :class:`dict` reportable fields (add to reportable fields of target)
-    reportable_fields = {
-        'maxrss':            'peak resident set size in KB',
-        'page_faults':       'number of page faults',
-        'io_operations':     'number of I/O operations',
-        'context_switches':  'number of context switches',
-        'estimated_runtime': 'benchmark runtime in seconds estimated by '
-                             'rusage-counters constructor/destructor',
-    }
+    @staticmethod
+    def reportable_fields():
+        return {
+            'maxrss':            'peak resident set size in KB',
+            'page_faults':       'number of page faults',
+            'io_operations':     'number of I/O operations',
+            'context_switches':  'number of context switches',
+            'estimated_runtime': 'benchmark runtime in seconds estimated by '
+                                 'rusage-counters constructor/destructor',
+        }
+
+    @classmethod
+    def parse_results(cls, ctx: Namespace, path: str, allow_missing: bool = False) -> Result:
+        return super().parse_results(ctx, path, allow_missing)
 
     def configure(self, ctx):
         """
@@ -96,13 +146,3 @@ class RusageCounters(Tool):
                ['-I', self._srcpath(ctx)])
         yield from super().pkg_config_options(ctx)
 
-    @staticmethod
-    def parse_results(ctx: Namespace, path: str):
-        """
-        Parse any results containing counters by this package.
-
-        :param ctx: the configuration context
-        :param path: path to file to parse
-        :returns: counter results
-        """
-        return parse_results(ctx, path, 'rusage-counters')

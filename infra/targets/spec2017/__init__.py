@@ -7,10 +7,10 @@ import re
 from contextlib import redirect_stdout
 from collections import defaultdict
 from typing import List
-from ...commands.report import outfile_path
+from ...commands.report import outfile_path, parse_all_results
 from ...util import FatalError, run, apply_patch, qjoin, require_program
 from ...target import Target
-from ...packages import Bash, Nothp, RusageCounters
+from ...packages import Bash, Nothp, ReportableTool, RusageCounters
 from ...parallel import PrunPool
 from .benchmark_sets import benchmark_sets
 
@@ -93,15 +93,6 @@ class SPEC2017(Target):
 
     name = 'spec2017'
 
-    reportable_fields = {
-        'benchmark': 'benchmark program',
-        'status':    'whether the benchmark finished successfully',
-        'runtime':   'total runtime in seconds',
-        'hostname':  'machine hostname',
-        'workload':  'run workload (test / ref / train)',
-        'inputs':    'number of different benchmark inputs',
-        **RusageCounters.reportable_fields,
-    }
     aggregation_field = 'benchmark'
 
     def __init__(self, source_type: str,
@@ -109,7 +100,8 @@ class SPEC2017(Target):
                        patches: List[str] = [],
                        nothp: bool = True,
                        force_cpu: int = 0,
-                       default_benchmarks: List[str] = ['intspeed_pure_c', 'intspeed_pure_cpp','fpspeed_pure_c']):
+                       default_benchmarks: List[str] = ['intspeed_pure_c', 'intspeed_pure_cpp','fpspeed_pure_c'],
+                       reporters: List[ReportableTool] = [RusageCounters]):
         if source_type not in ('isofile', 'mounted', 'installed', 'tarfile', 'git'):
             raise FatalError('invalid source type "%s"' % source_type)
 
@@ -125,6 +117,20 @@ class SPEC2017(Target):
         self.nothp = nothp
         self.force_cpu = force_cpu
         self.default_benchmarks = default_benchmarks
+        self.reporters = reporters
+
+    def reportable_fields(self):
+        fields =  {
+            'benchmark': 'benchmark program',
+            'status':    'whether the benchmark finished successfully',
+            'runtime':   'total runtime in seconds',
+            'hostname':  'machine hostname',
+            'workload':  'run workload (test / ref / train)',
+            'inputs':    'number of different benchmark inputs',
+        }
+        for reporter in self.reporters:
+            fields.update(reporter.reportable_fields())
+        return fields
 
     def add_build_args(self, parser):
         parser.add_argument('--benchmarks',
@@ -536,7 +542,7 @@ class SPEC2017(Target):
             m = pat.search(logcontents)
             while m:
                 status, benchmark, workload, ratio, runtime = m.groups()
-                rusage_counters = defaultdict(int)
+                runtime_results = defaultdict(int)
 
                 # find per-input logs by benchutils staticlib
                 rpat = r'Running %s.+?-C (.+?$)(.+?)^Specinvoke:' % benchmark
@@ -551,17 +557,9 @@ class SPEC2017(Target):
                         benchmark_error = True
                         continue
 
-                    rusage_results = \
-                        list(RusageCounters.parse_results(ctx, path))
-                    if not rusage_results:
-                        ctx.log.error('no staticlib results in %s, there was '
-                                      'probably an error' % path)
-                        benchmark_error = True
-                        continue
-
-                    for result in rusage_results:
-                        for counter, value in result.items():
-                            rusage_counters[counter] += value
+                    for reporter in self.reporters:
+                        for counter, value in reporter.parse_results(ctx, path).items():
+                            runtime_results[counter] += value
 
                 if benchmark_error:
                     ctx.log.warning('cancel processing benchmark %s in log file '
@@ -574,7 +572,7 @@ class SPEC2017(Target):
                         'hostname': hostname,
                         'runtime': float(runtime),
                         'inputs': len(errfiles),
-                        **rusage_counters
+                        **runtime_results
                     }
                     error_benchmarks.remove(benchmark)
 

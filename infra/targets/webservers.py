@@ -21,20 +21,22 @@ from .remote_runner import RemoteRunner, RemoteRunnerError
 
 
 class WebServer(Target, metaclass=ABCMeta):
-    reportable_fields = {
-        'connections':  'concurrent client connections',
-        'threads':      'number of client threads making connections',
-        'throughput':   'attained throughput (reqs/s)',
-        'avg_latency':  'average latency (ms)',
-        '50p_latency':  '50th percentile latency (ms)',
-        '75p_latency':  '75th percentile latency (ms)',
-        '90p_latency':  '90th percentile latency (ms)',
-        '99p_latency':  '99th percentile latency (ms)',
-        'transferrate': 'network traffic (KB/s)',
-        'duration':     'benchmark duration (s)',
-        'cpu':          'median server CPU load during benchmark (%%)',
-    }
     aggregation_field = 'connections'
+
+    def reportable_fields(self):
+        return {
+            'connections':  'concurrent client connections',
+            'threads':      'number of client threads making connections',
+            'throughput':   'attained throughput (reqs/s)',
+            'avg_latency':  'average latency (ms)',
+            '50p_latency':  '50th percentile latency (ms)',
+            '75p_latency':  '75th percentile latency (ms)',
+            '90p_latency':  '90th percentile latency (ms)',
+            '99p_latency':  '99th percentile latency (ms)',
+            'transferrate': 'network traffic (KB/s)',
+            'duration':     'benchmark duration (s)',
+            'cpu':          'median server CPU load during benchmark (%%)',
+        }
 
     def dependencies(self):
         yield Bash('4.3')

@@ -129,15 +129,6 @@ class SPEC2006(Target):
 
     name = 'spec2006'
 
-    reportable_fields = {
-        'benchmark': 'benchmark program',
-        'status':    'whether the benchmark finished successfully',
-        'runtime':   'total runtime in seconds',
-        'hostname':  'machine hostname',
-        'workload':  'run workload (test / ref / train)',
-        'inputs':    'number of different benchmark inputs',
-        **RusageCounters.reportable_fields,
-    }
     aggregation_field = 'benchmark'
 
     def __init__(self, source_type: str,
@@ -163,6 +154,17 @@ class SPEC2006(Target):
         self.nothp = nothp
         self.force_cpu = force_cpu
         self.default_benchmarks = default_benchmarks
+
+    def reportable_fields(self):
+        return {
+            'benchmark': 'benchmark program',
+            'status':    'whether the benchmark finished successfully',
+            'runtime':   'total runtime in seconds',
+            'hostname':  'machine hostname',
+            'workload':  'run workload (test / ref / train)',
+            'inputs':    'number of different benchmark inputs',
+            **RusageCounters.reportable_fields(),
+        }
 
     def add_build_args(self, parser):
         parser.add_argument('--benchmarks',
