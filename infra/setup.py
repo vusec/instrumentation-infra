@@ -337,9 +337,9 @@ class Setup:
         except FatalError as e:
             self.ctx.log.error(str(e))
         except KeyboardInterrupt:
-            self.ctx.log.warning("exiting because of keyboard interrupt")
-        except Exception:
-            self.ctx.log.critical("unkown error\n" + traceback.format_exc().rstrip())
+            self.ctx.log.warning('exiting because of keyboard interrupt')
+        except Exception as e:
+            self.ctx.log.critical('unknown error\n' + traceback.format_exc().rstrip())
 
     def main(self):
         """
