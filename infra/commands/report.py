@@ -616,7 +616,8 @@ def parse_all_results(ctx: Namespace, path: str) -> \
     with open(path) as f:
         result = bname = None
 
-        for line in f:
+        for lineno, line in enumerate(f):
+            lineno = lineno + 1
             line = line.rstrip()
             if line.startswith(result_prefix):
                 statement = line[len(result_prefix) + 1:]
@@ -625,31 +626,30 @@ def parse_all_results(ctx: Namespace, path: str) -> \
                     result = Namespace()
                 elif re.match(r'end \w+', statement):
                     if result is None:
-                        ctx.log.error('missing start for "%s" end '
-                                      'statement in %s' % (bname, path))
+                        ctx.log.error(f'missing start for "{bname}" end '
+                                      f'statement at {path}:{lineno}')
                     else:
                         ename = statement[4:]
                         if ename != bname:
-                            ctx.log.error('begin/end name mismatch in %s: '
-                                          '%s != %s' % (path, ename, bname))
+                            ctx.log.error(f'begin/end name mismatch at {path}:{lineno}: '
+                                          f'{ename} != {bname}')
 
                         yield bname, result
                         result = bname = None
                 elif result is None:
-                    ctx.log.error('ignoring %s statement outside of begin-end '
-                                  'in %s' % (result_prefix, path))
+                    ctx.log.error(f'ignoring {result_prefix} statement outside of begin-end '
+                                  f'at {path}:{lineno}')
                 else:
                     name, value = statement.split(': ', 1)
 
                     if name in result:
-                        ctx.log.warning('duplicate metadata entry for "%s" in '
-                                        '%s, using the last one' % (name, path))
+                        ctx.log.warning(f'duplicate metadata entry for "{name}" at '
+                                        f'{path}:{lineno}, using the last one')
 
                     result[name] = _unbox_value(value)
 
     if result is not None:
-        ctx.log.error('%s begin statement without end in %s' %
-                      (result_prefix, path))
+        ctx.log.error(f'{result_prefix} begin statement without end in {path}')
 
 
 def _box_value(value):
