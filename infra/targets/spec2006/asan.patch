@@ -18,7 +18,7 @@ diff -u -r ORIG_SPEC_CPU2006v1.2/benchspec/CPU2006/400.perlbench/src/sv.c ASAN_S
  */
  
 +#undef __attribute__
-+__attribute__((no_sanitize_address, noinline))
++__attribute__((no_sanitize_address, noinline, disable_sanitizer_instrumentation))
 +char *move_no_asan(char *dest, const char *src, STRLEN len) {
 +  char *d = (char*)dest;
 +  char *s = (char*)src;
@@ -35,7 +35,7 @@ diff -u -r ORIG_SPEC_CPU2006v1.2/benchspec/CPU2006/400.perlbench/src/sv.c ASAN_S
 +  return dest;
 +}
 +
-+__attribute__((no_sanitize_address))
++__attribute__((no_sanitize_address, disable_sanitizer_instrumentation))
  void
  Perl_sv_setpvn(pTHX_ register SV *sv, register const char *ptr, register STRLEN len)
  {
@@ -56,7 +56,7 @@ diff -u -r ORIG_SPEC_CPU2006v1.2/benchspec/CPU2006/464.h264ref/src/biariencode.c
   *    Initializes a given context with some pre-defined probability state
   ************************************************************************
   */
-+__attribute__((no_sanitize_address))
++__attribute__((no_sanitize_address, disable_sanitizer_instrumentation))
  void biari_init_context (BiContextTypePtr ctx, const int* ini)
  {
    int pstate;

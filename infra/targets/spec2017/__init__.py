@@ -282,8 +282,21 @@ class SPEC2017(Target):
         if self.force_cpu >= 0:
             wrapper += ' taskset -c %d' % self.force_cpu
 
+        if self.force_cpu < 0:
+            ctx.log.info(self._get_benchmarks(ctx, instance))
+            parallel_bins = ['619.lbm_s', '638.imagick_s', '644.nab_s', '657.xz_s']
+            # assume benchmarks are ran individually because of parallelmax
+            target_bin = self._get_benchmarks(ctx, instance)[0]
+            if target_bin in parallel_bins:
+                end_core = int(-1 * self.force_cpu)
+                wrapper += ' taskset -c 0-%d' % end_core
+            else:
+                wrapper += ' taskset -c 0'
+
+
         cmd = '{wrapper} runcpu --config={config} --nobuild {runargs} {{bench}}'
         cmd = cmd.format(**locals())
+        ctx.log.info(cmd)
 
         benchmarks = self._get_benchmarks(ctx, instance)
 
@@ -389,6 +402,9 @@ class SPEC2017(Target):
         config_name = 'infra-' + instance.name
         config_path = self._install_path(ctx, 'config/%s.cfg' % config_name)
         ctx.log.debug('writing SPEC2017 config to ' + config_path)
+        openmp_cores = 1
+        if 'openmp_cores' in ctx:
+          openmp_cores = ctx.openmp_cores
 
         with open(config_path, 'w') as f:
             with redirect_stdout(f):
@@ -403,9 +419,9 @@ class SPEC2017(Target):
 
                 print('#--------- How Many CPUs? ------------')
                 print('intrate,fprate:')
-                print('   copies            = 1')
+                print('   copies            = %d' % openmp_cores)
                 print('intspeed,fpspeed:')
-                print('   threads           = 1')
+                print('   threads           = %d' % openmp_cores)
                 print('')
 
                 cflags = qjoin(ctx.cflags)

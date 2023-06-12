@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import subprocess
 from itertools import chain
 from pathlib import Path
 from typing import List, Optional
@@ -58,7 +59,7 @@ class Juliet(Target):
 
     name = 'juliet'
 
-    zip_name = 'Juliet_Test_Suite_v1.3_for_C_Cpp.zip'
+    zip_name = '2017-10-01-juliet-test-suite-for-c-cplusplus-v1-3.zip'
 
     def __init__(self, mitigation_return_code: Optional[int] = None):
         self.mitigation_return_code = mitigation_return_code
@@ -109,7 +110,7 @@ class Juliet(Target):
         return os.path.exists(self.zip_name)
 
     def fetch(self, ctx: Namespace):
-        url = f'https://samate.nist.gov/SRD/testsuites/juliet/{self.zip_name}'
+        url = f'https://samate.nist.gov/SARD/downloads/test-suites/{self.zip_name}'
         download(ctx, url)
 
     def build(self, ctx: Namespace, instance: Instance,
@@ -230,19 +231,26 @@ class Juliet(Target):
     def run_cwe(self, ctx: Namespace, instance: Instance, cwe: str):
         bdir = Path(self.path(ctx))
         objdir = bdir / 'obj' / instance.name / cwe
-        stdin = b'A' * 8
+        stdin = b'11'
+        if cwe == 'CWE127' or cwe == 'CWE124': # Buffer Under-read needs negative
+            stdin = b'-1'
+
 
         good_ok_cnt, good_total_cnt = 0, 0
         gooddir = objdir / 'good'
         for testpath in gooddir.iterdir():
             testname = testpath.stem
             good_total_cnt += 1
-            proc = run(ctx, [str(testpath)], env=ctx.runenv, silent=True,
-                       allow_error=False, input=stdin, universal_newlines=False)
-            if proc.returncode:
-                ctx.log.error(f'GOOD {testname} returned error')
-            else:
-                good_ok_cnt += 1
+            try:
+              proc = run(ctx, [str(testpath)], env=ctx.runenv, silent=True,
+                         allow_error=False, input=stdin, universal_newlines=False, timeout=1)
+              if proc.returncode:
+                  ctx.log.error(f'GOOD {testname} returned error')
+              else:
+                  good_ok_cnt += 1
+            except subprocess.TimeoutExpired:
+              ctx.log.error(f'BAD {testname} timeout')
+              
 
         bad_ok_cnt, bad_total_cnt = 0, 0
         baddir = objdir / 'bad'
@@ -251,18 +259,21 @@ class Juliet(Target):
             if 'good' in testname:
                 continue
             bad_total_cnt += 1
-            proc = run(ctx, [str(testpath)], env=ctx.runenv, silent=True,
-                       allow_error=True, input=stdin, universal_newlines=False)
-            if self.mitigation_return_code is not None and \
-                self.mitigation_return_code != proc.returncode:
-                ctx.log.error(f'BAD {testname} did not return correct error: '
-                              f'returned {proc.returncode}, expected '
-                              f'{self.mitigation_return_code}')
-            elif self.mitigation_return_code is None and \
-                 not proc.returncode:
-                ctx.log.error(f'BAD {testname} did not return error')
-            else:
-                bad_ok_cnt += 1
+            try:
+              proc = run(ctx, [str(testpath)], env=ctx.runenv, silent=True,
+                         allow_error=True, input=stdin, universal_newlines=False, timeout=1)
+              if self.mitigation_return_code is not None and \
+                  self.mitigation_return_code != proc.returncode:
+                  ctx.log.error(f'BAD {testname} did not return correct error: '
+                                f'returned {proc.returncode}, expected '
+                                f'{self.mitigation_return_code}')
+              elif self.mitigation_return_code is None and \
+                   not proc.returncode:
+                  ctx.log.error(f'BAD {testname} did not return error')
+              else:
+                  bad_ok_cnt += 1
+            except subprocess.TimeoutExpired:
+              ctx.log.error(f'BAD {testname} timeout')
 
         ctx.log.info(f'{cwe}: Passed {good_ok_cnt}/{good_total_cnt} GOOD tests')
         ctx.log.info(f'{cwe}: Passed {bad_ok_cnt}/{bad_total_cnt} BAD tests')

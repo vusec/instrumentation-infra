@@ -40,7 +40,7 @@
   ************************************************************************
   */
 +// ASAN FIX: pstate is created from oob memory.
-+__attribute__((no_sanitize_address))
++__attribute__((no_sanitize_address, disable_sanitizer_instrumentation))
  void biari_init_context (int qp, BiContextTypePtr ctx, const signed char* ini)
  {
    int pstate = ((ini[0]* qp )>>4) + ini[1];
