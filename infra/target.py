@@ -220,15 +220,13 @@ class Target(metaclass=ABCMeta):
         """
         pass
 
-    def parse_outfile(
-        self, ctx: Namespace, instance_name: str, outfile: str
-    ) -> Iterator[Dict[str, Any]]:
+    def parse_outfile(self, ctx: Namespace, outfile: str) \
+            -> Iterator[Dict[str, Any]]:
         """
         Callback method for :func:`commands.report.parse_logs`. Used by report
         command to get reportable results.
 
         :param ctx: the configuration context
-        :param instance_name: name of corresponding instance
         :param outfile: path to outfile to parse
         :raises NotImplementedError: unless implemented
         """

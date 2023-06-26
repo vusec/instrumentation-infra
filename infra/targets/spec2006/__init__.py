@@ -576,7 +576,7 @@ class SPEC2006(Target):
     # define benchmark sets, generated using scripts/parse-benchmarks-sets.py
     benchmarks = benchmark_sets
 
-    def parse_outfile(self, ctx, instance_name, outfile):
+    def parse_outfile(self, ctx, outfile):
         def fix_specpath(path):
             if not os.path.exists(path):
                 benchspec_dir = self._install_path(ctx, 'benchspec')

@@ -7,7 +7,7 @@ import re
 from contextlib import redirect_stdout
 from collections import defaultdict
 from typing import List
-from ...commands.report import outfile_path, parse_all_results
+from ...commands.report import outfile_path, process_log
 from ...util import FatalError, run, apply_patch, qjoin, require_program
 from ...target import Target
 from ...packages import Bash, Nothp, ReportableTool, RusageCounters
@@ -379,13 +379,19 @@ class SPEC2017(Target):
             for bench in benchmarks:
                 jobid = 'run-%s-%s' % (instance.name, bench)
                 outfile = outfile_path(ctx, self, instance, bench)
+                def onsuccess_parse_log(job):
+                    if hasattr(job, 'outfiles'):
+                        for job_outfile in job.outfiles:
+                            process_log(ctx, job_outfile, self, write_cache=True)
+
                 self._run_bash(ctx, cmd.format(bench=bench), pool, jobid=jobid,
-                               outfile=outfile, nnodes=ctx.args.iterations)
+                               outfile=outfile, nnodes=ctx.args.iterations,
+                               onsuccess=onsuccess_parse_log)
         else:
             self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)),
                            teeout=True)
 
-    def _run_bash(self, ctx, command, pool=None, **kwargs):
+    def _run_bash(self, ctx, command, pool=None, onsuccess=None, **kwargs):
         config_root = os.path.dirname(os.path.abspath(__file__))
         cmd = [
             'bash', '-c',
@@ -396,8 +402,11 @@ class SPEC2017(Target):
             %s
             ''' % (self._install_path(ctx), config_root, command))
         ]
-        runfn = pool.run if pool else run
-        return runfn(ctx, cmd, **kwargs)
+        if pool:
+            return pool.run(ctx, cmd, onsuccess=onsuccess, **kwargs)
+        else:
+            assert onsuccess is None, 'onsuccess not supported without pool'
+            return run(ctx, cmd, **kwargs)
 
     def _make_spec_config(self, ctx, instance):
         config_name = 'infra-' + instance.name
@@ -513,7 +522,7 @@ class SPEC2017(Target):
     # define benchmark sets, generated using scripts/parse-benchmarks-sets.py
     benchmarks = benchmark_sets
 
-    def parse_outfile(self, ctx, instance_name, outfile):
+    def parse_outfile(self, ctx, outfile):
         def fix_specpath(path):
             if not os.path.exists(path):
                 benchspec_dir = self._install_path(ctx, 'benchspec')

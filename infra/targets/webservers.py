@@ -236,7 +236,7 @@ class WebServer(Target, metaclass=ABCMeta):
         """
         return self.stop_cmd(runner)
 
-    def parse_outfile(self, ctx, instance_name, outfile):
+    def parse_outfile(self, ctx, outfile):
         dirname, filename = os.path.split(outfile)
         if not filename.startswith('bench.'):
             ctx.log.debug('ignoring non-benchmark file')

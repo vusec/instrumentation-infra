@@ -539,43 +539,60 @@ def parse_logs(ctx, target, instances, rundirs,
             if not os.path.isfile(path):
                 continue
 
-            fresults = []
-            if read_cache:
-                fresults = list(parse_results(ctx, path, 'cached'))
-
-            if fresults:
-                ctx.log.debug('using cached results from ' + path)
-            else:
-                ctx.log.debug('parsing outfile ' + path)
-                fresults = list(target.parse_outfile(ctx, iname, path))
-
-                if write_cache:
-                    try:
-                        if read_cache:
-                            # there were no previous results, just append
-                            f = open(path, 'a')
-                        else:
-                            # there may be previous results, strip them
-                            f = open(path, 'r+')
-                            line = f.readline()
-                            while line:
-                                if line.startswith(result_prefix + ' begin cached'):
-                                    ctx.log.debug('removing cached results')
-                                    f.seek(f.tell() - len(line))
-                                    f.truncate()
-                                    break
-                                line = f.readline()
-
-                        ctx.log.debug('caching %d results' % len(fresults))
-                        for result in fresults:
-                            log_result('cached', result, f)
-                    finally:
-                        f.close()
-
-            for result in fresults:
-                result['outfile'] = _strip_cwd(path)
-
+            fresults = process_log(ctx, path, target, write_cache=write_cache,
+                                   read_cache=read_cache)
             instance_results += fresults
+
+    return results
+
+
+def process_log(ctx: Namespace, log_path: str, target: Target,
+                write_cache: bool = True, read_cache: bool = True):
+    """Parse a log file and cache any results in the logfile.
+    If the log file was previously processed, cached results will be used.
+
+    While the log file itself, maintained by the infra, should always yield
+    the same results, it may contain references to additional log files
+    inside the target. These files may be overwritten for any subsequent runs.
+    By caching these results between runs, we preserve this data."""
+
+    results = []
+    if read_cache:
+        results = list(parse_results(ctx, log_path, 'cached'))
+
+    if results:
+        ctx.log.debug('using cached results from ' + log_path)
+    else:
+        ctx.log.debug('parsing outfile ' + log_path)
+        results = list(target.parse_outfile(ctx, log_path))
+
+        if write_cache:
+            f = None
+            try:
+                if read_cache:
+                    # there were no previous results, just append
+                    f = open(log_path, 'a')
+                else:
+                    # there may be previous results, strip them
+                    f = open(log_path, 'r+')
+                    line = f.readline()
+                    while line:
+                        if line.startswith(result_prefix + ' begin cached'):
+                            ctx.log.debug('removing cached results')
+                            f.seek(f.tell() - len(line))
+                            f.truncate()
+                            break
+                        line = f.readline()
+
+                ctx.log.debug('caching %d results' % len(results))
+                for result in results:
+                    log_result('cached', result, f)
+            finally:
+                if f:
+                    f.close()
+
+    for result in results:
+        result['outfile'] = _strip_cwd(log_path)
 
     return results
 
