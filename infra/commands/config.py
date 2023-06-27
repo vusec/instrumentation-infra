@@ -1,4 +1,5 @@
 import argparse
+from ..context import Context
 from ..command import Command, get_deps
 from ..util import qjoin
 
@@ -7,7 +8,7 @@ class ConfigCommand(Command):
     name = 'config'
     description = 'get configuration information'
 
-    def add_args(self, parser):
+    def add_args(self, parser: argparse.ArgumentParser) -> None:
         group = parser.add_mutually_exclusive_group(required=True)
         group.add_argument('--instances', action='store_true',
                 help='list all registered instances')
@@ -16,7 +17,7 @@ class ConfigCommand(Command):
         group.add_argument('--packages', action='store_true',
                 help='list dependencies of all registered targets/instances')
 
-    def run(self, ctx):
+    def run(self, ctx: Context) -> None:
         if ctx.args.instances:
             for name in self.instances:
                 print(name)
@@ -33,9 +34,10 @@ class PkgConfigCommand(Command):
     name = 'pkg-config'
     description = 'get package-specific information'
 
-    def add_args(self, parser):
-        parser.add_argument('package', metavar='PACKAGE',
-                help='package to configure').completer = self.complete_package
+    def add_args(self, parser: argparse.ArgumentParser) -> None:
+        packagearg = parser.add_argument('package', metavar='PACKAGE',
+                help='package to configure')
+        setattr(packagearg, 'completer', self.complete_package)
         parser.add_argument('args', nargs=argparse.REMAINDER, choices=[],
                 metavar='...',
                 help='configuration args (package dependent)')
@@ -44,7 +46,7 @@ class PkgConfigCommand(Command):
                 title='pkg-config options', metavar='',
                 description='')
 
-    def run(self, ctx):
+    def run(self, ctx: Context) -> None:
         package = self.packages[ctx.args.package]
         subparser = self.subparsers.add_parser(
                 '%s %s' % (ctx.args.command, package.ident()))

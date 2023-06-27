@@ -7,6 +7,15 @@ Setup
 .. autoclass:: infra.Setup
    :members:
 
+Context
+=======
+.. autoclass:: infra.context.Context
+   :members:
+.. autoclass:: infra.context.ContextPaths
+   :members:
+.. autoclass:: infra.context.ContextHooks
+   :members:
+
 Targets
 =======
 .. autoclass:: infra.Target

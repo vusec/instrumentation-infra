@@ -1,7 +1,8 @@
 import os
-from typing import List
-from ...package import Package
-from ...util import Namespace, FatalError, run
+from typing import Any, Iterator, Iterable
+from ...context import Context
+from ...package import Package, PkgConfigOption
+from ...util import FatalError, run, Process
 from ..llvm import LLVM
 
 
@@ -59,7 +60,7 @@ class LLVMPasses(Package):
                        srcdir: str,
                        build_suffix: str,
                        use_builtins: bool,
-                       debug = False,
+                       debug: bool = False,
                        gold_passes: bool = True):
         self.llvm = llvm
         self.custom_srcdir = os.path.abspath(srcdir)
@@ -68,35 +69,35 @@ class LLVMPasses(Package):
         self.debug = debug
         self.gold_passes = gold_passes
 
-    def ident(self):
+    def ident(self) -> str:
         suffix = '-gold' if self.gold_passes else ''
         return 'llvm-passes-' + self.build_suffix + suffix
 
-    def _srcdir(self, ctx):
+    def _srcdir(self, ctx: Context) -> str:
         if not os.path.exists(self.custom_srcdir):
             raise FatalError('llvm-passes dir "%s" does not exist' %
                              self.custom_srcdir)
         return self.custom_srcdir
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield self.llvm
         yield self.llvm.binutils # for ld.gold
         if self.builtin_passes:
             yield self.builtin_passes
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         pass
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         os.makedirs('obj', exist_ok=True)
         os.chdir(self._srcdir(ctx))
         self._run_make(ctx, '-j%d' % ctx.jobs)
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.chdir(self._srcdir(ctx))
         self._run_make(ctx, 'install')
 
-    def _run_make(self, ctx, *args, **kwargs):
+    def _run_make(self, ctx: Context, *args: str, **kwargs: Any) -> Process:
         return run(ctx, [
             'make', *args,
             'OBJDIR=' + self.path(ctx, 'obj'),
@@ -106,22 +107,23 @@ class LLVMPasses(Package):
             'DEBUG=' + str(self.debug).lower()
         ], **kwargs)
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return True
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return False
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return False
 
-    def pkg_config_options(self, ctx):
+    def pkg_config_options(self, ctx: Context) -> Iterator[PkgConfigOption]:
         yield ('--objdir',
                'absolute build path',
                self.path(ctx, 'obj'))
         yield from super().pkg_config_options(ctx)
 
-    def configure(self, ctx: Namespace, *, linktime=True, compiletime=True):
+    def configure(self, ctx: Context, *, linktime: bool = True,
+                  compiletime: bool = True) -> None:
         """
         Set build/link flags in **ctx**. Should be called from the ``configure``
         method of an instance.
@@ -152,7 +154,7 @@ class LLVMPasses(Package):
                 ctx.ldflags += ['-fuse-ld=lld', '-Wl,-mllvm=-load=' + libpath]
             ctx.lib_ldflags += ['-flto']
 
-    def runtime_cflags(self, ctx: Namespace) -> List[str]:
+    def runtime_cflags(self, ctx: Context) -> Iterable[str]:
         """
         Returns a list of CFLAGS to pass to a runtime library that depends on
         features from passes. These set include directories for header includes
@@ -193,21 +195,21 @@ class BuiltinLLVMPasses(LLVMPasses):
 
     def __init__(self, llvm: LLVM, gold_passes: bool = True):
         super().__init__(llvm, '.', 'builtin-' + llvm.version, False, gold_passes=gold_passes)
-        self.custom_srcdir = None
+        self.custom_srcdir = ''
 
-    def _srcdir(self, ctx, *subdirs):
+    def _srcdir(self, ctx: Context, *subdirs: str) -> str:
         return os.path.join(ctx.paths.infra, 'llvm-passes',
                             self.llvm.version, *subdirs)
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         files = ('libpasses-builtin.a', 'libpasses-gold.so', 'libpasses-opt.so')
         return all(os.path.exists('obj/' + f) for f in files)
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         files = ('libpasses-builtin.a', 'libpasses-gold.so', 'libpasses-opt.so')
         return all(os.path.exists('install/' + f) for f in files)
 
-    def pkg_config_options(self, ctx):
+    def pkg_config_options(self, ctx: Context) -> Iterator[PkgConfigOption]:
         yield ('--cxxflags',
                'pass compile flags',
                ['-I', self._srcdir(ctx, 'include')])
@@ -216,5 +218,5 @@ class BuiltinLLVMPasses(LLVMPasses):
                self.runtime_cflags(ctx))
         yield from super().pkg_config_options(ctx)
 
-    def runtime_cflags(self, ctx):
+    def runtime_cflags(self, ctx: Context) -> Iterable[str]:
         return ['-I', self._srcdir(ctx, 'include/runtime')]

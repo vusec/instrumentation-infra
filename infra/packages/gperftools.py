@@ -1,8 +1,9 @@
 import os
 import shutil
-from typing import List
+from typing import List, Iterator
+from ..context import Context
 from ..package import Package
-from ..util import Namespace, run, apply_patch, download
+from ..util import run, apply_patch, download
 from .gnu import AutoMake
 
 
@@ -14,15 +15,15 @@ class LibUnwind(Package):
 
     def __init__(self, version: str, patches: List[str] = []):
         self.version = version
-        self.patches = []
+        self.patches = patches
 
-    def ident(self):
+    def ident(self) -> str:
         return 'libunwind-' + self.version
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('src')
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         urlbase = 'http://download.savannah.gnu.org/releases/libunwind/'
         dirname = self.ident()
         tarname = dirname + '.tar.gz'
@@ -31,10 +32,10 @@ class LibUnwind(Package):
         shutil.move(dirname, 'src')
         os.remove(tarname)
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists('obj/src/.libs/libunwind.so')
 
-    def _apply_patches(self, ctx):
+    def _apply_patches(self, ctx: Context) -> None:
         os.chdir(self.path(ctx, 'src'))
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
@@ -45,7 +46,7 @@ class LibUnwind(Package):
                                 'directory' % path)
         os.chdir(self.path(ctx))
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         self._apply_patches(ctx)
 
         os.makedirs('obj', exist_ok=True)
@@ -54,14 +55,14 @@ class LibUnwind(Package):
             run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
         run(ctx, 'make -j%d' % ctx.jobs)
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/lib/libunwind.so')
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.chdir('obj')
         run(ctx, 'make install')
 
-    def configure(self, ctx):
+    def configure(self, ctx: Context) -> None:
         ctx.ldflags += ['-L' + self.path(ctx, 'install/lib'), '-lunwind']
 
 
@@ -73,30 +74,31 @@ class Gperftools(Package):
     :param patches: optional patches to apply before building
     """
 
-    def __init__(self, commit: str, libunwind_version='1.4-rc1', patches: List[str] = []):
+    def __init__(self, commit: str, libunwind_version: str = '1.4-rc1',
+                 patches: List[str] = []):
         self.commit = commit
         self.libunwind = LibUnwind(libunwind_version)
         self.patches = patches
 
-    def ident(self):
+    def ident(self) -> str:
         return 'gperftools-' + self.commit
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield AutoMake.default()
         yield self.libunwind
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('src')
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         run(ctx, 'git clone https://github.com/gperftools/gperftools.git src')
         os.chdir('src')
         run(ctx, ['git', 'checkout', self.commit])
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists('obj/.libs/libtcmalloc.so')
 
-    def _apply_patches(self, ctx):
+    def _apply_patches(self, ctx: Context) -> None:
         os.chdir(self.path(ctx, 'src'))
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
@@ -107,7 +109,7 @@ class Gperftools(Package):
                                 'directory' % path)
         os.chdir(self.path(ctx))
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         self._apply_patches(ctx)
 
         if not os.path.exists('src/configure') or not os.path.exists('src/INSTALL'):
@@ -127,14 +129,14 @@ class Gperftools(Package):
             ])
         run(ctx, 'make -j%d' % ctx.jobs)
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/lib/libtcmalloc.so')
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.chdir('obj')
         run(ctx, 'make install')
 
-    def configure(self, ctx: Namespace):
+    def configure(self, ctx: Context) -> None:
         """
         Set build/link flags in **ctx**. Should be called from the
         ``configure`` method of an instance.

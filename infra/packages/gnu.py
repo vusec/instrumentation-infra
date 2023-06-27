@@ -1,40 +1,26 @@
 import os
 import shutil
 from glob import glob
-from abc import ABCMeta, abstractmethod
-from typing import Optional
+from abc import ABCMeta
+from typing import Optional, Type, Iterator
 from ..package import Package
 from ..util import run, require_program, download, FatalError
+from ..context import Context
 
 
 class GNUTarPackage(Package, metaclass=ABCMeta):
-    @property
-    @abstractmethod
-    def name(self):
-        pass
+    name: str
+    built_path: str
+    installed_path: str
+    tar_compression: str
 
-    @property
-    @abstractmethod
-    def built_path(self):
-        pass
-
-    @property
-    @abstractmethod
-    def installed_path(self):
-        pass
-
-    @property
-    @abstractmethod
-    def tar_compression(self):
-        pass
-
-    def __init__(self, version):
+    def __init__(self, version: str):
         self.version = version
 
-    def ident(self):
+    def ident(self) -> str:
         return '%s-%s' % (self.name, self.version)
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         require_program(ctx, 'tar', 'required to unpack source tarfile')
         ident = '%s-%s' % (self.name, self.version)
         tarname = ident + '.tar.' + self.tar_compression
@@ -43,24 +29,24 @@ class GNUTarPackage(Package, metaclass=ABCMeta):
         shutil.move(ident, 'src')
         os.remove(tarname)
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
         if not os.path.exists('Makefile'):
             run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
         run(ctx, ['make', '-j%d' % ctx.jobs])
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.chdir('obj')
         run(ctx, ['make', 'install'])
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('src')
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists('obj/' + self.built_path)
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/' + self.installed_path)
 
 
@@ -74,14 +60,14 @@ class Bash(GNUTarPackage):
     installed_path = 'bin/bash'
     tar_compression = 'gz'
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         if GNUTarPackage.is_installed(self, ctx):
             return True
         proc = run(ctx, ['bash', '--version'], allow_error=True, silent=True)
-        return proc and proc.returncode == 0 and \
+        return proc.returncode == 0 and \
                 'version ' + self.version in proc.stdout
 
-    def install_env(self, ctx):
+    def install_env(self, ctx: Context) -> None:
         super().install_env(ctx)
 
         # Bash allows functions to be defined in the environment, which leads to
@@ -105,12 +91,16 @@ class Make(GNUTarPackage):
     installed_path = 'bin/make'
     tar_compression = 'gz'
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         if GNUTarPackage.is_installed(self, ctx):
             return True
         proc = run(ctx, ['make', '--version'], allow_error=True, silent=True)
-        return proc and proc.returncode == 0 and \
-                proc.stdout.startswith('GNU Make ' + self.version)
+        import io
+        return (
+            proc.returncode == 0 and
+            isinstance(proc.stdout, io.TextIOBase) and
+            proc.stdout.startswith('GNU Make ' + self.version)
+        )
 
 
 class CoreUtils(GNUTarPackage):
@@ -150,7 +140,7 @@ class AutoConf(GNUTarPackage):
         self.version = version
         self.m4 = m4
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield from super().dependencies()
         yield self.m4
 
@@ -184,13 +174,13 @@ class AutoMake(GNUTarPackage):
         self.autoconf = autoconf
         self.libtool = libtool
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield from super().dependencies()
         yield self.autoconf
         if self.libtool:
             yield self.libtool
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         super().install(ctx)
 
         # copy over .m4 files from libtool
@@ -204,10 +194,11 @@ class AutoMake(GNUTarPackage):
                     os.symlink(target, link)
 
     @classmethod
-    def default(cls, automake_version = '1.16.5',
-                     autoconf_version = '2.71',
-                     m4_version = '1.4.19',
-                     libtool_version: Optional[str] = '2.4.6') -> 'AutoMake':
+    def default(cls: Type['AutoMake'],
+                automake_version: str = '1.16.5',
+                autoconf_version: str = '2.71',
+                m4_version: str = '1.4.19',
+                libtool_version: Optional[str] = '2.4.6') -> 'AutoMake':
         """
         Create a package with default versions for all autotools.
 
@@ -228,27 +219,27 @@ class BinUtils(Package):
     :param version: version to download
     :param gold: whether to use the gold linker
     """
-    def __init__(self, version: str, gold=True):
+    def __init__(self, version: str, gold: bool = True):
         self.version = version
         self.gold = gold
 
-    def ident(self):
+    def ident(self) -> str:
         s = 'binutils-' + self.version
         if self.gold:
             s += '-gold'
         return s
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield TexInfo('6.8')
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         tarname = 'binutils-%s.tar.bz2' % self.version
         download(ctx, 'http://ftp.gnu.org/gnu/binutils/' + tarname)
         run(ctx, ['tar', '-xf', tarname])
         shutil.move('binutils-' + self.version, 'src')
         os.remove(tarname)
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
 
@@ -270,7 +261,7 @@ class BinUtils(Package):
         if self.gold:
             run(ctx, ['make', '-j%d' % ctx.jobs, 'all-gold'])
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.chdir('obj')
         run(ctx, ['make', 'install'])
 
@@ -280,18 +271,18 @@ class BinUtils(Package):
             os.remove('ld')
             shutil.copy('ld.gold', 'ld')
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('src')
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists('obj/%s/ld-new' % ('gold' if self.gold else 'ld'))
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/bin/ld')
 
-    def _bison_installed(self, ctx):
+    def _bison_installed(self, ctx: Context) -> bool:
         proc = run(ctx, ['bison', '--version'], allow_error=True, silent=True)
-        return proc and proc.returncode == 0
+        return proc.returncode == 0
 
 
 class Netcat(GNUTarPackage):
@@ -304,7 +295,7 @@ class Netcat(GNUTarPackage):
     installed_path = 'bin/netcat'
     tar_compression = 'bz2'
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         tarname = 'netcat-%s.tar.bz2' % self.version
         url = 'http://sourceforge.net/projects/netcat/files/netcat/%s/%s'
         download(ctx, url % (self.version, tarname))

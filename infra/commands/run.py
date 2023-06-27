@@ -1,3 +1,5 @@
+import argparse
+from ..context import Context
 from ..command import Command
 from ..util import FatalError
 from .build import BuildCommand, default_jobs, load_deps
@@ -7,7 +9,7 @@ class RunCommand(Command):
     name = 'run'
     description = 'run a single target program'
 
-    def add_args(self, parser):
+    def add_args(self, parser: argparse.ArgumentParser) -> None:
         target_parsers = parser.add_subparsers(
                 title='target', metavar='TARGET', dest='target',
                 help=' | '.join(self.targets))
@@ -34,7 +36,7 @@ class RunCommand(Command):
             target.add_run_args(tparser)
 
 
-    def run(self, ctx):
+    def run(self, ctx: Context) -> None:
         target = self.targets[ctx.args.target]
         instances = self.instances.select(ctx.args.instances)
         pool = self.make_pool(ctx)
@@ -49,7 +51,9 @@ class RunCommand(Command):
             ctx.args.clean = False
             ctx.args.relink = False
             build_command = BuildCommand()
-            build_command.set_maps(self.instances, self.targets, self.packages)
+            build_command.instances = self.instances
+            build_command.targets = self.targets
+            build_command.packages = self.packages
             build_command.run(ctx)
 
         ctx = oldctx
@@ -63,9 +67,7 @@ class RunCommand(Command):
             instance.prepare_run(ctx)
             target.goto_rootdir(ctx)
 
-            if not self.call_with_pool(target.run, (ctx, instance), pool):
-                raise FatalError('target %s does not support parallel runs' %
-                                 target.name)
+            target.run(ctx, instance, pool)
 
             ctx = oldctx
 

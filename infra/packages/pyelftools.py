@@ -1,4 +1,6 @@
 import os
+from typing import Iterator
+from ..context import Context
 from ..package import Package
 from ..util import run
 from .python import Python
@@ -15,38 +17,40 @@ class PyElfTools(Package):
         self.version = version
         self.python = Python(python_version)
 
-    def ident(self):
+    def ident(self) -> str:
         return 'pyelftools-' + self.version
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield self.python
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         run(ctx, ['git', 'clone', '--branch', 'v' + self.version,
                 'https://github.com/eliben/pyelftools.git', 'src'])
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         os.chdir('src')
         run(ctx, [self.python.binary(), 'setup.py', 'build'])
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.chdir('src')
         run(ctx, [self.python.binary(),
                   'setup.py', 'install', '--skip-build',
                   '--prefix=' + self.path(ctx, 'install')])
 
-    def install_env(self, ctx):
+    def install_env(self, ctx: Context) -> None:
         relpath = 'install/lib/python%s/site-packages' % self.python.version
         abspath = self.path(ctx, relpath)
-        pypath = os.getenv('PYTHONPATH', '').split(':')
-        ctx.runenv.setdefault('PYTHONPATH', pypath).insert(0, abspath)
+        syspypath = os.getenv('PYTHONPATH', '').split(':')
+        pypath = ctx.runenv.setdefault('PYTHONPATH', syspypath)
+        assert isinstance(pypath, list)
+        pypath.insert(0, abspath)
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('src')
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists('src/build')
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/lib/%s/site-packages/elftools' %
                               self.python.binary())

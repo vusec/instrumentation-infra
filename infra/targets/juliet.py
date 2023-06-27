@@ -1,3 +1,4 @@
+import argparse
 import os
 import re
 import shutil
@@ -5,7 +6,8 @@ from itertools import chain
 from pathlib import Path
 from typing import List, Optional
 
-from ..util import Namespace, download, run
+from ..context import Context
+from ..util import download, run
 from ..instance import Instance
 from ..target import Target
 from ..parallel import Pool
@@ -57,13 +59,14 @@ class Juliet(Target):
     """
 
     name = 'juliet'
+    aggregation_field = 'cwe'
 
     zip_name = 'Juliet_Test_Suite_v1.3_for_C_Cpp.zip'
 
     def __init__(self, mitigation_return_code: Optional[int] = None):
         self.mitigation_return_code = mitigation_return_code
 
-    def add_build_args(self, parser):
+    def add_build_args(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument('--cwe',
                 required=True, nargs='+',
                 help='which CWE to build')
@@ -71,7 +74,7 @@ class Juliet(Target):
                 nargs='+', type=int, default=[1],
                 help='which flow variants to build')
 
-    def add_run_args(self, parser):
+    def add_run_args(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument('--cwe',
                 required=True, nargs='+',
                 help='which CWE to run')
@@ -89,7 +92,7 @@ class Juliet(Target):
         aliases['uaf'] = ['CWE416']
         aliases['stack-uaf'] = ['CWE562']
         aliases['invalid-free'] = ['CWE590', 'CWE761']
-        aliases['memory-error'] = chain(*aliases.values())
+        aliases['memory-error'] = list(chain(*aliases.values()))
 
         ret = set()
         for cwe in cwe_list:
@@ -105,20 +108,20 @@ class Juliet(Target):
                                  f'of {",".join(aliases)}, not {cwe}')
         return list(ret)
 
-    def is_fetched(self, ctx: Namespace):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists(self.zip_name)
 
-    def fetch(self, ctx: Namespace):
+    def fetch(self, ctx: Context) -> None:
         url = f'https://zenodo.org/record/4701387/files/{self.zip_name}?download=1'
         download(ctx, url)
 
-    def build(self, ctx: Namespace, instance: Instance,
-              pool: Optional[Pool] = None):
+    def build(self, ctx: Context, instance: Instance,
+              pool: Optional[Pool] = None) -> None:
         for cwe in self.parse_cwe_list(ctx.args.cwe):
             self.build_cwe(ctx, instance, pool, cwe)
 
-    def build_cwe(self, ctx: Namespace, instance: Instance,
-                  pool: Optional[Pool], cwe: str):
+    def build_cwe(self, ctx: Context, instance: Instance,
+                  pool: Optional[Pool], cwe: str) -> None:
         bdir = Path(self.path(ctx))
         srcrootdir = bdir / 'src'
         os.makedirs(srcrootdir, exist_ok=True)
@@ -185,57 +188,52 @@ class Juliet(Target):
                 badbin = baddir / testname
 
                 # janky way to support 'cc' and 'cxx' with spaces
-                cc = ctx.cc
+                cc, cc_args = ctx.cc, []
                 if ' ' in cc:
-                    cc = cc.split(' ')
-                else:
-                    cc = [cc]
-                cxx = ctx.cxx
+                    cc, *cc_args = cc.split(' ')
+                cxx, cxx_args = ctx.cxx, []
                 if ' ' in cxx:
-                    cxx = cxx.split(' ')
-                else:
-                    cxx = [cxx]
+                    cxx, *cxx_args = cxx.split(' ')
 
                 if testpath.suffix == '.c':
-                    compiler = [*cc, *ctx.cflags]
+                    compiler = [cc, *cc_args, *ctx.cflags]
                 else:
-                    compiler = [*cxx, *ctx.cxxflags]
+                    compiler = [cxx, *cxx_args, *ctx.cxxflags]
 
                 compiler += ['-DINCLUDEMAIN']
                 compiler += ['-I', str(incdir)]
                 testfiles += [str(incdir / 'io.c')]
 
-                # Support parallel builds via a pool (use --parallel=proc)
-                runfunc = run
-                kwargs_good, kwargs_bad = {}, {}
-                if pool:
-                    runfunc = pool.run
-                    kwargs_good['nnodes'] = kwargs_bad['nnodes'] = 1
-                    kwargs_good['jobid'] = f'build-{testname}-good'
-                    kwargs_bad['jobid'] = f'build-{testname}-bad'
-                    resdir = Path(ctx.paths.pool_results)
-                    outdir = resdir / 'build' / self.name / instance.name
-                    kwargs_good['outfile'] = f'{outdir}/{testname}-good'
-                    kwargs_bad['outfile'] = f'{outdir}/{testname}-bad'
+                cmd_good = [
+                    *compiler,
+                    *testfiles,
+                    '-o', str(goodbin),
+                    '-DOMITBAD',
+                    *ctx.ldflags,
+                ]
+                cmd_bad = [
+                    *compiler,
+                    *testfiles,
+                    '-o', str(badbin),
+                    '-DOMITGOOD',
+                    *ctx.ldflags
+                ]
+
+                resdir = Path(ctx.paths.pool_results)
+                outdir = resdir / 'build' / self.name / instance.name
 
                 if 'bad' not in testname:
-                    runfunc(ctx, [
-                        *compiler,
-                        *testfiles,
-                        '-o', str(goodbin),
-                        '-DOMITBAD',
-                        *ctx.ldflags,
-                    ], **kwargs_good)
+                    if pool:
+                        pool.run(ctx, cmd_good, jobid=f'build-{testname}-good', outfile=f'{outdir}/{testname}-good', nnodes=1)
+                    else:
+                        run(ctx, cmd_good)
                 if 'good' not in testname:
-                    runfunc(ctx, [
-                        *compiler,
-                        *testfiles,
-                        '-o', str(badbin),
-                        '-DOMITGOOD',
-                        *ctx.ldflags
-                    ], **kwargs_bad)
+                    if pool:
+                        pool.run(ctx, cmd_bad, jobid=f'build-{testname}-bad', outfile=f'{outdir}/{testname}-bad', nnodes=1)
+                    else:
+                        run(ctx, cmd_bad)
 
-    def binary_paths(self, ctx: Namespace, instance: Instance):
+    def binary_paths(self, ctx: Context, instance: Instance) -> List[str]:
         paths = []
 
         for cwe in self.parse_cwe_list(ctx.args.cwe):
@@ -250,13 +248,14 @@ class Juliet(Target):
             for testpath in baddir.iterdir():
                 paths.append(testpath)
 
-        return paths
+        return [str(p) for p in paths]
 
-    def run(self, ctx: Namespace, instance: Instance):
+    def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) \
+            -> None:
         for cwe in self.parse_cwe_list(ctx.args.cwe):
             self.run_cwe(ctx, instance, cwe)
 
-    def run_cwe(self, ctx: Namespace, instance: Instance, cwe: str):
+    def run_cwe(self, ctx: Context, instance: Instance, cwe: str) -> None:
         bdir = Path(self.path(ctx))
         objdir = bdir / 'obj' / instance.name / cwe
         stdin = b'A' * 8

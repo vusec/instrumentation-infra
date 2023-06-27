@@ -1,7 +1,8 @@
 import os
 import shutil
+from ..context import Context
 from ..package import Package
-from ..util import run, download, require_program, param_attrs
+from ..util import run
 
 
 class Wrk(Package):
@@ -15,38 +16,38 @@ class Wrk(Package):
     name = 'wrk'
     gitrepo = 'https://github.com/wg/wrk.git'
 
-    def __init__(self, version='master'):
+    def __init__(self, version: str = 'master'):
         self.version = version
 
-    def ident(self):
+    def ident(self) -> str:
         return self.name + '-' + self.version
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         run(ctx, ['git', 'clone', self.gitrepo, 'src'])
         os.chdir('src')
         run(ctx, ['git', 'checkout', self.version])
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         os.chdir('src')
         if not os.path.exists('Makefile'):
             run(ctx, ['../src/configure',
                       '--prefix=' + self.path(ctx, 'install')])
         run(ctx, 'make -j%d' % ctx.jobs)
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.makedirs('install/bin', exist_ok=True)
         shutil.copy('src/wrk', 'install/bin')
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('src')
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists('src/wrk')
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/bin/wrk')
 
-    def get_binary_path(self, ctx):
+    def get_binary_path(self, ctx: Context) -> str:
         return self.path(ctx, 'src', 'wrk')
 
 

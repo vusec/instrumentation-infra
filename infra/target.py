@@ -2,11 +2,12 @@ import os
 import shutil
 import argparse
 from abc import ABCMeta, abstractmethod
-from typing import List, Dict, Iterable, Iterator, Optional, Any
-from .util import Namespace
+from typing import Iterable, Iterator, Optional, Mapping
+from .context import Context
 from .instance import Instance
 from .package import Package
 from .parallel import Pool
+from .util import ResultDict
 
 
 class Target(metaclass=ABCMeta):
@@ -63,19 +64,19 @@ class Target(metaclass=ABCMeta):
     """
 
     #: :class:`str` The target's name, must be unique.
-    name = None
+    name: str
 
     #: :class:`str` The default reportable field to group by when
     #               aggregating results.
-    aggregation_field = None
+    aggregation_field: str = ''
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, self.__class__) and other.name == self.name
 
-    def __hash__(self):
-        return hash("target-" + self.name)
+    def __hash__(self) -> int:
+        return hash('target-' + self.name)
 
-    def reportable_fields(self) -> Dict[str, str]:
+    def reportable_fields(self) -> Mapping[str, str]:
         """
         Run-time statistics reported by this target. Examples include the
         runtime of the benchmark, its memory or CPU utilization, or
@@ -88,11 +89,11 @@ class Target(metaclass=ABCMeta):
         """
         return {}
 
-    def add_build_args(self, parser: argparse.ArgumentParser):
+    def add_build_args(self, parser: argparse.ArgumentParser) -> None:
         """
         Extend the command-line arguments for the :ref:`build <usage-build>`
         command with custom arguments for this target. These arguments end up
-        in the global namespace, so it is a good idea to prefix them with the
+        in the global context, so it is a good idea to prefix them with the
         target name to avoid collisions with other targets and instances.
 
         For example, :class:`SPEC2006 <targets.SPEC2006>` defines
@@ -102,7 +103,7 @@ class Target(metaclass=ABCMeta):
         """
         pass
 
-    def add_run_args(self, parser: argparse.ArgumentParser):
+    def add_run_args(self, parser: argparse.ArgumentParser) -> None:
         """
         Extend the command-line arguments for the :ref:`run <usage-run>`
         command with custom arguments for this target. Since only a single
@@ -123,7 +124,7 @@ class Target(metaclass=ABCMeta):
         """
         yield from []
 
-    def path(self, ctx: Namespace, *args: Iterable[str]) -> str:
+    def path(self, ctx: Context, *args: str) -> str:
         """
         Get the absolute path to the build directory of this target, optionally
         suffixed with a subpath.
@@ -134,13 +135,13 @@ class Target(metaclass=ABCMeta):
         """
         return os.path.join(ctx.paths.targets, self.name, *args)
 
-    def goto_rootdir(self, ctx):
+    def goto_rootdir(self, ctx: Context) -> None:
         path = self.path(ctx)
         os.makedirs(path, exist_ok=True)
         os.chdir(path)
 
     @abstractmethod
-    def is_fetched(self, ctx: Namespace) -> bool:
+    def is_fetched(self, ctx: Context) -> bool:
         """
         Returns ``True`` if :func:`fetch` should be called before building.
 
@@ -149,7 +150,7 @@ class Target(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def fetch(self, ctx: Namespace):
+    def fetch(self, ctx: Context) -> None:
         """
         Fetches the source code for this target. This step is separated from
         :func:`build` because the ``build`` command first fetches all packages
@@ -160,7 +161,8 @@ class Target(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def build(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
+    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) \
+            -> None:
         """
         Build the target object files. Called some time after :func:`fetch` (see
         :class:`above <Target>`).
@@ -182,12 +184,9 @@ class Target(metaclass=ABCMeta):
         Any custom command-line arguments set by :func:`add_build_args` are
         available here in ``ctx.args``.
 
-        An implementation of :func:`build` may optionally define a parameter
-        ``pool``. If defined, the target is expected to support parallel builds
-        when ``--parallel`` is passed. In that case, ``pool`` will be an object
-        of type :class:`Pool`, and the method should call :func:`pool.run()
-        <parallel.Pool.run>` instead of :func:`util.run` to invoke build
-        commands.
+        If ``pool`` is defined (i.e., when ``--parallel`` is passed), the
+        target is expected to use :func:`pool.run() <parallel.Pool.run>`
+        instead of :func:`util.run` to invoke build commands.
 
         :param ctx: the configuration context
         :param instance: instance to build
@@ -196,7 +195,8 @@ class Target(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def run(self, ctx: Namespace, instance: Instance, pool: Optional[Pool] = None):
+    def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) \
+            -> None:
         """
         Run the target binaries. This should be done using :func:`util.run` so
         that ``ctx.runenv`` is used (which can be set by an instance or
@@ -206,10 +206,9 @@ class Target(metaclass=ABCMeta):
         Any custom command-line arguments set by :func:`add_run_args` are
         available here in ``ctx.args``.
 
-        Similarly to :func:`build`, the method may specify the ``pool``
-        parameter for parallel running of different benchmark program in the
-        target. Of course, resource sharing will occur when using
-        ``--parallel=proc``, which may impact runtime performance.
+        If ``pool`` is defined (i.e., when ``--parallel`` is passed), the
+        target is expected to use :func:`pool.run() <parallel.Pool.run>`
+        instead of :func:`util.run` to launch runs.
 
         Implementations of this method should respect the ``--iterations``
         option of the run command.
@@ -220,8 +219,8 @@ class Target(metaclass=ABCMeta):
         """
         pass
 
-    def parse_outfile(self, ctx: Namespace, outfile: str) \
-            -> Iterator[Dict[str, Any]]:
+
+    def parse_outfile(self, ctx: Context, outfile: str) -> Iterator[ResultDict]:
         """
         Callback method for :func:`commands.report.parse_logs`. Used by report
         command to get reportable results.
@@ -232,7 +231,7 @@ class Target(metaclass=ABCMeta):
         """
         raise NotImplementedError(self.__class__.__name__)
 
-    def is_clean(self, ctx: Namespace) -> bool:
+    def is_clean(self, ctx: Context) -> bool:
         """
         Returns ``True`` if :func:`clean` should be called before cleaning.
 
@@ -240,7 +239,7 @@ class Target(metaclass=ABCMeta):
         """
         return not os.path.exists(self.path(ctx))
 
-    def clean(self, ctx: Namespace):
+    def clean(self, ctx: Context) -> None:
         """
         Clean generated files for this target, called by the :ref:`clean
         <usage-clean>` command. By default, this removes
@@ -250,7 +249,7 @@ class Target(metaclass=ABCMeta):
         """
         shutil.rmtree(self.path(ctx))
 
-    def binary_paths(self, ctx: Namespace, instance: Instance) -> Iterable[str]:
+    def binary_paths(self, ctx: Context, instance: Instance) -> Iterable[str]:
         """
         If implemented, this should return a list of absolute paths to binaries
         created by :func:`build` for the given instance. This is only used if
@@ -264,7 +263,14 @@ class Target(metaclass=ABCMeta):
         """
         raise NotImplementedError(self.__class__.__name__)
 
-    def run_hooks_post_build(self, ctx: Namespace, instance: Instance):
+    def run_hooks_pre_build(self, ctx: Context, instance: Instance) -> None:
+        if ctx.hooks.pre_build:
+            self.goto_rootdir(ctx)  # Run hooks in target root
+            for hook in ctx.hooks.pre_build:
+                ctx.log.info(f"Running pre-build hook {hook} in {self.path(ctx)}")
+                hook(ctx, self.path(ctx))
+
+    def run_hooks_post_build(self, ctx: Context, instance: Instance) -> None:
         if ctx.hooks.post_build:
             for binary in self.binary_paths(ctx, instance):
                 absbin = os.path.abspath(binary)
@@ -274,9 +280,3 @@ class Target(metaclass=ABCMeta):
                     os.chdir(basedir)
                     hook(ctx, absbin)
 
-    def run_hooks_pre_build(self, ctx: Namespace, _instance: Instance):
-        if ctx.hooks.pre_build:
-            self.goto_rootdir(ctx)  # Run hooks in target root
-            for hook in ctx.hooks.pre_build:
-                ctx.log.info(f"Running pre-build hook {hook} in {self.path(ctx)}")
-                hook(ctx, self.path(ctx))

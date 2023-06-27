@@ -5,89 +5,54 @@ import shlex
 import io
 import threading
 import select
-import inspect
-import functools
 import shutil
 import re
+import typing
 from collections import OrderedDict
-from typing import Union, List, Dict, Iterable, Optional, Callable, Any
+from typing import Union, List, Dict, Iterable, Optional, Callable, Any, IO, AnyStr, \
+                   Mapping, TypeVar, MutableMapping, Iterator, KeysView, ValuesView, \
+                   ItemsView
 from urllib.request import urlretrieve
 from urllib.parse import urlparse
 from contextlib import redirect_stdout
+from dataclasses import dataclass
+from .context import Context
+
+EnvDict = Mapping[str, Union[str, List[str]]]
+
+ResultVal = Union[bool, int, float, str]
+ResultDict = MutableMapping[str, ResultVal]
+ResultsByInstance = MutableMapping[str, List[ResultDict]]
+
+T = TypeVar('T')
 
 
-class Namespace(dict):
-    """
-    A dictionary in which keys can be accessed as attributes, i.e., ``ns.key``
-    is the same as ``ns['key']``. Used for the context (see
-    :class:`Setup`).
-    """
-
-    def __getattr__(self, key):
-        return self[key]
-
-    def __setattr__(self, key, value):
-        self[key] = value
-
-    def copy(self) -> "Namespace":
-        """
-        Make a deepcopy of this namespace, but only copy values with type
-        ``Namespace|list|dict``.
-        """
-        ns = self.__class__()
-        for key, value in self.items():
-            if isinstance(value, (self.__class__, list, dict)):
-                value = value.copy()
-            ns[key] = value
-        return ns
-
-    def join_paths(self) -> "Namespace":
-        """
-        Create a new namespace in which all lists/tuples of strings are
-        replaced with ``':'.join(list_or_tuple)``. Used by :func:`run` to squash
-        lists of paths in environment variables.
-        """
-        new = self.__class__()
-        for key, value in self.items():
-            if isinstance(value, (tuple, list)):
-                value = ":".join(value)
-            elif isinstance(value, self.__class__):
-                value = value.join_paths()
-            new[key] = str(value)
-        return new
-
-
-def add_cflag(ctx: Namespace, flag: Union[List[str], str]):
+def add_cflag(ctx: Context, flag: Union[List[str], str]) -> None:
     """Add flag to ctx.cflags if new"""
     for f in flag if isinstance(flag, list) else [flag]:
         ctx.cflags.append(f)
 
 
-def add_cxxflag(ctx: Namespace, flag: Union[List[str], str]):
+def add_cxxflag(ctx: Context, flag: Union[List[str], str]) -> None:
     """Add flag to ctx.cxxflags if new"""
     for f in flag if isinstance(flag, list) else [flag]:
         ctx.cxxflags.append(f)
 
 
-def add_c_cxxflag(ctx: Namespace, flag: Union[List[str], str]):
+def add_c_cxxflag(ctx: Context, flag: Union[List[str], str]) -> None:
     """Add a flag both to ctx.cflags & ctx.cxxflags if new"""
     add_cflag(ctx, flag)
     add_cxxflag(ctx, flag)
 
 
-def add_cppflag(ctx: Namespace, flag: Union[List[str], str]):
-    """Add flag to ctx.cppflags if new"""
-    for f in flag if isinstance(flag, list) else [flag]:
-        ctx.cppflags.append(f)
-
-
-def add_ldflag(ctx: Namespace, flag: Union[List[str], str]):
+def add_ldflag(ctx: Context, flag: Union[List[str], str]) -> None:
     """Add flag to ctx.ldflags if new"""
     for f in flag if isinstance(flag, list) else [flag]:
         ctx.ldflags.append(f)
 
 
-def add_lib_ldflag(ctx: Namespace, flag: Union[List[str], str], also_ldflag: bool = False):
+def add_lib_ldflag(ctx: Context, flag: Union[List[str], str],
+                   also_ldflag: bool = False) -> None:
     """Add flag to ctx.lib_ldflags if new"""
     for f in flag if isinstance(flag, list) else [flag]:
         ctx.lib_ldflags.append(f)
@@ -95,51 +60,46 @@ def add_lib_ldflag(ctx: Namespace, flag: Union[List[str], str], also_ldflag: boo
         add_ldflag(ctx, flag)
 
 
-def add_ldlib(ctx: Namespace, lib_name: str):
-    """Add library to link (stripped & -l added) to ctx.ldlibs if new"""
-    # Ensure the argument is of format "-lLIB_NAME"
-    flag = lib_name
-    if not flag.startswith("-l"):  # Ensure flag starts with -l
-        flag = f"-l{flag}"
-    if flag.endswith(".so"):  # Strip .so from libname
-        flag = flag[:-3]
-    if flag.endswith(".a"):  # Strip .a from libname
-        flag = flag[:-2]
-    ctx.ldlibs.append(flag)
-
-
-class Index:
+class Index(MutableMapping[str, T]):
+    mem: MutableMapping[str, T]
     def __init__(self, thing_name: str):
         self.mem = OrderedDict()
         self.thing_name = thing_name
 
-    def __getitem__(self, key: str):
-        value = self.mem.get(key, None)
-        if value is None:
+    def __getitem__(self, key: str) -> T:
+        if key not in self.mem:
             raise FatalError('no %s called "%s"' % (self.thing_name, key))
-        return value
+        return self.mem[key]
 
-    def __setitem__(self, key: str, value: Any):
+    def __setitem__(self, key: str, value: T) -> None:
         if key in self.mem:
             raise FatalError('%s "%s" already exists' % (self.thing_name, key))
         self.mem[key] = value
 
-    def __iter__(self):
+    def __delitem__(self, key: str) -> None:
+        if key not in self.mem:
+            raise FatalError('no %s called "%s"' % (self.thing_name, key))
+        del self.mem[key]
+
+    def __iter__(self) -> Iterator[str]:
         return iter(self.mem)
 
-    def keys(self):
+    def __len__(self) -> int:
+        return len(self.mem)
+
+    def keys(self) -> KeysView[str]:
         return self.mem.keys()
 
-    def values(self):
+    def values(self) -> ValuesView[T]:
         return self.mem.values()
 
-    def items(self):
+    def items(self) -> ItemsView[str, T]:
         return self.mem.items()
 
-    def all(self):
+    def all(self) -> List[T]:
         return list(self.mem.values())
 
-    def select(self, keys):
+    def select(self, keys: Iterable[str]) -> List[T]:
         return [self[key] for key in keys]
 
 
@@ -148,7 +108,7 @@ class LazyIndex(Index):
         super().__init__(thing_name)
         self.find_value = find_value
 
-    def __getitem__(self, key: str):
+    def __getitem__(self, key: str) -> Any:
         value = self.mem.get(key, None)
         if value is None:
             self.mem[key] = value = self.find_value(key)
@@ -168,7 +128,7 @@ class FatalError(Exception):
     pass
 
 
-def apply_patch(ctx: Namespace, path: str, strip_count: int) -> bool:
+def apply_patch(ctx: Context, path: str, strip_count: int) -> bool:
     """
     Applies a patch in the current directory by calling ``patch -p<strip_count>
     < <path>``.
@@ -202,16 +162,56 @@ def apply_patch(ctx: Namespace, path: str, strip_count: int) -> bool:
     return True
 
 
-def run(
-    ctx: Namespace,
-    cmd: Union[str, List[str]],
-    allow_error=False,
-    silent=False,
-    teeout=False,
-    defer=False,
-    env: Dict[str, Union[str, List[str]]] = {},
-    **kwargs,
-) -> Union[subprocess.CompletedProcess, subprocess.Popen]:
+def join_env_paths(env: EnvDict) -> Dict[str, str]:
+    ret = {}
+    for k, v in env.items():
+        if isinstance(v, str):
+            ret[k] = v
+        else:
+            ret[k] = ':'.join(v)
+    return ret
+
+
+@dataclass
+class Process:
+    proc: Union[None, subprocess.CompletedProcess, subprocess.Popen]
+    cmd_str: str
+    teeout: bool
+
+    stdout_override: Optional[str] = None
+
+    @property
+    def returncode(self) -> Optional[int]:
+        if self.proc is None:
+            return -1
+        return self.proc.returncode
+
+    @property
+    def stdout(self) -> str:
+        if self.proc is None:
+            raise Exception('invalid process has no stdout')
+        if self.stdout_override is not None:
+            return self.stdout_override
+        assert isinstance(self.proc.stdout, str)
+        return self.proc.stdout
+
+    @property
+    def stdout_io(self) -> IO[AnyStr]:
+        if self.proc is None:
+            raise Exception('invalid process has no stdout')
+        assert self.stdout_override is None
+        assert self.proc.stdout is not None
+        assert not isinstance(self.proc.stdout, (str, bytes))
+        return self.proc.stdout
+
+    def poll(self) -> Optional[int]:
+        assert isinstance(self.proc, subprocess.Popen)
+        return self.proc.poll()
+
+
+def run(ctx: Context, cmd: Union[str, Iterable[Any]], allow_error: bool = False,
+        silent: bool = False, teeout: bool = False, defer: bool = False,
+        env: EnvDict = {}, **kwargs: Any) -> Process:
     """
     Wrapper for :func:`subprocess.run` that does environment/output logging and
     provides a few useful options. The log file is ``build/log/commands.txt``.
@@ -226,7 +226,7 @@ def run(
     ``ctx.runenv`` (populated by packages/instances, see also :class:`Setup`)
     and then the ``env`` parameter. The combination of ``ctx.runenv`` and
     ``env`` is logged to the log file. Any lists of strings in environment
-    values are joined with a ':' separator using :func:`Namespace.join_paths`.
+    values are joined with a ':' separator.
 
     If the command exits with a non-zero status code, the corresponding output
     is logged to the command line and the process is killed with
@@ -257,42 +257,33 @@ def run(
     ctx.log.debug("running: %s" % cmd_print)
     ctx.log.debug("workdir: %s" % os.getcwd())
 
-    logenv = ctx.runenv.join_paths()
-    logenv.update(Namespace.join_paths(env))
+    logenv = join_env_paths(ctx.runenv)
+    logenv.update(join_env_paths(env))
     renv = os.environ.copy()
     renv.update(logenv)
 
-    repro_command = "cd '%s'; " % os.getcwd()
-    for env_var, env_value in renv.items():
-        # Skip this huge variable that only affects 'ls'.
-        if env_var == "LS_COLORS":
-            continue
-        # Avoid all the locale spam.
-        if env_var.startswith("LC_"):
-            continue
-        repro_command += "%s='%s' " % (env_var, env_value)
-    repro_command += cmd_print
-    ctx.log.debug("full command: %s" % repro_command)
-
+    strbuf = None
     log_output = False
     if defer or silent:
-        kwargs.setdefault("stdout", subprocess.PIPE)
-        kwargs.setdefault("stderr", subprocess.PIPE)
-    elif "stdout" not in kwargs and "runlog" in ctx:
+        kwargs.setdefault('stdout', subprocess.PIPE)
+        kwargs.setdefault('stderr', subprocess.PIPE)
+    elif 'stdout' not in kwargs and ctx.runlog_file is not None:
         log_output = True
 
         # 'tee' output to logfile and string; does line buffering in a separate
         # thread to be able to flush the logfile during long-running commands
         # (use tail -f to view command output)
-        if "runtee" not in ctx:
-            ctx.runtee = _Tee(ctx.runlog, io.StringIO())
+        if ctx.runtee is None:
+            ctx.runtee = _Tee(ctx.runlog_file, io.StringIO())
+        assert isinstance(ctx.runtee, _Tee)
 
         strbuf = ctx.runtee.writers[1]
+        assert isinstance(strbuf, io.StringIO)
 
-        with redirect_stdout(ctx.runlog):
-            print("-" * 80)
-            print("command: %s" % cmd_print)
-            print("workdir: %s" % os.getcwd())
+        with redirect_stdout(ctx.runlog_file):
+            print('-' * 80)
+            print('command: %s' % cmd_print)
+            print('workdir: %s' % os.getcwd())
             for k, v in logenv.items():
                 print("%s=%s" % (k, v))
             hdr = "-- output: "
@@ -309,40 +300,46 @@ def run(
 
     try:
         if defer:
-            proc = subprocess.Popen(cmd, env=renv, **kwargs)
-            proc.cmd_print = cmd_print
-            proc.teeout = False
+            proc = Process(subprocess.Popen(cmd, env=renv, **kwargs), cmd_print, False)
             return proc
 
-        proc = subprocess.run(cmd, env=renv, **kwargs)
-        proc.teeout = teeout
+        proc = Process(subprocess.run(cmd, env=renv, **kwargs), cmd_print, teeout)
 
     except FileNotFoundError:
         logfn = ctx.log.debug if allow_error else ctx.log.error
         logfn("command not found: %s" % cmd_print)
         logfn("workdir:           %s" % os.getcwd())
         if allow_error:
-            return
+            return Process(None, cmd_print, teeout)
         raise
 
     if log_output:
-        proc.stdout = strbuf.getvalue()
+        assert ctx.runlog_file is not None
+        assert isinstance(ctx.runtee, _Tee)
+        assert isinstance(strbuf, io.StringIO)
+
+        proc.stdout_override = strbuf.getvalue()
 
         # delete dangling buffer to free up memory
         ctx.runtee.writers[1] = io.StringIO()
 
         # add trailing newline to logfile for readability
-        ctx.runlog.write("\n")
-        ctx.runlog.flush()
+        ctx.runlog_file.write('\n')
+        ctx.runlog_file.flush()
 
     if proc.returncode and not allow_error:
         ctx.log.error("command returned status %d" % proc.returncode)
         ctx.log.error("command: %s" % cmd_print)
         ctx.log.error("workdir: %s" % os.getcwd())
         for k, v in logenv.items():
-            ctx.log.error("%s=%s" % (k, v))
-        if proc.stdout is not None:
-            sys.stdout.write(proc.stdout)
+            ctx.log.error('%s=%s' % (k, v))
+        assert proc.proc is not None
+        if proc.proc.stdout is not None:
+            output = proc.stdout
+            if isinstance(output, bytes):
+                output = output.decode()
+            assert isinstance(output, str)
+            sys.stdout.write(output)
         sys.exit(-1)
 
     return proc
@@ -360,7 +357,7 @@ def qjoin(args: Iterable[Any]) -> str:
     return " ".join(shlex.quote(str(arg)) for arg in args)
 
 
-def download(ctx: Namespace, url: str, outfile: Optional[str] = None):
+def download(ctx: Context, url: str, outfile: Optional[str] = None) -> None:
     """
     Download a file (logs to the debug log).
 
@@ -375,9 +372,8 @@ def download(ctx: Namespace, url: str, outfile: Optional[str] = None):
         ctx.log.debug("downloading %s" % url)
     urlretrieve(url, outfile)
 
-
 class _Tee(io.IOBase):
-    def __init__(self, *writers):
+    def __init__(self, *writers: Union[io.IOBase, typing.IO]):
         super().__init__()
         assert len(writers) > 0
         self.writers = list(writers)
@@ -387,7 +383,7 @@ class _Tee(io.IOBase):
         self.thread.daemon = True
         self.thread.start()
 
-    def _flusher(self):
+    def _flusher(self) -> None:
         self.running = True
         poller = select.poll()
         poller.register(self.readfd, select.POLLIN | select.POLLPRI)
@@ -404,11 +400,11 @@ class _Tee(io.IOBase):
                         buf = buf[nl:]
                         nl = buf.find(b"\n") + 1
 
-    def flush(self):
+    def flush(self) -> None:
         for w in self.writers:
             w.flush()
 
-    def write(self, data):
+    def write(self, data: str) -> int:
         len1 = self.writers[0].write(data)
         for w in self.writers[1:]:
             len2 = w.write(data)
@@ -417,13 +413,13 @@ class _Tee(io.IOBase):
 
     emit = write
 
-    def fileno(self):
+    def fileno(self) -> int:
         return self.writefd
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         if self.running:
             self.running = False
             self.thread.join(0)
@@ -431,47 +427,7 @@ class _Tee(io.IOBase):
             os.close(self.writefd)
 
 
-def param_attrs(constructor: Callable) -> Callable:
-    """
-    Decorator for class constructors that sets parameter values as object
-    attributes::
-
-        >>> class Foo:
-        ...     @param_attrs
-        ...     def __init__(self, a, b=1, *, c=True):
-        ...         pass
-
-        >>> foo = Foo('a')
-        >>> foo.a
-        'a'
-        >>> foo.b
-        1
-        >>> foo.c
-        True
-
-    :param constructor: the ``__init__`` method being decorated
-    """
-    params = inspect.signature(constructor).parameters
-    positional = [p.name for p in params.values() if p.kind == p.POSITIONAL_OR_KEYWORD]
-    assert positional.pop(0) == "self"
-
-    @functools.wraps(constructor)
-    def wrapper(self, *args, **kwargs):
-        for name, param in params.items():
-            if name in kwargs:
-                setattr(self, name, kwargs[name])
-            elif param.default != param.empty:
-                setattr(self, name, param.default)
-
-        for name, value in zip(positional, args):
-            setattr(self, name, value)
-
-        constructor(self, *args, **kwargs)
-
-    return wrapper
-
-
-def require_program(ctx: Namespace, name: str, error: Optional[str] = None):
+def require_program(ctx: Context, name: str, error: Optional[str] = None) -> None:
     """
     Require a program to be available in ``PATH`` or ``ctx.runenv.PATH``.
 
@@ -480,10 +436,10 @@ def require_program(ctx: Namespace, name: str, error: Optional[str] = None):
     :param error: optional error message
     :raises FatalError: if program is not found
     """
-    if "PATH" in ctx.runenv:
-        path = Namespace(PATH=ctx.runenv.PATH).join_paths().PATH
+    if 'PATH' in ctx.runenv:
+        path = ':'.join(ctx.runenv['PATH'])
     else:
-        path = os.getenv("PATH")
+        path = os.getenv('PATH', '')
 
     if shutil.which(name, path=path) is None:
         msg = '"%s" not found in PATH' % name
@@ -492,14 +448,8 @@ def require_program(ctx: Namespace, name: str, error: Optional[str] = None):
         raise FatalError(msg)
 
 
-def untar(
-    ctx: Namespace,
-    tarname: str,
-    dest: Optional[str] = None,
-    *,
-    remove=True,
-    basename: Optional[str] = None,
-):
+def untar(ctx: Context, tarname: str, dest: Optional[str] = None, *,
+          remove: bool = True, basename: Optional[str] = None) -> None:
     """
     TODO: docs
     """

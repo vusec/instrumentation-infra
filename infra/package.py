@@ -1,8 +1,11 @@
 import os
 import shutil
 from abc import ABCMeta, abstractmethod
-from typing import Iterable, Iterator, Tuple
-from .util import Namespace
+from typing import Iterator, Tuple, Union, Iterable, Any
+from .context import Context
+
+
+PkgConfigOption = Tuple[str, str, Union[str, Iterable[str]]]
 
 
 class Package(metaclass=ABCMeta):
@@ -48,11 +51,11 @@ class Package(metaclass=ABCMeta):
     options are configured by :func:`pkg_config_options`.
     """
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, self.__class__) and \
                other.ident() == self.ident()
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash('package-' + self.ident())
 
     @abstractmethod
@@ -77,7 +80,7 @@ class Package(metaclass=ABCMeta):
         yield from []
 
     @abstractmethod
-    def is_fetched(self, ctx: Namespace) -> bool:
+    def is_fetched(self, ctx: Context) -> bool:
         """
         Returns ``True`` if :func:`fetch` should be called before building.
 
@@ -86,7 +89,7 @@ class Package(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def is_built(self, ctx: Namespace) -> bool:
+    def is_built(self, ctx: Context) -> bool:
         """
         Returns ``True`` if :func:`build` should be called before installing.
 
@@ -95,7 +98,7 @@ class Package(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def is_installed(self, ctx: Namespace) -> bool:
+    def is_installed(self, ctx: Context) -> bool:
         """
         Returns ``True`` if the pacakge has not been installed yet, and thus
         needs to be fetched, built and installed.
@@ -105,7 +108,7 @@ class Package(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def fetch(self, ctx: Namespace):
+    def fetch(self, ctx: Context) -> None:
         """
         Fetches the source code for this package. This step is separated from
         :func:`build` because the ``build`` command first fetches all packages
@@ -116,7 +119,7 @@ class Package(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def build(self, ctx: Namespace):
+    def build(self, ctx: Context) -> None:
         """
         Build the package. Usually amounts to running ``make -j<ctx.jobs>``
         using :func:`util.run`.
@@ -126,7 +129,7 @@ class Package(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def install(self, ctx: Namespace):
+    def install(self, ctx: Context) -> None:
         """
         Install the package. Usually amounts to running ``make install`` using
         :func:`util.run`. It is recommended to install to ``self.path(ctx,
@@ -139,7 +142,7 @@ class Package(metaclass=ABCMeta):
         """
         pass
 
-    def is_clean(self, ctx: Namespace) -> bool:
+    def is_clean(self, ctx: Context) -> bool:
         """
         Returns ``True`` if :func:`clean` should be called before cleaning.
 
@@ -147,7 +150,7 @@ class Package(metaclass=ABCMeta):
         """
         return not os.path.exists(self.path(ctx))
 
-    def clean(self, ctx: Namespace):
+    def clean(self, ctx: Context) -> None:
         """
         Clean generated files for this target, called by the :ref:`clean
         <usage-clean>` command. By default, this removes
@@ -157,7 +160,7 @@ class Package(metaclass=ABCMeta):
         """
         shutil.rmtree(self.path(ctx))
 
-    def path(self, ctx: Namespace, *args: Iterable[str]) -> str:
+    def path(self, ctx: Context, *args: str) -> str:
         """
         Get the absolute path to the build directory of this package,
         optionally suffixed with a subpath.
@@ -168,7 +171,7 @@ class Package(metaclass=ABCMeta):
         """
         return os.path.join(ctx.paths.packages, self.ident(), *args)
 
-    def install_env(self, ctx: Namespace):
+    def install_env(self, ctx: Context) -> None:
         """
         Install the package into ``ctx.runenv`` so that it can be used in
         subsequent calls to :func:`util.run`. By default, it adds
@@ -179,22 +182,26 @@ class Package(metaclass=ABCMeta):
         :param ctx: the configuration context
         """
         # XXX rename 'install_env' to 'load'?
-        prevbinpath = os.getenv('PATH', '').split(':')
         binpath = self.path(ctx, 'install/bin')
         if os.path.exists(binpath):
-            ctx.runenv.setdefault('PATH', prevbinpath).insert(0, binpath)
+            curbinpath = os.getenv('PATH', '').split(':')
+            prevbinpath = ctx.runenv.setdefault('PATH', curbinpath)
+            assert isinstance(prevbinpath, list)
+            prevbinpath.insert(0, binpath)
 
-        prevlibpath = os.getenv('LD_LIBRARY_PATH', '').split(':')
         libpath = self.path(ctx, 'install/lib')
         if os.path.exists(libpath):
-            ctx.runenv.setdefault('LD_LIBRARY_PATH', prevlibpath).insert(0, libpath)
+            curlibpath = os.getenv('LD_LIBRARY_PATH', '').split(':')
+            prevlibpath = ctx.runenv.setdefault('LD_LIBRARY_PATH', curlibpath)
+            assert isinstance(prevlibpath, list)
+            prevlibpath.insert(0, libpath)
 
-    def goto_rootdir(self, ctx):
+    def goto_rootdir(self, ctx: Context) -> None:
         path = self.path(ctx)
         os.makedirs(path, exist_ok=True)
         os.chdir(path)
 
-    def pkg_config_options(self, ctx: Namespace) -> Iterator[Tuple[str, str, str]]:
+    def pkg_config_options(self, ctx: Context) -> Iterator[PkgConfigOption]:
         """
         Yield options for the :ref:`pkg-config <usage-pkg-config>` command.
         Each option is an (option, description, value) triple. The defaults are
@@ -230,35 +237,35 @@ class NoEnvLoad(Package):
         """
         self.package = package
 
-    def install_env(self, ctx: Namespace):
+    def install_env(self, ctx: Context) -> None:
         ctx.log.debug('cancel installation of %s in env' % self.ident())
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return self.package == other
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.package)
 
     def ident(self) -> str:
         return self.package.ident()
 
-    def is_fetched(self, ctx: Namespace) -> bool:
+    def is_fetched(self, ctx: Context) -> bool:
         return self.package.is_fetched(ctx)
 
-    def is_built(self, ctx: Namespace) -> bool:
+    def is_built(self, ctx: Context) -> bool:
         return self.package.is_built(ctx)
 
-    def is_installed(self, ctx: Namespace) -> bool:
+    def is_installed(self, ctx: Context) -> bool:
         return self.package.is_installed(ctx)
 
-    def fetch(self, ctx: Namespace):
-        return self.package.fetch(ctx)
+    def fetch(self, ctx: Context) -> None:
+        self.package.fetch(ctx)
 
-    def build(self, ctx: Namespace):
-        return self.package.build(ctx)
+    def build(self, ctx: Context) -> None:
+        self.package.build(ctx)
 
-    def install(self, ctx: Namespace):
-        return self.package.install(ctx)
+    def install(self, ctx: Context) -> None:
+        self.package.install(ctx)
 
-    def __getattr__(self, key: str):
+    def __getattr__(self, key: str) -> Any:
         return getattr(self.package, key)

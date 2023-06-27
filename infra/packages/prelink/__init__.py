@@ -1,5 +1,7 @@
 import os
 import shutil
+from typing import Iterator
+from ...context import Context
 from ...package import Package
 from ...util import run, download, apply_patch
 
@@ -13,10 +15,10 @@ class LibElf(Package):
     def __init__(self, version: str):
         self.version = version
 
-    def ident(self):
+    def ident(self) -> str:
         return 'libelf-' + self.version
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         tarname = 'libelf-%s.tar.gz' % self.version
         download(ctx, 'https://web.archive.org/web/20160505164756if_/http://www.mr511.de/software/' + tarname)
         run(ctx, ['tar', '-xf', tarname])
@@ -32,23 +34,23 @@ class LibElf(Package):
             ctx.log.debug('could not patch libelf version %s for prelink' %
                           self.version)
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
         run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
         run(ctx, ['make', '-j%d' % ctx.jobs])
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.chdir('obj')
         run(ctx, ['make', 'install'])
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('src')
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists('obj/lib/libelf.a')
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/lib/libelf.a')
 
 
@@ -58,25 +60,25 @@ class Prelink(Package):
     :param str version: version to download
     """
 
-    def __init__(self, version):
+    def __init__(self, version: str):
         self.version = version
         #assert version == '209'
         self.libelf = LibElf('0.7.0')
 
-    def ident(self):
+    def ident(self) -> str:
         return 'prelink-' + self.version
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield self.libelf
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         run(ctx, ['svn', 'co', '-r' + self.version,
                   'svn://sourceware.org/svn/prelink/trunk', 'src'])
         os.chdir('src')
         config_path = os.path.dirname(os.path.abspath(__file__))
         apply_patch(ctx, config_path + '/prelink-execstack-link-fix.patch', 0)
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
         env = {
@@ -97,14 +99,14 @@ class Prelink(Package):
         run(ctx, ['make', '-j%d' % ctx.jobs, '-C', 'gelf'], env=env)
         run(ctx, ['make', '-j%d' % ctx.jobs, '-C', 'src'], env=env)
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         run(ctx, 'make install -C obj/src')
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('src')
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists('obj/src/prelink')
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/bin/prelink')

@@ -4,10 +4,11 @@ import os.path
 import glob
 import re
 import argparse
+from typing import Tuple, List
 from pprint import pprint
 
 
-def parse_setfile(path):
+def parse_setfile(path: str) -> Tuple[str, List[str]]:
     with open(path) as f:
         contents = f.read()
     pat = r"^\$name\s*=\s*'([^']*)'.*^@benchmarks\s*=\s*qw\((.*)\)"

@@ -1,25 +1,26 @@
 import os
-import stat
 import shutil
+from typing import Iterator
+from ...context import Context
 from ...package import Package
 from ...util import run, download, apply_patch, FatalError
 from ..gnu import Bash
 
 
 class Perl(Package):
-    def __init__(self, version):
+    def __init__(self, version: str):
         if not version.startswith('5.'):
             raise FatalError('only perl5 is supported')
         self.version = version
         self.bash = Bash('4.3')
 
-    def ident(self):
+    def ident(self) -> str:
         return 'perl-' + self.version
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield self.bash
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         ident = 'perl-' + self.version
         tarname = ident + '.tar.gz'
         download(ctx, 'http://www.cpan.org/src/5.0/' + tarname)
@@ -27,35 +28,35 @@ class Perl(Package):
         shutil.move(ident, 'src')
         os.remove(tarname)
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         os.chdir('src')
         if not os.path.exists('Makefile'):
             prefix = self.path(ctx, 'install')
             run(ctx, ['bash', './Configure', '-des', '-Dprefix=' + prefix])
         run(ctx, ['make', '-j%d' % ctx.jobs])
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.chdir('src')
         run(ctx, ['make', 'install'])
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('src')
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists('src/perl')
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/bin/perl')
 
 
 class SPECPerl(Perl):
-    def __init__(self):
+    def __init__(self) -> None:
         Perl.__init__(self, '5.8.8')
 
-    def ident(self):
+    def ident(self) -> str:
         return 'perl-%s-spec' % self.version
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         Perl.fetch(self, ctx)
 
         # apply patches (includes quote fix from
@@ -76,7 +77,7 @@ class SPECPerl(Perl):
                           'Configure' ])
                 open('.patched-Configure-paths', 'w').close()
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         os.chdir('src')
         if not os.path.exists('Makefile'):
             prefix = self.path(ctx, 'install')
@@ -86,16 +87,16 @@ class SPECPerl(Perl):
 
 
 class Perlbrew(Package):
-    def __init__(self, perl):
+    def __init__(self, perl: Perl):
         self.perl = perl
 
-    def ident(self):
+    def ident(self) -> str:
         return 'perlbrew-' + self.perl.ident()
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield self.perl
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         # download installer
         download(ctx, 'http://install.perlbrew.pl', 'perlbrew-installer')
 
@@ -103,22 +104,22 @@ class Perlbrew(Package):
         perl = self.perl.path(ctx, 'install/bin/perl')
         run(ctx, 'sed -i "s|/usr/bin/perl|%s|g" perlbrew-installer' % perl)
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         pass
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         run(ctx, 'bash perlbrew-installer', env={
             'PERLBREW_ROOT': self.path(ctx, 'install'),
             'PERLBREW_HOME': self.path(ctx, 'home')
         })
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('perlbrew-installer')
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return True
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists(self.path(ctx, 'install/bin/perlbrew'))
 
     #def install_env(self, ctx):

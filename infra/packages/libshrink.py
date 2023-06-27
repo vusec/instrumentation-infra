@@ -1,6 +1,8 @@
 import os
+from typing import Iterator
+from ..context import Context
 from ..package import Package
-from ..util import Namespace, run
+from ..util import run, join_env_paths
 from . import Prelink, PatchElf, PyElfTools
 
 
@@ -24,45 +26,45 @@ class LibShrink(Package):
     git_url = 'https://github.com/vusec/libshrink.git'
 
     def __init__(self, addrspace_bits: int,
-                       commit = 'master',
-                       debug = False):
+                       commit: str = 'master',
+                       debug: bool = False):
         self.addrspace_bits = addrspace_bits
         self.commit = commit
         self.debug = debug
 
-    def ident(self):
+    def ident(self) -> str:
         return 'libshrink-%d' % self.addrspace_bits
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield Prelink('209')
         yield PatchElf('0.9')
         yield PyElfTools('0.24', '2.7')
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         run(ctx, ['git', 'clone', self.git_url, 'src'])
         os.chdir('src')
         run(ctx, ['git', 'checkout', self.commit])
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         os.chdir('src')
         run(ctx, ['make', '-j%d' % ctx.jobs,
                   'OBJDIR=' + self.path(ctx, 'obj'),
                   'DEBUG=' + ('1' if self.debug else '0')])
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         pass
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('src')
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists('obj/libshrink-static.a') and \
                os.path.exists('obj/libshrink-preload.so')
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return self.is_built(ctx)
 
-    def configure(self, ctx: Namespace, static=True):
+    def configure(self, ctx: Context, static: bool = True) -> None:
         """
         Set build/link flags in **ctx**. Should be called from the
         ``configure`` method of an instance. Uses post-build hooks, so any
@@ -88,8 +90,8 @@ class LibShrink(Package):
         else:
             raise NotImplementedError('libshrink does not have dynamic library support')
 
-    def _prelink_binary(self, ctx, binary):
-        libpath = ctx.runenv.join_paths().get('LD_LIBRARY_PATH', '')
+    def _prelink_binary(self, ctx: Context, binary: str) -> None:
+        libpath = join_env_paths(ctx.runenv).get('LD_LIBRARY_PATH', '')
         run(ctx, [
             self.path(ctx, 'src/prelink_binary.py'),
             '--set-rpath', '--in-place', '--static-lib',
@@ -99,14 +101,14 @@ class LibShrink(Package):
             binary
         ])
 
-    def _fix_preinit(self, ctx, binary):
+    def _fix_preinit(self, ctx: Context, binary: str) -> None:
         run(ctx, [
             self.path(ctx, 'src/fix_preinit.py'),
             '--preinit-name', '__shrinkaddrspace_preinit',
             binary
         ])
 
-    def run_wrapper(self, ctx: Namespace) -> str:
+    def run_wrapper(self, ctx: Context) -> str:
         """
         Run wrapper for targets. Links to a script that sets the ``rpath``
         before any libraries are loaded, so that any dependencies of shared

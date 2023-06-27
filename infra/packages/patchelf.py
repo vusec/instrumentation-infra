@@ -1,5 +1,6 @@
 import os
 import shutil
+from ..context import Context
 from ..package import Package
 from ..util import run, download
 
@@ -13,17 +14,17 @@ class PatchElf(Package):
     def __init__(self, version: str):
         self.version = version
 
-    def ident(self):
+    def ident(self) -> str:
         return 'patchelf-' + self.version
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         tarname = 'patchelf-%s.tar.bz2' % self.version
         download(ctx, 'https://nixos.org/releases/patchelf/patchelf-0.9/' + tarname)
         run(ctx, ['tar', '-xf', tarname])
         shutil.move('patchelf-' + self.version, 'src')
         os.remove(tarname)
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         if not os.path.exists('src/configure'):
             os.chdir('src')
             run(ctx, ['bash', 'bootstrap.sh'])
@@ -34,15 +35,15 @@ class PatchElf(Package):
         run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
         run(ctx, ['make', '-j%d' % ctx.jobs])
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.chdir('obj')
         run(ctx, ['make', 'install'])
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists('src')
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists('obj/src/patchelf')
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/bin/patchelf')

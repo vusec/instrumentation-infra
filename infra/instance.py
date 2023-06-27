@@ -1,7 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser
 from typing import Iterator
-from .util import Namespace
+from .context import Context
 from .package import Package
 
 
@@ -24,20 +24,23 @@ class Instance(metaclass=ABCMeta):
     just before running the target with :func:`Target.run`.
     """
 
-    #: :class:`str` The instance's name, must be unique.
-    name: str
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """The instance's name, must be unique."""
+        pass
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, self.__class__) and other.name == self.name
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash('instance-' + self.name)
 
-    def add_build_args(self, parser: ArgumentParser):
+    def add_build_args(self, parser: ArgumentParser) -> None:
         """
         Extend the command-line arguments for the :ref:`build <usage-build>`
         command with custom arguments for this instance. These arguments end up
-        in the global namespace, so it is a good idea to prefix them with the
+        in the global context, so it is a good idea to prefix them with the
         instance name to avoid collisions with other instances and targets.
 
         Use this to enable build flags for your instance on the command line,
@@ -57,7 +60,7 @@ class Instance(metaclass=ABCMeta):
         yield from []
 
     @abstractmethod
-    def configure(self, ctx: Namespace):
+    def configure(self, ctx: Context) -> None:
         """
         Modify context variables to change how a target is built.
 
@@ -73,7 +76,7 @@ class Instance(metaclass=ABCMeta):
         """
         pass
 
-    def prepare_run(self, ctx: Namespace):
+    def prepare_run(self, ctx: Context) -> None:
         """
         Modify context variables to change how a target is run.
 

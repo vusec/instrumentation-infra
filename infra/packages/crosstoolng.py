@@ -1,7 +1,8 @@
 import os
 import shutil
-from typing import Optional
+from typing import Optional, Iterator
 
+from ..context import Context
 from ..package import Package
 from ..util import run
 
@@ -15,23 +16,23 @@ class CrosstoolNG(Package):
             version: str = '1.25.0'):
         self.version = version
 
-    def ident(self):
+    def ident(self) -> str:
         return 'crosstool-ng-' + self.version
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield from super().dependencies()
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists(self.path(ctx, 'src'))
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         run(ctx, ['git', 'clone', '--branch', 'crosstool-ng-' + self.version,
                 'https://github.com/crosstool-ng/crosstool-ng', 'src'])
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists(self.path(ctx, 'install'))
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         install_dir = self.path(ctx, 'install')
 
         os.chdir('src')
@@ -43,10 +44,10 @@ class CrosstoolNG(Package):
 
         os.makedirs(install_dir, exist_ok=True)
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists(self.path(ctx, 'install/bin/ct-ng'))
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.chdir('src')
 
         run(ctx, ['make', 'install'])
@@ -60,7 +61,7 @@ class CustomToolchain(Package):
 
     def __init__(self,
             arch: str = 'x86_64',
-            glibc_version: str = None,
+            glibc_version: Optional[str] = None,
             min_kernel_version: Optional[str] = None,
             glibc_path: Optional[str] = None):
         self.arch = arch
@@ -70,20 +71,20 @@ class CustomToolchain(Package):
 
         self.crosstoolNG = CrosstoolNG()
 
-    def ident(self):
+    def ident(self) -> str:
         return 'custom-toolchain-' + self.arch
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield from super().dependencies()
         yield self.crosstoolNG
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return True
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         pass
 
-    def patch_config_file(self, ctx):
+    def patch_config_file(self, ctx: Context) -> None:
         # CT_ZLIB_VERSION 1.2.12 download no longer exists
         run(ctx, ['sed', '-i',
             's/CT_ZLIB_VERSION=.*/CT_ZLIB_VERSION="1.2.13"/',
@@ -110,7 +111,7 @@ class CustomToolchain(Package):
                 '$ s/$/\\\nCT_GLIBC_SRC_CUSTOM=y/',
                 '.config'])
             run(ctx, ['sed', '-i',
-                '$ s/$/\\\nCT_GLIBC_CUSTOM_LOCATION="%s"/' % self.glibc_path.replace('/', '\/'),
+                '$ s/$/\\\nCT_GLIBC_CUSTOM_LOCATION="%s"/' % self.glibc_path.replace('/', '\\/'),
                 '.config'])
 
         if self.glibc_version == '2.21':
@@ -138,10 +139,10 @@ class CustomToolchain(Package):
             's/CT_GDB_GDBSERVER=y/# CT_GDB_GDBSERVER is not set/',
             '.config'])
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return os.path.exists(self.path(ctx, 'obj', f"{self.arch}-unknown-linux-gnu"))
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         obj_dir = self.path(ctx, 'obj')
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
@@ -164,10 +165,10 @@ class CustomToolchain(Package):
         run(ctx, ['chmod', '-R', 'ug+w', f"{obj_dir}/{self.arch}-unknown-linux-gnu"])
 
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         return os.path.exists(self.path(ctx, 'install', 'sysroot'))
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         os.makedirs('install', exist_ok=True)
 
         sysroot_dir = self.path(ctx, f"obj/{self.arch}-unknown-linux-gnu/{self.arch}-unknown-linux-gnu/sysroot")
@@ -178,7 +179,7 @@ class CustomToolchain(Package):
         shutil.copytree(cxx_include_dir, self.path(ctx, 'install/sysroot/usr/include/c++'))
         shutil.copytree(gcc_lib_dir, self.path(ctx, 'install/sysroot/lib/gcc'))
 
-    def configure_flags(self, ctx):
+    def configure_flags(self, ctx: Context) -> None:
         """
         Set build/link flags in **ctx**. Should be called from the
         ``configure`` method of an instance.
@@ -224,14 +225,14 @@ class CustomToolchain(Package):
         ctx.cxxflags += cxxflags
         ctx.ldflags += ldflags
 
-    def package_configure(self, ctx):
+    def package_configure(self, ctx: Context) -> None:
         """
         Set build/link flags in **ctx** for packages that are to be linked against
         this glibc.
         """
         self.configure_flags(ctx)
 
-    def configure(self, ctx):
+    def configure(self, ctx: Context) -> None:
         """
         Set build/link flags in **ctx**. Should be called from the
         ``configure`` method of an instance.
@@ -240,7 +241,8 @@ class CustomToolchain(Package):
         """
         self.configure_flags(ctx)
 
-        ctx.ldflags += ['-Wl,--start-group']
-        ctx.extra_libs = ['-lgcc', '-lstdc++', '-lgcc_s', '-lc', '-lm', '-Wl,--end-group']
+        # FIXME: this used to use ctx.extra_libs, whatever that is.
+        ctx.ldflags += ['-Wl,--start-group', '-lgcc', '-lstdc++', '-lgcc_s', '-lc',
+                        '-lm', '-Wl,--end-group']
 
-        ctx.runenv.LIBRARY_PATH = self.path(ctx, 'install/sysroot/usr/lib')
+        ctx.runenv['LIBRARY_PATH'] = self.path(ctx, 'install/sysroot/usr/lib')

@@ -1,5 +1,7 @@
-from typing import Optional, Union
+from typing import Iterator, Union
+from ..context import Context
 from ..instance import Instance
+from ..package import Package
 from ..packages import LLVM, Gperftools
 
 
@@ -26,8 +28,8 @@ class Clang(Instance):
                  llvm: LLVM,
                  *,
                  optlevel: Union[int, str] = 2,
-                 lto = False,
-                 alloc = 'system'):
+                 lto: bool = False,
+                 alloc: str = 'system'):
         assert optlevel in (0, 1, 2, 3, 's'), 'invalid optimization level'
         assert not (lto and optlevel == 0), 'LTO needs compile-time opts'
         assert alloc in ('system', 'tcmalloc'), 'unsupported allocator'
@@ -41,7 +43,7 @@ class Clang(Instance):
             self.gperftools = Gperftools('master')
 
     @property
-    def name(self):
+    def name(self) -> str:
         name = 'clang'
         if self.optflag != '-O2':
             name += self.optflag
@@ -51,12 +53,12 @@ class Clang(Instance):
             name += '-' + self.alloc
         return name
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield self.llvm
         if self.alloc == 'tcmalloc':
             yield self.gperftools
 
-    def configure(self, ctx):
+    def configure(self, ctx: Context) -> None:
         self.llvm.configure(ctx)
 
         if self.alloc == 'tcmalloc':

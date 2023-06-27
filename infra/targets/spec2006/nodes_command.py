@@ -1,9 +1,12 @@
+import argparse
 import re
 import statistics
+from typing import Optional, Iterable, Dict, List, Tuple, Union, cast, MutableSequence
 from collections import defaultdict
+from ...context import Context
 from ...command import Command
 from ...commands.report import parse_logs, add_table_report_args, report_table
-from ...util import FatalError, Namespace
+from ...util import FatalError, ResultDict, ResultVal
 
 
 class SpecFindBadPrunNodesCommand(Command):
@@ -15,7 +18,7 @@ class SpecFindBadPrunNodesCommand(Command):
     highlight_variance_deviation = 3
     highlight_percent_threshold = 0.02
 
-    def add_args(self, parser):
+    def add_args(self, parser: argparse.ArgumentParser) -> None:
         targetarg = parser.add_argument('target', metavar='TARGET',
                 choices=self.targets,
                 help=' | '.join(self.targets))
@@ -36,12 +39,12 @@ class SpecFindBadPrunNodesCommand(Command):
 
         try:
             from argcomplete.completers import DirectoriesCompleter
-            targetarg.completer = self.complete_package
-            rundirsarg.completer = DirectoriesCompleter()
+            setattr(targetarg, 'completer', self.complete_package)
+            setattr(rundirsarg, 'completer', DirectoriesCompleter())
         except ImportError:
             pass
 
-    def run(self, ctx):
+    def run(self, ctx: Context) -> None:
         target = self.targets[ctx.args.target]
         instances = self.instances.select(ctx.args.instances)
         fancy = ctx.args.table == 'fancy'
@@ -52,23 +55,32 @@ class SpecFindBadPrunNodesCommand(Command):
                 raise ImportError
             from termcolor import colored
         except ImportError:
-            def colored(text, *args, **kwargs):
+            def colored(
+                    text: str,
+                    color: Optional[str] = None,
+                    on_color: Optional[str] = None,
+                    attrs: Optional[Iterable[str]] = None,
+                    *,
+                    no_color: Optional[bool] = None,
+                    force_color: Optional[bool] = None
+                    ) -> str:
                 return text
 
         # parse result logs
         results = parse_logs(ctx, target, instances, ctx.args.rundirs)
 
         # compute aggregates
-        benchdata = defaultdict(lambda: defaultdict(Namespace))
-        node_zscores = defaultdict(lambda: defaultdict(list))
-        node_runtimes = defaultdict(list)
+        benchdata: Dict[str, Dict] = defaultdict(lambda: defaultdict(dict))
+        node_zscores: Dict[str, Dict] = defaultdict(lambda: defaultdict(list))
+        node_runtimes: Dict[Tuple[str, str, str], List[Tuple[float, float, str]]] \
+            = defaultdict(list)
         workload = None
 
         for iname, iresults in results.items():
-            grouped = defaultdict(list)
+            grouped: Dict[str, List[ResultDict]] = defaultdict(list)
 
             for result in iresults:
-                grouped[result['benchmark']].append(result)
+                grouped[cast(str, result['benchmark'])].append(result)
                 if workload is None:
                     workload = result.get('workload', None)
                 elif result.get('workload', workload) != workload:
@@ -85,23 +97,23 @@ class SpecFindBadPrunNodesCommand(Command):
                     continue
 
                 # z-score per node
-                entry = benchdata[bench][iname]
-                runtimes = [r['runtime'] for r in bresults]
-                entry.rt_mean = statistics.mean(runtimes)
-                entry.rt_stdev = statistics.pstdev(runtimes)
-                entry.rt_variance = statistics.pvariance(runtimes)
-                entry.rt_median = statistics.median(runtimes)
+                entry: Dict[str, float] = benchdata[bench][iname]
+                runtimes = cast(List[Union[int, float]], [r['runtime'] for r in bresults])
+                entry['rt_mean'] = rt_mean = statistics.mean(runtimes)
+                entry['rt_stdev'] = rt_stdev = statistics.pstdev(runtimes)
+                entry['rt_variance'] = statistics.pvariance(runtimes)
+                entry['rt_median'] = statistics.median(runtimes)
                 for r in bresults:
-                    node = r['hostname']
-                    runtime = r['runtime']
-                    zscore = (runtime - entry.rt_mean) / entry.rt_stdev
+                    node = cast(str, r['hostname'])
+                    runtime = cast(float, r['runtime'])
+                    zscore: float = (runtime - rt_mean) / rt_stdev
                     node_zscores[node][bench].append(zscore)
-                    node_rt = runtime, zscore, r['outfile']
+                    node_rt = runtime, zscore, cast(str, r['outfile'])
                     node_runtimes[(node, bench, iname)].append(node_rt)
 
         # order nodes such that the one with the highest z-scores (the most
         # deviating) come first
-        zmeans = {}
+        zmeans: Dict[str, float] = {}
         for hostname, benchscores in node_zscores.items():
             allscores = []
             for bscores in benchscores.values():
@@ -114,31 +126,31 @@ class SpecFindBadPrunNodesCommand(Command):
         header = [' node:\n mean z-score:', '']
         for node in nodes:
             nodename = node.replace('node', '')
-            zscore = ('%.1f' % zmeans[node]).replace('0.', '.')
-            header.append(nodename + '\n' + zscore)
+            zscore_str: str = ('%.1f' % zmeans[node]).replace('0.', '.')
+            header.append(nodename + '\n' + zscore_str)
 
-        data = []
-        high_devs = []
+        data: List[List[ResultVal]] = []
+        high_devs: List[Tuple[str, str, str, float, str]] = []
 
         for bench, index in sorted(benchdata.items()):
             for iname, entry in index.items():
-                row = [' ' + bench, iname]
+                row: List[ResultVal] = [' ' + bench, iname]
                 for node in nodes:
-                    runtimes = node_runtimes[(node, bench, iname)]
-                    runtimes.sort(reverse=True)
+                    nruntimes = node_runtimes[(node, bench, iname)]
+                    nruntimes.sort(reverse=True)
 
                     # highlight outliers to easily identify bad nodes
                     highlighted = []
-                    for runtime, zscore, ofile in runtimes:
+                    for runtime, zscore, ofile in nruntimes:
                         rt = '%d' % round(runtime)
-                        deviation = runtime - entry.rt_mean
-                        deviation_ratio = abs(deviation) / entry.rt_mean
+                        deviation = runtime - entry['rt_mean']
+                        deviation_ratio = abs(deviation) / entry['rt_mean']
 
-                        if deviation ** 2 > entry.rt_variance * self.highlight_variance_deviation and \
+                        if deviation ** 2 > entry['rt_variance'] * self.highlight_variance_deviation and \
                                 deviation_ratio > self.highlight_percent_threshold:
                             rt = colored(rt, 'red')
                             high_devs.append((bench, node, iname, runtime, ofile))
-                        elif runtime == entry.rt_median:
+                        elif runtime == entry['rt_median']:
                             rt = colored(rt, 'blue', attrs=['bold'])
 
                         highlighted.append(rt)
@@ -156,11 +168,11 @@ class SpecFindBadPrunNodesCommand(Command):
         # paths for easy access
         if high_devs:
             header = ['benchmark', 'node', 'instance', 'runtime', 'log file']
-            data = []
+            hd_data: List[List[ResultVal]] = []
             for bench, node, iname, runtime, ofile in high_devs:
                 nodename = node.replace('node', '')
-                opath = re.sub('^%s/' % ctx.workdir, '', ofile)
-                data.append([bench, nodename, iname, runtime, opath])
+                opath = re.sub('^%s/' % ctx.paths.workdir, '', ofile)
+                hd_data.append([bench, nodename, iname, runtime, opath])
 
             print(file=ctx.args.outfile)
-            report_table(ctx, header, header, data, 'high deviations')
+            report_table(ctx, header, header, hd_data, 'high deviations')

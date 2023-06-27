@@ -22,7 +22,6 @@ import argparse
 import json
 import logging
 import os
-import psutil
 import shlex
 import socket
 import subprocess
@@ -30,7 +29,13 @@ import sys
 import threading
 import time
 import traceback
-from typing import Any, Callable, Dict, List, Tuple, Union, Optional, overload
+from typing import Any, Callable, Dict, List, Tuple, Union, Optional, NoReturn, IO, \
+                   Mapping, Iterable, Sequence
+
+try:
+    import psutil
+except ImportError:
+    psutil = None # type: ignore
 
 
 class RemoteRunnerError(Exception):
@@ -52,8 +57,11 @@ class MonitorThread(threading.Thread):
     aggregated_stats = ('cpu-proc', 'rss', 'vms')
 
     data: Dict[str, List[Union[int, float]]]
+    _exception: Optional[Exception]
 
-    def __init__(self, interval, pids=[], stats=('cpu', 'rss')):
+    def __init__(self, interval: float, pids: Iterable[int] = [],
+                 stats: Tuple[str, ...] = ('cpu', 'rss')):
+        assert psutil is not None
         threading.Thread.__init__(self)
         self._event = threading.Event()
         self._exception = None
@@ -69,14 +77,15 @@ class MonitorThread(threading.Thread):
         self.data = {stat: [] for stat in self.stats}
         self.procs = [psutil.Process(pid) for pid in pids]
 
-    def stop(self):
+    def stop(self) -> None:
         self._event.set()
         self.join()
 
         if self._exception is not None:
             raise self._exception
 
-    def sample_data(self):
+    def sample_data(self) -> None:
+        assert psutil is not None
         if 'time' in self.stats:
             time_elapsed = time.time() - self.start_time
             self.data['time'].append(time_elapsed)
@@ -98,7 +107,7 @@ class MonitorThread(threading.Thread):
             for stat, value in aggr.items():
                 self.data[stat].append(value)
 
-    def run(self):
+    def run(self) -> None:
         """Do not call directly! Called by `threading.Thread` to start executing
         our code of this thread. To start the thread, using `thread.start()`.
 
@@ -122,7 +131,11 @@ class RemoteRunnerComms:
     received. Data is json encoded, with the payload simply being the `args` and
     `kwargs` arguments."""
 
-    def __init__(self, log, sock):
+    sock: Optional[socket.socket]
+    rsock: Optional[IO]
+    wsock: Optional[IO]
+
+    def __init__(self, log: logging.Logger, sock: socket.socket):
         assert isinstance(sock, socket.socket), sock
         self.log = log
         self.sock = sock
@@ -130,14 +143,14 @@ class RemoteRunnerComms:
         self.wsock = sock.makefile('w')
         self.last_pkg = ''
 
-    def close(self):
+    def close(self) -> None:
         if self.sock is None:
             return
         self.sock.shutdown(socket.SHUT_RDWR)
         self.sock.close()
         self.sock, self.rsock, self.wsock = None, None, None
 
-    def send(self, func, *args, **kwargs):
+    def send(self, func: str, *args: Any, **kwargs: Any) -> None:
         self.log.debug(' > {func} {args} {kwargs}'.format(**locals()))
         if self.sock is None:
             self.log.warning('Could not send message {func} because there is '
@@ -146,11 +159,11 @@ class RemoteRunnerComms:
         pkg = json.dumps((func, args, kwargs))
         self.sock.sendall(pkg.encode('utf-8') + b'\n')
 
-    def recv(self) -> Tuple[str, str, str]:
+    def recv(self) -> Tuple[str, Sequence[Any], Mapping[str, Any]]:
         if self.sock is None:
             self.log.warning('Could not receive data because there is no '
                              'connection')
-            return
+            return '', [], {}
         assert self.rsock is not None and self.wsock is not None
 
         pkg = self.rsock.readline()
@@ -162,8 +175,9 @@ class RemoteRunnerComms:
 
 
 def remotecall(func: Callable) -> Callable:
-    def remotecallwrapper(runner, *args, **kwargs):
+    def remotecallwrapper(runner: 'RemoteRunner', *args: Any, **kwargs: Any) -> Any:
         assert runner.side in ('client', 'server'), runner.side
+        assert runner.comms is not None
         if runner.side == 'client':
             runner.comms.send(func.__name__, *args, **kwargs)
             status, msg, payload = runner.comms.recv()
@@ -183,8 +197,8 @@ def remotecall(func: Callable) -> Callable:
     return remotecallwrapper
 
 
-def clientonly(func: Callable):
-    def clientonlywrapper(runner, *args, **kwargs):
+def clientonly(func: Callable) -> Callable:
+    def clientonlywrapper(runner: 'RemoteRunner', *args: Any, **kwargs: Any) -> Any:
         if runner.side != 'client':
             runner._error('running client-only function on '
                     + str(runner.side))
@@ -192,8 +206,8 @@ def clientonly(func: Callable):
     return clientonlywrapper
 
 
-def serveronly(func: Callable):
-    def serveronlywrapper(runner, *args, **kwargs):
+def serveronly(func: Callable) -> Callable:
+    def serveronlywrapper(runner: 'RemoteRunner', *args: Any, **kwargs: Any) -> Any:
         if runner.side != 'server':
             runner._error('running server-only function on '
                     + str(runner.side))
@@ -213,25 +227,33 @@ class RemoteRunner:
     value back to the client. Calling such a function directly on the server
     will execute it directly."""
 
-    def __init__(self, log, side=None, host=None, port=None, timeout=None):
+    comms: Optional[RemoteRunnerComms]
+    proc: Optional[subprocess.Popen]
+
+    def __init__(self, log: logging.Logger, side: Optional[str] = None,
+                 host: Optional[str] = None, port: Optional[int] = None,
+                 timeout: Optional[float] = None):
         assert side in (None, 'client', 'server'), side
         self.log = log
         self.comms = None
         self.side = side
 
         if side == 'client':
+            assert port is not None
             self.runner_connect(host or 'localhost', port, timeout)
         elif side == 'server':
+            assert port is not None
             self.runner_serve(host or '0.0.0.0', port)
 
-    def _error(self, msg, **kwargs):
+    def _error(self, msg: str, **kwargs: Any) -> NoReturn:
         assert self.comms is not None
         msg = str(msg) + '\nduring handling of message:\n' + self.comms.last_pkg
         if self.side == 'server':
             self.comms.send('error', msg, **kwargs)
         raise RemoteRunnerError(msg)
 
-    def runner_connect(self, host, port, timeout=None):
+    def runner_connect(self, host: str, port: int, timeout: Optional[float] = None) \
+            -> None:
         self.side = 'client'
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -247,7 +269,7 @@ class RemoteRunner:
 
         self.comms = RemoteRunnerComms(self.log, s)
 
-    def runner_serve(self, host, port):
+    def runner_serve(self, host: str, port: int) -> None:
         self.side = 'server'
         self.proc = None
         self.in_server_remotecall = False
@@ -280,7 +302,7 @@ class RemoteRunner:
                 self.kill()
 
     @clientonly
-    def close(self):
+    def close(self) -> None:
         try:
             self.runner_exit()
         except (KeyboardInterrupt, RemoteRunnerError):
@@ -291,7 +313,8 @@ class RemoteRunner:
         self.side = None
 
     @remotecall
-    def get_pids(self):
+    def get_pids(self) -> List[int]:
+        assert psutil is not None
         if self.proc is None:
             return []
         try:
@@ -304,11 +327,14 @@ class RemoteRunner:
             return []
 
     @remotecall
-    def runner_exit(self):
+    def runner_exit(self) -> None:
         self.running = False
 
     @remotecall
-    def run(self, cmd, wait=True, env={}, allow_error=False) -> Optional[Dict[str, Any]]:
+    def run(self, cmd: Union[str, List[Any]], wait: bool = True,
+            env: Mapping[str, str] = {}, allow_error: bool = False) \
+                -> Optional[Dict[str, Any]]:
+        assert psutil is not None
         if self.proc is not None and self.proc.poll() is None:
             self._error('already running a process')
 
@@ -327,9 +353,10 @@ class RemoteRunner:
 
         if wait:
             return self.wait(allow_error=allow_error)
+        return None
 
     @remotecall
-    def poll(self, expect_alive=False):
+    def poll(self, expect_alive: bool = False) -> Optional[int]:
         if self.proc is None:
             self._error('no process was running')
         rv = self.proc.poll()
@@ -342,7 +369,8 @@ class RemoteRunner:
         return self.proc.poll()
 
     @remotecall
-    def proc_communicate(self, stdin=None, timeout=None) -> Tuple[Optional[str], Optional[str]]:
+    def proc_communicate(self, timeout: Optional[float] = None) \
+            -> Tuple[Optional[str], Optional[str]]:
         if self.proc is None:
             self._error('no process was running')
 
@@ -362,11 +390,13 @@ class RemoteRunner:
                 return None, None
 
     @remotecall
-    def wait(self, timeout=None, output=True, stats=True, allow_error=False) -> Dict[str, Any]:
+    def wait(self, timeout: Optional[float] = None, output: bool = True,
+             stats: bool = True, allow_error: bool = False) -> Dict[str, Any]:
+        assert psutil is not None
         if self.proc is None:
             self._error('no process was running')
 
-        ret = {}
+        ret: Dict[str, Any] = {}
         try:
             ret['rv'] = self.proc.wait(timeout)
         except subprocess.TimeoutExpired:
@@ -385,7 +415,7 @@ class RemoteRunner:
         return ret
 
     @remotecall
-    def kill(self):
+    def kill(self) -> None:
         if self.proc is None:
             self._error('no process was running')
 
@@ -399,7 +429,7 @@ class RemoteRunner:
             self.proc.wait()
 
     @remotecall
-    def read_output_line(self):
+    def read_output_line(self) -> str:
         if self.proc is None:
             self._error('no process was running')
         assert self.proc.stdout is not None
@@ -408,28 +438,30 @@ class RemoteRunner:
         return line
 
     @remotecall
-    def get_cpu_percentage(self):
+    def get_cpu_percentage(self) -> float:
+        assert psutil is not None
         return psutil.cpu_percent()
 
     @remotecall
-    def start_monitoring(self, interval=1.0, stats=('cpu', 'rss')):
+    def start_monitoring(self, interval: float = 1.0,
+                         stats: Tuple[str, ...] = ('cpu', 'rss')) -> None:
         pids = self.get_pids()
         self.monitor_thread = MonitorThread(interval, pids, stats)
         self.monitor_thread.start()
 
     @remotecall
-    def stop_monitoring(self) -> Any:
+    def stop_monitoring(self) -> Dict[str, List[Union[int, float]]]:
         if self.monitor_thread is None:
             self._error('no monitoring thread')
         self.monitor_thread.stop()
         return self.monitor_thread.data
 
     @remotecall
-    def has_file(self, path):
+    def has_file(self, path: str) -> bool:
         return os.path.isfile(path)
 
 
-def server_main():
+def server_main() -> NoReturn:
     parser = argparse.ArgumentParser(
             description='Remote runner script for benchmarking.')
     parser.add_argument('--host', default='',

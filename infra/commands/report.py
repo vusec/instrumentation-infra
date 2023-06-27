@@ -9,31 +9,36 @@ from decimal import Decimal
 from functools import reduce
 from itertools import chain, zip_longest
 from statistics import median, pstdev, pvariance, mean
-from typing import Dict, Iterator, Iterable, Tuple, Union
+from typing import Dict, List, Iterator, Tuple, Optional, Iterable, Callable, Any, \
+                   Sequence, TypeVar, Mapping
+from ..context import Context
 from ..command import Command
 from ..instance import Instance
 from ..target import Target
-from ..util import FatalError, Namespace
+from ..util import FatalError, ResultVal, ResultDict, ResultsByInstance
 
 
-def median_absolute_deviation(numbers):
+T = TypeVar('T')
+
+
+def median_absolute_deviation(numbers: Sequence[float]) -> float:
     assert len(numbers) > 0
     med = median(numbers)
     return median(abs(x - med) for x in numbers)
 
 
-def stdev_percent(numbers):
+def stdev_percent(numbers: Sequence[float]) -> float:
     return 100 * pstdev(numbers) / mean(numbers)
 
 
-def assert_all_same(values):
+def assert_all_same(values: Sequence[T]) -> T:
     uniq = set(values)
     if len(uniq) > 1:
         raise FatalError('multiple values for "same" field: %s' % list(values))
     return uniq.pop()
 
 
-def assert_one(values):
+def assert_one(values: Sequence[T]) -> T:
     values = list(values)
     assert len(values) > 0
     if len(values) > 1:
@@ -41,26 +46,37 @@ def assert_one(values):
     return values[0]
 
 
-def first(values):
+def first(values: Sequence[T]) -> T:
     assert len(values) > 0
     return values[0]
 
 
-def geomean(values):
+def geomean(values: Sequence[float]) -> float:
     assert len(values) > 0
     return reduce(lambda x, y: x * y, values) ** (1.0 / len(values))
 
 
-_aggregate_fns = {'mean': mean, 'median': median,
-                  'stdev': pstdev, 'stdev_percent': stdev_percent,
-                  'variance': pvariance, 'mad': median_absolute_deviation,
-                  'min': min, 'max': max, 'sum': sum, 'count': len,
-                  'same': assert_all_same, 'one': assert_one,
-                  'first': first, 'all': list, 'sort': sorted,
-                  'geomean': geomean}
+_aggregate_fns: Dict[str, Callable[[Sequence[Any]], Any]] = {
+    'mean': mean,
+    'median': median,
+    'stdev': pstdev,
+    'stdev_percent': stdev_percent,
+    'variance': pvariance,
+    'mad': median_absolute_deviation,
+    'min': min,
+    'max': max,
+    'sum': sum,
+    'count': len,
+    'same': assert_all_same,
+    'one': assert_one,
+    'first': first,
+    'all': list,
+    'sort': sorted,
+    'geomean': geomean
+}
 
 
-Result = Dict[str, Union[bool, int, float, str]]
+FieldAggregators = Iterable[Tuple[str, Tuple[str, ...]]]
 result_prefix = '[setup-report]'
 
 
@@ -68,7 +84,7 @@ class ReportCommand(Command):
     name = 'report'
     description = 'report results after a (parallel) run'
 
-    def add_args(self, parser):
+    def add_args(self, parser: argparse.ArgumentParser) -> None:
         subparsers = parser.add_subparsers(
                 title='target', metavar='TARGET', dest='target',
                 help=' | '.join(self.targets))
@@ -125,14 +141,14 @@ class ReportCommand(Command):
 
             try:
                 from argcomplete.completers import DirectoriesCompleter
-                rundirsarg.completer = DirectoriesCompleter()
-                fieldarg.completer = _FieldCompleter(target)
+                setattr(rundirsarg, 'completer', DirectoriesCompleter())
+                setattr(fieldarg, 'completer', _FieldCompleter(target))
             except ImportError:
                 pass
 
-    def run(self, ctx):
+    def run(self, ctx: Context) -> None:
         a = ctx.args
-        target = self.targets[a.target]
+        target: Target = self.targets[a.target]
 
         if a.help_fields:
             reportable_fields = _reportable_fields(target)
@@ -156,12 +172,13 @@ class ReportCommand(Command):
         fn = self.report_raw if a.raw else self.report_aggregate
         fn(ctx, target, results, fields)
 
-    def report_raw(self, ctx, target, results, fields):
-        fields = [f for f, aggr in fields]
+    def report_raw(self, ctx: Context, target: Target, 
+                   results: ResultsByInstance, field_aggrs: FieldAggregators) -> None:
+        fields = [f for f, aggr in field_aggrs]
         instances = sorted(results)
 
-        header = []
-        human_header = []
+        header: List[str] = []
+        human_header: List[str] = []
         for instance in instances:
             prefix = instance + '\n'
             for f in fields:
@@ -169,21 +186,23 @@ class ReportCommand(Command):
                 human_header.append(prefix + f)
                 prefix = '\n'
 
-        rows = {}
+        rows: Dict[str, List[Tuple[ResultVal, ...]]] = {}
         for instance in instances:
             rows[instance] = sorted(tuple(r[f] for f in fields)
                                     for r in results[instance])
 
         instance_rows = [rows[i] for i in instances]
-        joined_rows = []
+        joined_rows: List[List[ResultVal]] = []
         for parts in zip_longest(*instance_rows, fillvalue=['', '']):
             joined_rows.append(list(chain.from_iterable(parts)))
 
-        title = '%s raw data' % target.name
+        title = f'{target.name} raw data'
         report_table(ctx, header, human_header, joined_rows, title)
 
-    def report_aggregate(self, ctx, target, results, fields):
-        def keep(result):
+    def report_aggregate(self, ctx: Context, target: Target, 
+                         results: ResultsByInstance, 
+                         fields: FieldAggregators) -> None:
+        def keep(result: ResultDict) -> bool:
             return not ctx.args.filter or \
                 str(result[ctx.args.groupby]) in ctx.args.filter
 
@@ -196,7 +215,7 @@ class ReportCommand(Command):
             for result in instance_results
             if keep(result)
         ))
-        grouped = {}
+        grouped: Dict[Tuple[Tuple[ResultVal, str], str], List[ResultVal]] = {}
         for instance, instance_results in results.items():
             for result in instance_results:
                 if not keep(result):
@@ -219,7 +238,7 @@ class ReportCommand(Command):
                     human_header.append(prefix + ag)
                     prefix = '\n\n'
 
-        data = []
+        data: List[List[Optional[ResultVal]]] = []
         for groupby_value in groupby_values:
             baseline_results = {}
             if baseline_instance:
@@ -230,7 +249,7 @@ class ReportCommand(Command):
                         value = _aggregate_fns[ag](series)
                         baseline_results[(groupby_value, f)] = value
 
-            row = [groupby_value]
+            row: List[Optional[ResultVal]] = [groupby_value]
             for instance in instances:
                 if instance == baseline_instance:
                     continue
@@ -238,10 +257,10 @@ class ReportCommand(Command):
                 key = groupby_value, instance
                 for f, aggr in fields:
                     for ag in aggr:
-                        series = grouped.get((key, f), None)
-                        if series is None:
+                        if (key, f) not in grouped:
                             value = None
                         else:
+                            series = grouped[(key, f)]
                             value = _aggregate_fns[ag](series)
                             if baseline_results and isinstance(value, (int, float)):
                                 value /= baseline_results[(groupby_value, f)]
@@ -253,13 +272,13 @@ class ReportCommand(Command):
         else:
             title = '%s aggregated data' % target.name
 
-        table_options = {}
+        table_options: Dict[str, bool] = {}
 
         if ctx.args.aggregate:
-            aggr = _aggregate_fns[ctx.args.aggregate]
-            def try_aggr(values):
+            aggrfn = _aggregate_fns[ctx.args.aggregate]
+            def try_aggr(values: Sequence[Any]) -> Any:
                 try:
-                    return aggr(values)
+                    return aggrfn(values)
                 except:
                     pass
             aggregate_row = [try_aggr(c) for c in zip(*data)]
@@ -269,7 +288,7 @@ class ReportCommand(Command):
 
         report_table(ctx, header, human_header, data, title, **table_options)
 
-    def _parse_fields(self, ctx, target):
+    def _parse_fields(self, ctx: Context, target: Target) -> FieldAggregators:
         for arg in chain.from_iterable(ctx.args.field):
             parts = arg.split(':')
             field = parts[0]
@@ -291,10 +310,11 @@ class ReportCommand(Command):
 
 
 class _FieldCompleter:
-    def __init__(self, target):
+    def __init__(self, target: Target):
         self.fields = _reportable_fields(target)
 
-    def __call__(self, prefix, parsed_args, **kwargs):
+    def __call__(self, prefix: str, parsed_args: argparse.Namespace, **kwargs: Any) \
+            -> Iterator[str]:
         parts = prefix.split(':')
         if len(parts) == 1:
             field_prefix = parts[0]
@@ -309,7 +329,7 @@ class _FieldCompleter:
                     yield ':'.join(parts[:-1] + [aggr])
 
 
-def add_table_report_args(parser):
+def add_table_report_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('-o', '--outfile',
             type=argparse.FileType('w'), default=sys.stdout,
             help='outfile (default: stdout)')
@@ -331,8 +351,12 @@ def add_table_report_args(parser):
                 help='short for --table=' + mode)
 
 
-def report_table(ctx, nonhuman_header, human_header, data_rows, title,
-                 **table_options):
+def report_table(ctx: Context,
+                 nonhuman_header: List[str],
+                 human_header: List[str],
+                 data_rows: Iterable[Iterable[Optional[ResultVal]]],
+                 title: str,
+                 **table_options: bool) -> None:
     # don't align numbers for non-human reporting
     if ctx.args.table in ('csv', 'tsv', 'ssv'):
         data_rows = [[_to_string(ctx, v) for v in row] for row in data_rows]
@@ -347,7 +371,7 @@ def report_table(ctx, nonhuman_header, human_header, data_rows, title,
         return
 
     # align numbers on the decimal point
-    def get_whole_digits(n):
+    def get_whole_digits(n: Optional[ResultVal]) -> int:
         if isinstance(n, int):
             return len(str(n))
         if isinstance(n, float):
@@ -357,7 +381,7 @@ def report_table(ctx, nonhuman_header, human_header, data_rows, title,
     whole_digits = [max(map(get_whole_digits, values))
                     for values in zip(*data_rows)]
 
-    def pad(n_string, n, col):
+    def pad(n_string: str, n: Optional[ResultVal], col: int) -> str:
         if isinstance(n, int):
             return ' ' * (whole_digits[col] - len(n_string)) + n_string
         if isinstance(n, float):
@@ -383,29 +407,20 @@ def report_table(ctx, nonhuman_header, human_header, data_rows, title,
     table.padding_left = 0
 
     for kw, val in table_options.items():
-        if isinstance(val, dict):
-            attr = getattr(table, kw)
-            if isinstance(val, dict):
-                attr.update(val)
-            else:
-                assert isinstance(attr, list)
-                for index, elem in val.items():
-                    attr[index] = elem
-        else:
-            setattr(table, kw, val)
+        setattr(table, kw, val)
 
     with redirect_stdout(ctx.args.outfile):
         print(table.table)
 
 
-def _reportable_fields(target):
+def _reportable_fields(target: Target) -> Mapping[str, str]:
     return {
         **target.reportable_fields(),
         'outfile': 'log file containing the result',
     }
 
 
-def _to_string(ctx, n):
+def _to_string(ctx: Context, n: Any) -> str:
     if n is None:
         return '-'
     if isinstance(n, float):
@@ -447,13 +462,14 @@ def _precise_float(n: float, precision: int) -> str:
     '99.9'
     """
     tup = Decimal(n).as_tuple()
+    assert isinstance(tup.exponent, int)
     zero_decimals = -tup.exponent - len(tup.digits)
     total_decimals = max(zero_decimals + precision, 0)
     return '%%.%df' % total_decimals % n
 
 
-def outfile_path(ctx: Namespace, target: Target, instance: Instance,
-                 *args: Iterable[str]) -> str:
+def outfile_path(ctx: Context, target: Target, instance: Instance,
+                 *args: str) -> str:
     """
     Returns the path to a log file for the benchmark of a particular
     instance, after creating the instance directory if it did not exist
@@ -474,13 +490,15 @@ def outfile_path(ctx: Namespace, target: Target, instance: Instance,
     symname = os.path.join(ctx.paths.pool_results, 'last')
     if os.path.exists(symname):
         os.unlink(symname)
-    os.symlink(os.path.join(ctx.paths.pool_results, rundir), symname, target_is_directory=True)
+    os.symlink(os.path.join(ctx.paths.pool_results, rundir), symname,
+               target_is_directory=True)
 
     return path
 
 
-def parse_logs(ctx, target, instances, rundirs,
-               write_cache=True, read_cache=True):
+def parse_logs(ctx: Context, target: Target, instances: Iterable[Instance],
+               rundirs: List[str], write_cache: bool = True, read_cache: bool = True) \
+                -> Dict[str, List[ResultDict]]:
     """
     Parse logs from specified run directories.
 
@@ -517,7 +535,7 @@ def parse_logs(ctx, target, instances, rundirs,
 
     instance_names = [instance.name for instance in instances]
     instance_dirs = []
-    results = dict((iname, []) for iname in instance_names)
+    results: Dict[str, List[ResultDict]] = dict((iname, []) for iname in instance_names)
 
     for rundir in abs_rundirs:
         targetdir = os.path.join(rundir, target.name)
@@ -532,7 +550,7 @@ def parse_logs(ctx, target, instances, rundirs,
                             (rundir, target.name))
 
     for iname, idir in instance_dirs:
-        instance_results = results.setdefault(iname, [])
+        instance_results: List[ResultDict] = results.setdefault(iname, [])
 
         for filename in sorted(os.listdir(idir)):
             path = os.path.join(idir, filename)
@@ -546,8 +564,9 @@ def parse_logs(ctx, target, instances, rundirs,
     return results
 
 
-def process_log(ctx: Namespace, log_path: str, target: Target,
-                write_cache: bool = True, read_cache: bool = True):
+def process_log(ctx: Context, log_path: str, target: Target,
+                write_cache: bool = True, read_cache: bool = True) \
+                    -> Iterable[ResultDict]:
     """Parse a log file and cache any results in the logfile.
     If the log file was previously processed, cached results will be used.
 
@@ -597,7 +616,7 @@ def process_log(ctx: Namespace, log_path: str, target: Target,
     return results
 
 
-def log_result(name: str, result: Result, ofile: io.TextIOWrapper):
+def log_result(name: str, result: ResultDict, ofile: io.TextIOWrapper) -> None:
     """
     :param name:
     :param result:
@@ -612,7 +631,7 @@ def log_result(name: str, result: Result, ofile: io.TextIOWrapper):
         print(result_prefix, 'end', name)
 
 
-def parse_results(ctx: Namespace, path: str, name: str) -> Iterator[Result]:
+def parse_results(ctx: Context, path: str, name: str) -> Iterator[ResultDict]:
     """
     Parse results from a file and filter them by name. Can be used by a
     :func:`Target.parse_outfile` implementation to parse results written by the
@@ -628,8 +647,8 @@ def parse_results(ctx: Namespace, path: str, name: str) -> Iterator[Result]:
             yield result
 
 
-def parse_all_results(ctx: Namespace, path: str) -> \
-        Iterator[Tuple[str, Result]]:
+def parse_all_results(ctx: Context, path: str) -> \
+        Iterator[Tuple[str, ResultDict]]:
     """
     Parse all results in a file.
 
@@ -638,7 +657,8 @@ def parse_all_results(ctx: Namespace, path: str) -> \
     :returns: (name, result) tuples
     """
     with open(path) as f:
-        result = bname = None
+        result: Optional[ResultDict] = None
+        bname = None
 
         for lineno, line in enumerate(f):
             lineno = lineno + 1
@@ -647,22 +667,23 @@ def parse_all_results(ctx: Namespace, path: str) -> \
                 statement = line[len(result_prefix) + 1:]
                 if re.match(r'begin \w+', statement):
                     bname = statement[6:]
-                    result = Namespace()
+                    result = {}
                 elif re.match(r'end \w+', statement):
                     if result is None:
                         ctx.log.error(f'missing start for "{bname}" end '
                                       f'statement at {path}:{lineno}')
                     else:
+                        assert bname is not None
                         ename = statement[4:]
                         if ename != bname:
-                            ctx.log.error(f'begin/end name mismatch at {path}:{lineno}: '
-                                          f'{ename} != {bname}')
+                            ctx.log.error(f'begin/end name mismatch at '
+                                          f'{path}:{lineno}: {ename} != {bname}')
 
                         yield bname, result
                         result = bname = None
                 elif result is None:
-                    ctx.log.error(f'ignoring {result_prefix} statement outside of begin-end '
-                                  f'at {path}:{lineno}')
+                    ctx.log.error(f'ignoring {result_prefix} statement outside of '
+                                  f'begin-end at {path}:{lineno}')
                 else:
                     name, value = statement.split(': ', 1)
 
@@ -676,11 +697,11 @@ def parse_all_results(ctx: Namespace, path: str) -> \
         ctx.log.error(f'{result_prefix} begin statement without end in {path}')
 
 
-def _box_value(value):
+def _box_value(value: ResultVal) -> str:
     return str(value)
 
 
-def _unbox_value(value):
+def _unbox_value(value: str) -> ResultVal:
     # bool
     if value == 'True':
         return True
@@ -701,6 +722,6 @@ def _unbox_value(value):
     return value
 
 
-def _strip_cwd(path):
+def _strip_cwd(path: str) -> str:
     cwd = os.path.join(os.getcwd(), '')
     return path[len(cwd):] if path.startswith(cwd) else path

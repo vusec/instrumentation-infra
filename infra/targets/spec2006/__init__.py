@@ -6,14 +6,16 @@ import getpass
 import re
 from contextlib import redirect_stdout
 from collections import defaultdict
-from typing import List
+from typing import List, Dict, Union, Type, Optional, Any, Iterator, Mapping, Iterable
+from ...context import Context
 from ...commands.report import outfile_path
-from ...util import FatalError, run, apply_patch, qjoin, require_program
+from ...util import FatalError, run, apply_patch, qjoin, require_program, ResultDict
+from ...instance import Instance
 from ...target import Target
-from ...packages import Bash, Nothp, RusageCounters
-from ...parallel import PrunPool
+from ...package import Package
+from ...packages import Bash, Nothp, ReportableTool, RusageCounters
+from ...parallel import Pool, PrunPool
 from .benchmark_sets import benchmark_sets
-from .nodes_command import SpecFindBadPrunNodesCommand
 
 
 class SPEC2006(Target):
@@ -137,7 +139,8 @@ class SPEC2006(Target):
                        toolsets: List[str] = [],
                        nothp: bool = True,
                        force_cpu: int = 0,
-                       default_benchmarks: List[str] = ['all_c', 'all_cpp']):
+                       default_benchmarks: List[str] = ['all_c', 'all_cpp'],
+                       reporters: List[Union[ReportableTool, Type[ReportableTool]]] = [RusageCounters]):
         if source_type not in ('isofile', 'mounted', 'installed', 'tarfile', 'git'):
             raise FatalError('invalid source type "%s"' % source_type)
 
@@ -154,9 +157,10 @@ class SPEC2006(Target):
         self.nothp = nothp
         self.force_cpu = force_cpu
         self.default_benchmarks = default_benchmarks
+        self.reporters = reporters
 
-    def reportable_fields(self):
-        return {
+    def reportable_fields(self) -> Mapping[str, str]:
+        fields = {
             'benchmark': 'benchmark program',
             'status':    'whether the benchmark finished successfully',
             'runtime':   'total runtime in seconds',
@@ -165,14 +169,17 @@ class SPEC2006(Target):
             'inputs':    'number of different benchmark inputs',
             **RusageCounters.reportable_fields(),
         }
+        for reporter in self.reporters:
+            fields.update(reporter.reportable_fields())
+        return fields
 
-    def add_build_args(self, parser):
+    def add_build_args(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument('--benchmarks',
                 nargs='+', metavar='BENCHMARK', default=self.default_benchmarks,
                 choices=self.benchmarks,
                 help='which benchmarks to build')
 
-    def add_run_args(self, parser):
+    def add_run_args(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument('--benchmarks',
                 nargs='+', metavar='BENCHMARK', default=self.default_benchmarks,
                 choices=self.benchmarks,
@@ -184,17 +191,17 @@ class SPEC2006(Target):
                 nargs=argparse.REMAINDER, default=[],
                 help='additional arguments for runspec')
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         yield Bash('4.3')
         if self.nothp:
             yield Nothp()
         yield RusageCounters()
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return self.source_type == 'installed' or os.path.exists('install/shrc')
 
-    def fetch(self, ctx):
-        def do_install(srcdir):
+    def fetch(self, ctx: Context) -> None:
+        def do_install(srcdir: str) -> None:
             os.chdir(srcdir)
             for toolset in self.toolsets:
                 ctx.log.debug('extracting SPEC-CPU2006 toolset ' + toolset)
@@ -202,7 +209,7 @@ class SPEC2006(Target):
             install_path = self._install_path(ctx)
             ctx.log.debug('installing SPEC-CPU2006 into ' + install_path)
             run(ctx, ['./install.sh', '-f', '-d', install_path],
-                env={'PERL_TEST_NUMCONVERTS': 1})
+                env={'PERL_TEST_NUMCONVERTS': '1'})
 
         if self.source_type == 'isofile':
             require_program(ctx, 'fuseiso', 'required to mount SPEC iso')
@@ -241,12 +248,12 @@ class SPEC2006(Target):
             run(ctx, ['git', 'clone', '--depth', 1, self.source, 'src'])
             do_install('src')
 
-    def _install_path(self, ctx, *args):
+    def _install_path(self, ctx: Context, *args: str) -> str:
         if self.source_type == 'installed':
             return os.path.join(self.source, *args)
         return self.path(ctx, 'install', *args)
 
-    def _apply_patches(self, ctx):
+    def _apply_patches(self, ctx: Context) -> None:
         os.chdir(self._install_path(ctx))
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
@@ -256,7 +263,8 @@ class SPEC2006(Target):
                 ctx.log.warning('applied patch %s to external SPEC-CPU2006 '
                                 'directory' % path)
 
-    def build(self, ctx, instance, pool=None):
+    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) \
+            -> None:
         # apply any pending patches (doing this at build time allows adding
         # patches during instance development, and is needed to apply patches
         # when self.source_type == 'installed')
@@ -285,7 +293,8 @@ class SPEC2006(Target):
                              (self.name, instance.name, bench))
                 self._run_bash(ctx, cmd, teeout=print_output)
 
-    def run(self, ctx, instance, pool=None):
+    def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) \
+            -> None:
         config = 'infra-' + instance.name
         config_root = os.path.dirname(os.path.abspath(__file__))
 
@@ -312,7 +321,7 @@ class SPEC2006(Target):
             output_root = specdir
 
         # apply wrapper in macro for monitor_wrapper in config
-        if 'target_run_wrapper' in ctx:
+        if ctx.target_run_wrapper:
             runargs += ['--define', 'run_wrapper=' + ctx.target_run_wrapper]
 
         # don't stop running if one benchmark from the list crashes
@@ -320,7 +329,6 @@ class SPEC2006(Target):
             runargs += ['--ignore_errors']
 
         runargs += ctx.args.runspec_args
-        runargs = qjoin(runargs)
 
         wrapper =  'killwrap_tree'
         if self.nothp:
@@ -328,8 +336,7 @@ class SPEC2006(Target):
         if self.force_cpu >= 0:
             wrapper += ' taskset -c %d' % self.force_cpu
 
-        cmd = '{wrapper} runspec --config={config} --nobuild {runargs} {{bench}}'
-        cmd = cmd.format(**locals())
+        cmd = f'{wrapper} runspec --config={config} --nobuild {qjoin(runargs)} {{bench}}'
 
         benchmarks = self._get_benchmarks(ctx, instance)
 
@@ -406,7 +413,7 @@ class SPEC2006(Target):
                 # the script is passed like this: prun ... bash -c '<script>'
                 # this means that some escaping is necessary: use \$ instead of
                 # $ for bash variables and \" instead of "
-                cmd = cmd.replace('$', '\$').replace('"', '\\"')
+                cmd = cmd.replace('$', r'\$').replace('"', '\\"')
 
             for bench in benchmarks:
                 jobid = 'run-%s-%s' % (instance.name, bench)
@@ -417,7 +424,8 @@ class SPEC2006(Target):
             self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)),
                            teeout=True)
 
-    def _run_bash(self, ctx, command, pool=None, **kwargs):
+    def _run_bash(self, ctx: Context, command: str, pool: Optional[Pool] = None,
+                  **kwargs: Any) -> None:
         config_root = os.path.dirname(os.path.abspath(__file__))
         cmd = [
             'bash', '-c',
@@ -428,10 +436,12 @@ class SPEC2006(Target):
             %s
             ''' % (self._install_path(ctx), config_root, command))
         ]
-        runfn = pool.run if pool else run
-        return runfn(ctx, cmd, **kwargs)
+        if pool:
+            pool.run(ctx, cmd, **kwargs)
+        else:
+            run(ctx, cmd, **kwargs)
 
-    def _make_spec_config(self, ctx, instance):
+    def _make_spec_config(self, ctx: Context, instance: Instance) -> str:
         config_name = 'infra-' + instance.name
         config_path = self._install_path(ctx, 'config/%s.cfg' % config_name)
         ctx.log.debug('writing SPEC2006 config to ' + config_path)
@@ -457,28 +467,13 @@ class SPEC2006(Target):
 
                 # see https://www.spec.org/cpu2006/Docs/makevars.html#nofbno1
                 # for flags ordering
-                cflags = qjoin(ctx.cflags)
-                cxxflags = qjoin(ctx.cxxflags)
-                ldflags = qjoin(ctx.ldflags)
-                extra_libs = qjoin(ctx.extra_libs) if 'extra_libs' in ctx else None
-                coptimize = qjoin(ctx.coptimize) if 'coptimize' in ctx else '-std=gnu89'
-                cxxoptimize = qjoin(ctx.cxxoptimize) if 'cxxoptimize' in ctx else '-std=c++98'
-                foptimize = qjoin(ctx.foptimize) if 'foptimize' in ctx else None
-                f77optimize = qjoin(ctx.f77optimize) if 'f77optimize' in ctx else None
-                fortranc = shutil.which('gfortran') or shutil.which('false')
-                print('CC          = %s %s' % (ctx.cc, cflags))
-                print('CXX         = %s %s' % (ctx.cxx, cxxflags))
-                print('FC          = %s' % fortranc)
-                print('CLD         = %s %s' % (ctx.cc, ldflags))
-                print('CXXLD       = %s %s' % (ctx.cxx, ldflags))
-                print('COPTIMIZE   = %s' % (coptimize))
-                print('CXXOPTIMIZE = %s' % (cxxoptimize))
-                if foptimize:
-                    print('FOPTIMIZE   = %s' % (foptimize))
-                if f77optimize:
-                    print('F77OPTIMIZE = %s' % (f77optimize))
-                if extra_libs:
-                    print('EXTRA_LIBS = %s' % (extra_libs))
+                print('CC          = %s %s' % (ctx.cc, qjoin(ctx.cflags)))
+                print('CXX         = %s %s' % (ctx.cxx, qjoin(ctx.cxxflags)))
+                print('FC          = %s %s' % (ctx.fc, qjoin(ctx.fcflags)))
+                print('CLD         = %s %s' % (ctx.cc, qjoin(ctx.ldflags)))
+                print('CXXLD       = %s %s' % (ctx.cxx, qjoin(ctx.ldflags)))
+                print('COPTIMIZE   = -std=gnu89')
+                print('CXXOPTIMIZE = -std=c++98')
 
                 # post-build hooks call back into the setup script
                 if ctx.hooks.post_build:
@@ -500,9 +495,10 @@ class SPEC2006(Target):
                 print('PORTABILITY    = -DSPEC_CPU_LP64')
                 print('')
 
+                # TODO: feed perlbench -DSPEC_CPU_LINUX if not x86_64?
                 benchmark_flags = {
                         '400.perlbench=default=default=default': {
-                            'CPORTABILITY': ['-DSPEC_CPU_LINUX_X64'] if 'arch' in ctx and ctx.arch == 'x86_64' else ['-DSPEC_CPU_LINUX']
+                            'CPORTABILITY': ['-DSPEC_CPU_LINUX_X64']
                         },
                         '403.gcc=default=default=default': {
                             'CPORTABILITY': ['-DSPEC_CPU_LINUX']
@@ -528,14 +524,14 @@ class SPEC2006(Target):
                         }
                 }
 
-                if 'benchmark_flags' in ctx:
-                    for benchmark, flags in ctx.benchmark_flags.items():
-                        if benchmark not in benchmark_flags:
-                            benchmark_flags[benchmark] = {}
-                        for flag, value in flags.items():
-                            if flag not in benchmark_flags[benchmark]:
-                                benchmark_flags[benchmark][flag] = []
-                            benchmark_flags[benchmark][flag].extend(value)
+                #if 'benchmark_flags' in ctx:
+                #    for benchmark, flags in ctx.benchmark_flags.items():
+                #        if benchmark not in benchmark_flags:
+                #            benchmark_flags[benchmark] = {}
+                #        for flag, value in flags.items():
+                #            if flag not in benchmark_flags[benchmark]:
+                #                benchmark_flags[benchmark][flag] = []
+                #            benchmark_flags[benchmark][flag].extend(value)
 
                 for benchmark, flags in benchmark_flags.items():
                     print('%s:' % benchmark)
@@ -548,14 +544,8 @@ class SPEC2006(Target):
                     print('')
 
         return config_name
-
-    # override post-build hook runner rather than defining `binary_paths` since
-    # we add hooks to the generated SPEC config file and call them through the
-    # exec-hook setup command instead
-    def run_hooks_post_build(self, ctx, instance):
-        pass
     
-    def run_hooks_pre_build(self, ctx, instance):
+    def run_hooks_pre_build(self, ctx: Context, instance: Instance) -> None:
         if ctx.hooks.pre_build:
             for bench in self._get_benchmarks(ctx, instance):
                 path = self._install_path(ctx, 'benchspec', 'CPU2006', bench)
@@ -564,34 +554,40 @@ class SPEC2006(Target):
                     ctx.log.info(f"Running hook {hook} on {bench} in {path}")
                     hook(ctx, path)
 
-    def _get_benchmarks(self, ctx, instance):
+    # override post-build hook runner rather than defining `binary_paths` since
+    # we add hooks to the generated SPEC config file and call them through the
+    # exec-hook setup command instead
+    def run_hooks_post_build(self, ctx: Context, instance: Instance) -> None:
+        pass
+
+    def _get_benchmarks(self, ctx: Context, instance: Instance) -> Iterable[str]:
         benchmarks = set()
         for bset in ctx.args.benchmarks:
             for bench in self.benchmarks[bset]:
                 if not hasattr(instance, 'exclude_spec2006_benchmark') or \
-                        not instance.exclude_spec2006_benchmark(bench):
+                        not getattr(instance, 'exclude_spec2006_benchmark')(bench):
                     benchmarks.add(bench)
         return sorted(benchmarks)
 
     # define benchmark sets, generated using scripts/parse-benchmarks-sets.py
     benchmarks = benchmark_sets
 
-    def parse_outfile(self, ctx, outfile):
-        def fix_specpath(path):
+    def parse_outfile(self, ctx: Context, outfile: str) -> Iterator[ResultDict]:
+        def fix_specpath(path: str) -> str:
             if not os.path.exists(path):
                 benchspec_dir = self._install_path(ctx, 'benchspec')
                 path = re.sub(r'.*/benchspec', benchspec_dir, path)
             assert os.path.exists(path), 'invalid path ' + path
             return path
 
-        def get_logpaths(contents):
+        def get_logpaths(contents: str) -> Iterator[str]:
             matches = re.findall(r'The log for this run is in (.*)$',
                                  contents, re.M)
             for match in matches:
                 logpath = match.replace('The log for this run is in ', '')
                 yield logpath
 
-        def parse_logfile(logpath):
+        def parse_logfile(logpath: str) -> Iterator[Dict[str, Any]]:
             ctx.log.debug('parsing log file ' + logpath)
 
             with open(logpath) as f:
@@ -610,11 +606,13 @@ class SPEC2006(Target):
             m = pat.search(logcontents)
             while m:
                 status, benchmark, workload, ratio, runtime = m.groups()
-                rusage_counters = defaultdict(int)
+                runtime_results: Dict[str, Union[int, float]] = defaultdict(int)
 
                 # find per-input logs by benchutils staticlib
                 rpat = r'Running %s.+?-C (.+?$)(.+?)^Specinvoke:' % benchmark
-                rundir, arglist = re.search(rpat, logcontents, re.M | re.S).groups()
+                match = re.search(rpat, logcontents, re.M | re.S)
+                assert match is not None
+                rundir, arglist = match.groups()
                 errfiles = re.findall(r'-e ([^ ]+err) \.\./run_', arglist)
                 benchmark_error = False
                 for errfile in errfiles:
@@ -625,17 +623,10 @@ class SPEC2006(Target):
                         benchmark_error = True
                         continue
 
-                    rusage_results = \
-                        list(RusageCounters.parse_results(ctx, path))
-                    if not rusage_results:
-                        ctx.log.error('no staticlib results in %s, there was '
-                                      'probably an error' % path)
-                        benchmark_error = True
-                        continue
-
-                    for result in rusage_results:
-                        for counter, value in result.items():
-                            rusage_counters[counter] += value
+                    for reporter in self.reporters:
+                        for counter, value in reporter.parse_results(ctx, path).items():
+                            assert isinstance(value, (int, float))
+                            runtime_results[counter] += value
 
                 if benchmark_error:
                     ctx.log.warning('cancel processing benchmark %s in log file '
@@ -648,7 +639,7 @@ class SPEC2006(Target):
                         'hostname': hostname,
                         'runtime': float(runtime),
                         'inputs': len(errfiles),
-                        **rusage_counters
+                        **runtime_results
                     }
                     error_benchmarks.remove(benchmark)
 
@@ -694,7 +685,7 @@ class SPEC2006(Target):
     ))]
 
 
-def _unindent(cmd):
+def _unindent(cmd: str) -> str:
     stripped = re.sub(r'^\n|\n *$', '', cmd)
     indent = re.search('^ +', stripped, re.M)
     if indent:
