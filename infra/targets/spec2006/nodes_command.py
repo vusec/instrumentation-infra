@@ -84,10 +84,9 @@ class SpecFindBadPrunNodesCommand(Command):
                 if workload is None:
                     workload = result.get('workload', None)
                 elif result.get('workload', workload) != workload:
-                    raise FatalError('%s uses %s workload whereas previous '
-                                     'benchmarks use %s (logfile %s)' %
-                                     (result['benchmark'], result['workload'],
-                                      workload, result['outfile']))
+                    raise FatalError(f'{result["benchmark"]} uses {result["workload"]} '
+                                     f'workload whereas previous benchmarks use '
+                                     f'{workload} (logfile {result["outfile"]})')
 
             for bench, bresults in grouped.items():
                 if len(bresults) <= 1:
@@ -142,7 +141,7 @@ class SpecFindBadPrunNodesCommand(Command):
                     # highlight outliers to easily identify bad nodes
                     highlighted = []
                     for runtime, zscore, ofile in nruntimes:
-                        rt = '%d' % round(runtime)
+                        rt = str(round(runtime))
                         deviation = runtime - entry['rt_mean']
                         deviation_ratio = abs(deviation) / entry['rt_mean']
 
@@ -171,7 +170,7 @@ class SpecFindBadPrunNodesCommand(Command):
             hd_data: List[List[ResultVal]] = []
             for bench, node, iname, runtime, ofile in high_devs:
                 nodename = node.replace('node', '')
-                opath = re.sub('^%s/' % ctx.paths.workdir, '', ofile)
+                opath = re.sub(f'^{ctx.paths.workdir}/', '', ofile)
                 hd_data.append([bench, nodename, iname, runtime, opath])
 
             print(file=ctx.args.outfile)

@@ -19,8 +19,9 @@ class LibElf(Package):
         return 'libelf-' + self.version
 
     def fetch(self, ctx: Context) -> None:
-        tarname = 'libelf-%s.tar.gz' % self.version
-        download(ctx, 'https://web.archive.org/web/20160505164756if_/http://www.mr511.de/software/' + tarname)
+        tarname = f'libelf-{self.version}.tar.gz'
+        download(ctx, 'https://web.archive.org/web/20160505164756if_/'
+                      'http://www.mr511.de/software/' + tarname)
         run(ctx, ['tar', '-xf', tarname])
         shutil.move('libelf-' + self.version, 'src')
         os.remove(tarname)
@@ -31,14 +32,13 @@ class LibElf(Package):
             apply_patch(ctx, config_path + '/libelf-0.7.0-prelink.patch', 1)
             apply_patch(ctx, config_path + '/libelf-0.7.0-hash-prelink.patch', 1)
         else:
-            ctx.log.debug('could not patch libelf version %s for prelink' %
-                          self.version)
+            ctx.log.debug(f'could not patch libelf version {self.version} for prelink')
 
     def build(self, ctx: Context) -> None:
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
         run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
-        run(ctx, ['make', '-j%d' % ctx.jobs])
+        run(ctx, ['make', f'-j{ctx.jobs}'])
 
     def install(self, ctx: Context) -> None:
         os.chdir('obj')
@@ -96,8 +96,8 @@ class Prelink(Package):
             '--prefix=' + self.path(ctx, 'install'),
             '--sbindir=' + self.path(ctx, 'install/bin')
         ], env=config_env)
-        run(ctx, ['make', '-j%d' % ctx.jobs, '-C', 'gelf'], env=env)
-        run(ctx, ['make', '-j%d' % ctx.jobs, '-C', 'src'], env=env)
+        run(ctx, ['make', f'-j{ctx.jobs}', '-C', 'gelf'], env=env)
+        run(ctx, ['make', f'-j{ctx.jobs}', '-C', 'src'], env=env)
 
     def install(self, ctx: Context) -> None:
         run(ctx, 'make install -C obj/src')

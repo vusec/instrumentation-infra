@@ -40,10 +40,9 @@ class LibUnwind(Package):
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
             if '/' not in path:
-                path = '%s/%s.patch' % (config_root, path)
+                path = f'{config_root}/{path}.patch'
             if apply_patch(ctx, path, 1):
-                ctx.log.warning('applied patch %s to libunwind '
-                                'directory' % path)
+                ctx.log.warning(f'applied patch {path} to libunwind directory')
         os.chdir(self.path(ctx))
 
     def build(self, ctx: Context) -> None:
@@ -53,7 +52,7 @@ class LibUnwind(Package):
         os.chdir('obj')
         if not os.path.exists('Makefile'):
             run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
-        run(ctx, 'make -j%d' % ctx.jobs)
+        run(ctx, f'make -j{ctx.jobs}')
 
     def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/lib/libunwind.so')
@@ -103,10 +102,9 @@ class Gperftools(Package):
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
             if '/' not in path:
-                path = '%s/%s.patch' % (config_root, path)
+                path = f'{config_root}/{path}.patch'
             if apply_patch(ctx, path, 1):
-                ctx.log.warning('applied patch %s to gperftools '
-                                'directory' % path)
+                ctx.log.warning(f'applied patch {path} to gperftools directory')
         os.chdir(self.path(ctx))
 
     def build(self, ctx: Context) -> None:
@@ -127,7 +125,7 @@ class Gperftools(Package):
                 'LDFLAGS=-L' + self.libunwind.path(ctx, 'install/lib'),
                 '--prefix=' + prefix
             ])
-        run(ctx, 'make -j%d' % ctx.jobs)
+        run(ctx, f'make -j{ctx.jobs}')
 
     def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/lib/libtcmalloc.so')

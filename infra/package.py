@@ -238,7 +238,7 @@ class NoEnvLoad(Package):
         self.package = package
 
     def install_env(self, ctx: Context) -> None:
-        ctx.log.debug('cancel installation of %s in env' % self.ident())
+        ctx.log.debug(f'cancel installation of {self.ident()} in env')
 
     def __eq__(self, other: object) -> bool:
         return self.package == other

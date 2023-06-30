@@ -33,7 +33,7 @@ class Perl(Package):
         if not os.path.exists('Makefile'):
             prefix = self.path(ctx, 'install')
             run(ctx, ['bash', './Configure', '-des', '-Dprefix=' + prefix])
-        run(ctx, ['make', '-j%d' % ctx.jobs])
+        run(ctx, ['make', f'-j{ctx.jobs}'])
 
     def install(self, ctx: Context) -> None:
         os.chdir('src')
@@ -54,7 +54,7 @@ class SPECPerl(Perl):
         Perl.__init__(self, '5.8.8')
 
     def ident(self) -> str:
-        return 'perl-%s-spec' % self.version
+        return f'perl-{self.version}-spec'
 
     def fetch(self, ctx: Context) -> None:
         Perl.fetch(self, ctx)
@@ -64,7 +64,7 @@ class SPECPerl(Perl):
         os.chdir('src')
         config_path = os.path.dirname(os.path.abspath(__file__))
         for patch_name in ('makedepend', 'pagesize'):
-            path = '%s/%s-%s.patch' % (config_path, patch_name, self.version)
+            path = f'{config_path}/{patch_name}-{self.version}.patch'
             apply_patch(ctx, path, 1)
 
         if not os.path.exists('.patched-Configure-paths'):
@@ -73,7 +73,7 @@ class SPECPerl(Perl):
 
             if libpath != '.':
                 ctx.log.debug('applying paths patch on Configure')
-                run(ctx, ['sed', '-i', "s|^xlibpth='|xlibpth='%s |" % libpath,
+                run(ctx, ['sed', '-i', f"s|^xlibpth='|xlibpth='{libpath} |",
                           'Configure' ])
                 open('.patched-Configure-paths', 'w').close()
 
@@ -83,7 +83,7 @@ class SPECPerl(Perl):
             prefix = self.path(ctx, 'install')
             run(ctx, ['bash', './Configure', '-des', '-Dprefix=' + prefix])
             run(ctx, "sed -i '/<command-line>/d' makefile x2p/makefile")
-        run(ctx, ['make', '-j%d' % ctx.jobs])
+        run(ctx, ['make', f'-j{ctx.jobs}'])
 
 
 class Perlbrew(Package):
@@ -102,7 +102,7 @@ class Perlbrew(Package):
 
         # patch it to use the local perl installation
         perl = self.perl.path(ctx, 'install/bin/perl')
-        run(ctx, 'sed -i "s|/usr/bin/perl|%s|g" perlbrew-installer' % perl)
+        run(ctx, f'sed -i "s|/usr/bin/perl|{perl}|g" perlbrew-installer')
 
     def build(self, ctx: Context) -> None:
         pass
@@ -125,7 +125,7 @@ class Perlbrew(Package):
     #def install_env(self, ctx):
     #    Package.install_env(self, ctx)
 
-    #    bins = self.path(ctx, 'install/perls/perl-%s/bin' % self.perl.version)
+    #    bins = self.path(ctx, f'install/perls/perl-{self.perl.version}/bin')
     #    assert os.path.exists(bins)
     #    ctx.runenv.PATH.insert(0, bins)
 

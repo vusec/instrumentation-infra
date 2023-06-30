@@ -99,16 +99,16 @@ class LLVM(Package):
             #url = 'http://llvm.org/svn/llvm-project/%s/trunk' % repo
             #run(ctx, ['svn', 'co', '-r' + ctx.params.commit, url, clonedir])
 
-            dirname = '%s-%s.src' % (repo, self.version)
-            tarname = dirname + '.tar.xz'
+            dirname = f'{repo}-{self.version}.src'
+            tarname = f'{dirname}.tar.xz'
             major_version = int(self.version.split('.')[0])
 
             if major_version >= 8:
                 # use github now
                 url_prefix = 'https://github.com/llvm/llvm-project/releases/download'
-                download(ctx, '%s/llvmorg-%s/%s' % (url_prefix, self.version, tarname))
+                download(ctx, f'{url_prefix}/llvmorg-{self.version}/{tarname}')
             else:
-                download(ctx, 'https://releases.llvm.org/%s/%s' % (self.version, tarname))
+                download(ctx, f'https://releases.llvm.org/{self.version}/{tarname}')
 
             run(ctx, ['tar', '-xf', tarname])
             shutil.move(dirname, clonedir)
@@ -155,7 +155,7 @@ class LLVM(Package):
                 os.chdir(patch_dir)
 
             if '/' not in path:
-                path = '%s/%s-%s.patch' % (config_path, path, self.version)
+                path = f'{config_path}/{path}-{self.version}.patch'
             apply_patch(ctx, path, 1)
 
             if original_dir:
@@ -200,7 +200,7 @@ class LLVM(Package):
                 *self.build_flags,
                 '../src'
             ])
-        run(ctx, 'cmake --build . -- -j %d' % ctx.jobs)
+        run(ctx, f'cmake --build . -- -j {ctx.jobs}')
 
     def install(self, ctx: Context) -> None:
         os.chdir('obj')
@@ -222,9 +222,8 @@ class LLVM(Package):
                 if installed_version == self.version:
                     return True
                 else:
-                    ctx.log.debug('installed llvm-config version %s is '
-                                  'different from required %s' %
-                                  (installed_version, self.version))
+                    ctx.log.debug(f'installed llvm-config version {installed_version} '
+                                  f'is different from required {self.version}')
 
         return os.path.exists('install/bin/llvm-config')
 
@@ -286,9 +285,9 @@ class LLVMBinDist(Package):
         return os.path.exists('src')
 
     def fetch(self, ctx: Context) -> None:
-        ident = 'clang+llvm-%s-%s' % (self.version, self.target)
+        ident = f'clang+llvm-{self.version}-{self.target}'
         tarname = ident + '.tar.xz'
-        download(ctx, 'http://releases.llvm.org/%s/%s' % (self.version, tarname))
+        download(ctx, f'http://releases.llvm.org/{self.version}/{tarname}')
         run(ctx, ['tar', '-xf', tarname])
         shutil.move(ident, 'src')
         os.remove(tarname)
@@ -310,5 +309,5 @@ class LLVMBinDist(Package):
             for src in ('clang', 'clang++', 'opt', 'llvm-config'):
                 tgt = src + self.bin_suffix
                 if os.path.exists(src) and not os.path.exists(tgt):
-                    ctx.log.debug('creating symlink %s -> %s' % (tgt, src))
+                    ctx.log.debug(f'creating symlink {tgt} -> {src}')
                     os.symlink(src, tgt)

@@ -20,7 +20,7 @@ class Tool(Package, metaclass=ABCMeta):
         pass
 
     def build(self, ctx: Context) -> None:
-        self._run_make(ctx, '-j%d' % ctx.jobs)
+        self._run_make(ctx, f'-j{ctx.jobs}')
 
     def install(self, ctx: Context) -> None:
         self._run_make(ctx, 'install')

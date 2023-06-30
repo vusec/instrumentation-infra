@@ -35,7 +35,7 @@ class CleanCommand(Command):
 
 def clean_package(ctx: Context, package: Package) -> None:
     if package.is_clean(ctx):
-        ctx.log.debug('package %s is already cleaned' % package.ident())
+        ctx.log.debug(f'package {package.ident()} is already cleaned')
     else:
         ctx.log.info('cleaning package ' + package.ident())
         package.clean(ctx)
@@ -43,7 +43,7 @@ def clean_package(ctx: Context, package: Package) -> None:
 
 def clean_target(ctx: Context, target: Target) -> None:
     if target.is_clean(ctx):
-        ctx.log.debug('target %s is already cleaned' % target.name)
+        ctx.log.debug(f'target {target.name} is already cleaned')
     else:
         ctx.log.info('cleaning target ' + target.name)
         target.clean(ctx)

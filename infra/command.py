@@ -45,8 +45,8 @@ class Command(metaclass=ABCMeta):
                      'processes, "prun" for DAS cluster)')
         parser.add_argument('--parallelmax', metavar='PROCESSES_OR_NODES',
                 type=int, default=None,
-                help='limit simultaneous node reservations (default: %d for '
-                     'proc, 64 for prun)' % cpu_count())
+                help=f'limit simultaneous node reservations (default: {cpu_count()} '
+                     f'for proc, 64 for prun)')
         parser.add_argument('--ssh-nodes', nargs='+', default='',
                 help='ssh remotes to run jobs on (for --parallel=ssh)')
         parser.add_argument('--prun-opts', default='',
@@ -96,7 +96,7 @@ def get_deps(*objs: Union[Instance, Package, Target]) -> List[Package]:
 
     def add_dep(dep: Package, visited: Set[Package]) -> None:
         if dep in visited:
-            raise FatalError("recursive dependency %s" % dep)
+            raise FatalError(f'recursive dependency {dep}')
         visited.add(dep)
 
         for nested_dep in dep.dependencies():

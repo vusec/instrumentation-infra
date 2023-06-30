@@ -151,10 +151,10 @@ class RemoteRunnerComms:
         self.sock, self.rsock, self.wsock = None, None, None
 
     def send(self, func: str, *args: Any, **kwargs: Any) -> None:
-        self.log.debug(' > {func} {args} {kwargs}'.format(**locals()))
+        self.log.debug(f' > {func} {args} {kwargs}')
         if self.sock is None:
-            self.log.warning('Could not send message {func} because there is '
-                             'no connection'.format(**locals()))
+            self.log.warning(f'Could not send message {func} because there is '
+                             f'no connection')
             return
         pkg = json.dumps((func, args, kwargs))
         self.sock.sendall(pkg.encode('utf-8') + b'\n')
@@ -169,7 +169,7 @@ class RemoteRunnerComms:
         pkg = self.rsock.readline()
         if not pkg:
             raise RemoteRunnerError('connection closed')
-        self.log.debug(' < %s', pkg.rstrip())
+        self.log.debug(f' < {pkg.rstrip()}')
         self.last_pkg = pkg.rstrip()
         return json.loads(pkg)
 
@@ -279,10 +279,10 @@ class RemoteRunner:
             s.bind((host, port))
             s.listen(1)
 
-            self.log.info('Listening on %s:%s' % (host, port))
+            self.log.info(f'Listening on {host}:{port}')
 
             conn, addr = s.accept()
-            self.log.info('Connection from %s', addr)
+            self.log.info(f'Connection from {addr}')
 
             self.running = True
             self.comms = RemoteRunnerComms(self.log, conn)
@@ -363,9 +363,9 @@ class RemoteRunner:
         if expect_alive:
             if rv is not None:
                 stdout, stderr = self.proc_communicate()
-                self._error('process has exited already ({rv})\n'
-                            'stdout: {stdout}\n'
-                            'stderr: {stderr}'.format(**locals()))
+                self._error(f'process has exited already ({rv})\n'
+                            f'stdout: {stdout}\n'
+                            f'stderr: {stderr}')
         return self.proc.poll()
 
     @remotecall
@@ -495,7 +495,7 @@ def server_main() -> NoReturn:
     debuglog.setFormatter(logging.Formatter(fmt, datetimefmt))
     log.addHandler(debuglog)
 
-    log.info('Started runner, pid=%d', os.getpid())
+    log.info(f'Started runner, pid={os.getpid()}')
 
     try:
         RemoteRunner(log, side='server', host=args.host, port=args.port)

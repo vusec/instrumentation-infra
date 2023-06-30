@@ -142,7 +142,7 @@ class SPEC2006(Target):
                        default_benchmarks: List[str] = ['all_c', 'all_cpp'],
                        reporters: List[Union[ReportableTool, Type[ReportableTool]]] = [RusageCounters]):
         if source_type not in ('isofile', 'mounted', 'installed', 'tarfile', 'git'):
-            raise FatalError('invalid source type "%s"' % source_type)
+            raise FatalError(f'invalid source type "{source_type}"')
 
         if source_type == 'installed':
             shrc = source + '/shrc'
@@ -232,8 +232,8 @@ class SPEC2006(Target):
             run(ctx, ['tar', 'xf', self.source])
             srcdir = re.sub(r'(\.tar\.gz|\.tgz)$', '', os.path.basename(self.source))
             if not os.path.exists(srcdir):
-                raise FatalError('extracted SPEC tarfile in %s, could not find '
-                                 '%s/ afterwards' % (os.getcwd(), srcdir))
+                raise FatalError(f'extracted SPEC tarfile in {os.getcwd()}, could not '
+                                 f'find {srcdir}/ afterwards')
             shutil.move(srcdir, 'src')
             do_install('src')
             ctx.log.debug('removing SPEC-CPU2006 source files to save disk space')
@@ -258,10 +258,10 @@ class SPEC2006(Target):
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
             if '/' not in path:
-                path = '%s/%s.patch' % (config_root, path)
+                path = f'{config_root}/{path}.patch'
             if apply_patch(ctx, path, 1) and self.source_type == 'installed':
-                ctx.log.warning('applied patch %s to external SPEC-CPU2006 '
-                                'directory' % path)
+                ctx.log.warning(f'applied patch {path} to external SPEC-CPU2006 '
+                                f'directory')
 
     def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) \
             -> None:
@@ -278,10 +278,9 @@ class SPEC2006(Target):
         print_output = ctx.loglevel == logging.DEBUG
 
         for bench in self._get_benchmarks(ctx, instance):
-            cmd = 'killwrap_tree runspec --config=%s --action=build %s' % \
-                  (config, bench)
+            cmd = f'killwrap_tree runspec --config={config} --action=build {bench}'
             if pool:
-                jobid = 'build-%s-%s' % (instance.name, bench)
+                jobid = f'build-{instance.name}-{bench}'
                 outdir = os.path.join(ctx.paths.pool_results, 'build',
                                       self.name, instance.name)
                 os.makedirs(outdir, exist_ok=True)
@@ -289,8 +288,7 @@ class SPEC2006(Target):
                 self._run_bash(ctx, cmd, pool, jobid=jobid,
                               outfile=outfile, nnodes=1)
             else:
-                ctx.log.info('building %s-%s %s' %
-                             (self.name, instance.name, bench))
+                ctx.log.info(f'building {self.name}-{instance.name} {bench}')
                 self._run_bash(ctx, cmd, teeout=print_output)
 
     def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) \
@@ -299,8 +297,7 @@ class SPEC2006(Target):
         config_root = os.path.dirname(os.path.abspath(__file__))
 
         if not os.path.exists(self._install_path(ctx, 'config', config + '.cfg')):
-            raise FatalError('%s-%s has not been built yet!' %
-                             (self.name, instance.name))
+            raise FatalError(f'{self.name}-{instance.name} has not been built yet!')
 
         runargs = []
 
@@ -309,13 +306,13 @@ class SPEC2006(Target):
 
         # the pool scheduler will pass --iterations as -np to prun, so only run
         # one iteration in runspec
-        runargs += ['--iterations', '1' if pool else '%d' % ctx.args.iterations]
+        runargs += ['--iterations', '1' if pool else str(ctx.args.iterations)]
 
         # set output root to local disk when using prun to avoid noise due to
         # network lag when writing output files
         specdir = self._install_path(ctx)
         if isinstance(pool, PrunPool):
-            output_root = '/local/%s/cpu2006-output-root' % getpass.getuser()
+            output_root = f'/local/{getpass.getuser()}/cpu2006-output-root'
             runargs += ['--define', 'output_root=' + output_root]
         else:
             output_root = specdir
@@ -334,7 +331,7 @@ class SPEC2006(Target):
         if self.nothp:
             wrapper += ' nothp'
         if self.force_cpu >= 0:
-            wrapper += ' taskset -c %d' % self.force_cpu
+            wrapper += f' taskset -c {self.force_cpu}'
 
         cmd = f'{wrapper} runspec --config={config} --nobuild {qjoin(runargs)} {{bench}}'
 
@@ -344,7 +341,7 @@ class SPEC2006(Target):
             if isinstance(pool, PrunPool):
                 # prepare output dir on local disk before running,
                 # and move output files to network disk after completion
-                cmd = _unindent('''
+                cmd = _unindent(f'''
                 set -ex
 
                 benchdir="benchspec/CPU2006/{{bench}}"
@@ -408,7 +405,7 @@ class SPEC2006(Target):
 
                 # clean up
                 rm -rf "{output_root}"
-                ''').format(**locals())
+                ''')
 
                 # the script is passed like this: prun ... bash -c '<script>'
                 # this means that some escaping is necessary: use \$ instead of
@@ -416,7 +413,7 @@ class SPEC2006(Target):
                 cmd = cmd.replace('$', r'\$').replace('"', '\\"')
 
             for bench in benchmarks:
-                jobid = 'run-%s-%s' % (instance.name, bench)
+                jobid = f'run-{instance.name}-{bench}'
                 outfile = outfile_path(ctx, self, instance, bench)
                 self._run_bash(ctx, cmd.format(bench=bench), pool, jobid=jobid,
                                outfile=outfile, nnodes=ctx.args.iterations)
@@ -429,12 +426,12 @@ class SPEC2006(Target):
         config_root = os.path.dirname(os.path.abspath(__file__))
         cmd = [
             'bash', '-c',
-            '\n' + _unindent('''
-            cd %s
+            '\n' + _unindent(f'''
+            cd {self._install_path(ctx)}
             source shrc
-            source "%s/scripts/kill-tree-on-interrupt.inc"
-            %s
-            ''' % (self._install_path(ctx), config_root, command))
+            source "{config_root}/scripts/kill-tree-on-interrupt.inc"
+            {command}
+            ''')
         ]
         if pool:
             pool.run(ctx, cmd, **kwargs)
@@ -443,57 +440,56 @@ class SPEC2006(Target):
 
     def _make_spec_config(self, ctx: Context, instance: Instance) -> str:
         config_name = 'infra-' + instance.name
-        config_path = self._install_path(ctx, 'config/%s.cfg' % config_name)
+        config_path = self._install_path(ctx, f'config/{config_name}.cfg')
         ctx.log.debug('writing SPEC2006 config to ' + config_path)
 
         with open(config_path, 'w') as f:
             with redirect_stdout(f):
-                print('tune        = base')
-                print('ext         = ' + config_name)
-                print('reportable  = no')
-                print('teeout      = yes')
-                print('teerunout   = no')
-                print('makeflags   = -j%d' % ctx.jobs)
-                print('strict_rundir_verify = no')
+                print(f'tune        = base')
+                print(f'ext         = {config_name}')
+                print(f'reportable  = no')
+                print(f'teeout      = yes')
+                print(f'teerunout   = no')
+                print(f'makeflags   = -j{ctx.jobs}')
+                print(f'strict_rundir_verify = no')
 
                 # allow different output root to be set using
                 # --define output_root=...
-                print('%ifdef %{output_root}')
-                print('  output_root = %{output_root}')
-                print('%endif')
+                print(f'%ifdef %{{output_root}}')
+                print(f'  output_root = %{{output_root}}')
+                print(f'%endif')
 
-                print('')
-                print('default=default=default=default:')
+                print(f'')
+                print(f'default=default=default=default:')
 
                 # see https://www.spec.org/cpu2006/Docs/makevars.html#nofbno1
                 # for flags ordering
-                print('CC          = %s %s' % (ctx.cc, qjoin(ctx.cflags)))
-                print('CXX         = %s %s' % (ctx.cxx, qjoin(ctx.cxxflags)))
-                print('FC          = %s %s' % (ctx.fc, qjoin(ctx.fcflags)))
-                print('CLD         = %s %s' % (ctx.cc, qjoin(ctx.ldflags)))
-                print('CXXLD       = %s %s' % (ctx.cxx, qjoin(ctx.ldflags)))
-                print('COPTIMIZE   = -std=gnu89')
-                print('CXXOPTIMIZE = -std=c++98')
+                print(f'CC          = {ctx.cc} {qjoin(ctx.cflags)}')
+                print(f'CXX         = {ctx.cxx} {qjoin(ctx.cxxflags)}')
+                print(f'FC          = {ctx.fc} {qjoin(ctx.fcflags)}')
+                print(f'CLD         = {ctx.cc} {qjoin(ctx.ldflags)}')
+                print(f'CXXLD       = {ctx.cxx} {qjoin(ctx.ldflags)}')
+                print(f'COPTIMIZE   = -std=gnu89')
+                print(f'CXXOPTIMIZE = -std=c++98')
 
                 # post-build hooks call back into the setup script
                 if ctx.hooks.post_build:
-                    print('')
-                    print('build_post_bench = %s exec-hook post-build %s '
-                          '`echo ${commandexe} '
-                          '| sed "s/_\\[a-z0-9\\]\\\\+\\\\.%s\\\\\\$//"`' %
-                          (ctx.paths.setup, instance.name, config_name))
+                    print(f'')
+                    print(f'build_post_bench = {ctx.paths.setup} exec-hook post-build '
+                          f'{instance.name} `echo ${{commandexe}} '
+                          f'| sed "s/_\\[a-z0-9\\]\\\\+\\\\.{config_name}\\\\\\$//"`')
                     print('')
 
                 # allow run wrapper to be set using --define run_wrapper=...
-                print('%ifdef %{run_wrapper}')
-                print('  monitor_wrapper = %{run_wrapper} $command')
-                print('%endif')
+                print(f'%ifdef %{{run_wrapper}}')
+                print(f'  monitor_wrapper = %{{run_wrapper}} $command')
+                print(f'%endif')
 
                 # configure benchmarks for 64-bit Linux (hardcoded for now)
-                print('')
-                print('default=base=default=default:')
-                print('PORTABILITY    = -DSPEC_CPU_LP64')
-                print('')
+                print(f'')
+                print(f'default=base=default=default:')
+                print(f'PORTABILITY    = -DSPEC_CPU_LP64')
+                print(f'')
 
                 # TODO: feed perlbench -DSPEC_CPU_LINUX if not x86_64?
                 benchmark_flags = {
@@ -534,13 +530,13 @@ class SPEC2006(Target):
                 #            benchmark_flags[benchmark][flag].extend(value)
 
                 for benchmark, flags in benchmark_flags.items():
-                    print('%s:' % benchmark)
+                    print(f'{benchmark}:')
                     for flag, value in flags.items():
                         if flag == 'extra_lines':
                             for line in value:
                                 print(line)
                         else:
-                            print('%s   = %s' % (flag, qjoin(value)))
+                            print(f'{flag}   = {qjoin(value)}')
                     print('')
 
         return config_name
@@ -618,8 +614,8 @@ class SPEC2006(Target):
                 for errfile in errfiles:
                     path = os.path.join(fix_specpath(rundir), errfile)
                     if not os.path.exists(path):
-                        ctx.log.error('missing errfile %s, there was probably '
-                                      'an error' % path)
+                        ctx.log.error(f'missing errfile {path}, there was probably '
+                                      f'an error')
                         benchmark_error = True
                         continue
 
@@ -629,8 +625,8 @@ class SPEC2006(Target):
                             runtime_results[counter] += value
 
                 if benchmark_error:
-                    ctx.log.warning('cancel processing benchmark %s in log file '
-                                    '%s because of errors' % (benchmark, logpath))
+                    ctx.log.warning(f'cancel processing benchmark {benchmark} in log '
+                                    f'file {logpath} because of errors')
                 else:
                     yield {
                         'benchmark': benchmark,

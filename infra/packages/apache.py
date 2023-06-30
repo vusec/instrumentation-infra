@@ -29,7 +29,7 @@ class APR(Package):
         if not os.path.exists('Makefile'):
             run(ctx, ['../src/configure',
                       '--prefix=' + self.path(ctx, 'install')])
-        run(ctx, 'make -j%d' % ctx.jobs)
+        run(ctx, f'make -j{ctx.jobs}')
 
     def install(self, ctx: Context) -> None:
         os.chdir('obj')
@@ -77,7 +77,7 @@ class APRUtil(Package):
             run(ctx, ['../src/configure',
                       '--prefix=' + self.path(ctx, 'install'),
                       '--with-apr=' + self.apr.config_path(ctx)])
-        run(ctx, 'make -j%d' % ctx.jobs)
+        run(ctx, f'make -j{ctx.jobs}')
 
     def install(self, ctx: Context) -> None:
         os.chdir('obj')
@@ -163,7 +163,7 @@ class ApacheBench(Package):
 def _fetch_and_unpack(ctx: Context, repo: str, basename: str) -> None:
     require_program(ctx, 'tar', 'required to unpack source tarfile')
     tarname = basename + '.tar.bz2'
-    download(ctx, 'http://apache.cs.uu.nl/%s/%s' % (repo, tarname))
+    download(ctx, f'http://apache.cs.uu.nl/{repo}/{tarname}')
     run(ctx, ['tar', '-xf', tarname])
     shutil.move(basename, 'src')
     os.remove(tarname)

@@ -18,7 +18,7 @@ class Ninja(Package):
         return 'ninja-' + self.version
 
     def fetch(self, ctx: Context) -> None:
-        tarname = 'v%s.tar.gz' % self.version
+        tarname = f'v{self.version}.tar.gz'
         download(ctx, 'https://github.com/ninja-build/ninja/archive/' + tarname)
         run(ctx, ['tar', '-xf', tarname])
         shutil.move('ninja-' + self.version, 'src')

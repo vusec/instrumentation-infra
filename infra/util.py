@@ -68,17 +68,17 @@ class Index(MutableMapping[str, T]):
 
     def __getitem__(self, key: str) -> T:
         if key not in self.mem:
-            raise FatalError('no %s called "%s"' % (self.thing_name, key))
+            raise FatalError(f'no {self.thing_name} called "{key}"')
         return self.mem[key]
 
     def __setitem__(self, key: str, value: T) -> None:
         if key in self.mem:
-            raise FatalError('%s "%s" already exists' % (self.thing_name, key))
+            raise FatalError(f'{self.thing_name} "{key}" already exists')
         self.mem[key] = value
 
     def __delitem__(self, key: str) -> None:
         if key not in self.mem:
-            raise FatalError('no %s called "%s"' % (self.thing_name, key))
+            raise FatalError(f'no {self.thing_name} called "{key}"')
         del self.mem[key]
 
     def __iter__(self) -> Iterator[str]:
@@ -113,7 +113,7 @@ class LazyIndex(Index):
         if value is None:
             self.mem[key] = value = self.find_value(key)
         if value is None:
-            raise FatalError('no %s called "%s"' % (self.thing_name, key))
+            raise FatalError(f'no {self.thing_name} called "{key}"')
         return value
 
 
@@ -152,11 +152,11 @@ def apply_patch(ctx: Context, path: str, strip_count: int) -> bool:
         # TODO: check modification time
         return False
 
-    ctx.log.debug("applying patch %s" % name)
-    require_program(ctx, "patch", "required to apply source patches")
+    ctx.log.debug(f'applying patch {name}')
+    require_program(ctx, 'patch', 'required to apply source patches')
 
     with open(path) as f:
-        run(ctx, "patch -p%d" % strip_count, stdin=f)
+        run(ctx, f'patch -p{strip_count}', stdin=f)
 
     open(stamp, "w").close()
     return True
@@ -253,9 +253,9 @@ def run(ctx: Context, cmd: Union[str, Iterable[Any]], allow_error: bool = False,
     cmd_print = qjoin(cmd)
     stdin = kwargs.get("stdin", None)
     if isinstance(stdin, io.FileIO):
-        cmd_print += " < " + shlex.quote(str(stdin.name))
-    ctx.log.debug("running: %s" % cmd_print)
-    ctx.log.debug("workdir: %s" % os.getcwd())
+        cmd_print += ' < ' + shlex.quote(str(stdin.name))
+    ctx.log.debug(f'running: {cmd_print}')
+    ctx.log.debug(f'workdir: {os.getcwd()}')
 
     logenv = join_env_paths(ctx.runenv)
     logenv.update(join_env_paths(env))
@@ -282,12 +282,12 @@ def run(ctx: Context, cmd: Union[str, Iterable[Any]], allow_error: bool = False,
 
         with redirect_stdout(ctx.runlog_file):
             print('-' * 80)
-            print('command: %s' % cmd_print)
-            print('workdir: %s' % os.getcwd())
+            print(f'command: {cmd_print}')
+            print(f'workdir: {os.getcwd()}')
             for k, v in logenv.items():
-                print("%s=%s" % (k, v))
-            hdr = "-- output: "
-            print(hdr + "-" * (80 - len(hdr)))
+                print(f'{k}={v}')
+            hdr = '-- output: '
+            print(hdr + '-' * (80 - len(hdr)))
 
         if teeout:
             kwargs["stdout"] = _Tee(ctx.runtee, sys.stdout)
@@ -307,8 +307,8 @@ def run(ctx: Context, cmd: Union[str, Iterable[Any]], allow_error: bool = False,
 
     except FileNotFoundError:
         logfn = ctx.log.debug if allow_error else ctx.log.error
-        logfn("command not found: %s" % cmd_print)
-        logfn("workdir:           %s" % os.getcwd())
+        logfn(f'command not found: {cmd_print}')
+        logfn(f'workdir:           {os.getcwd()}')
         if allow_error:
             return Process(None, cmd_print, teeout)
         raise
@@ -328,11 +328,11 @@ def run(ctx: Context, cmd: Union[str, Iterable[Any]], allow_error: bool = False,
         ctx.runlog_file.flush()
 
     if proc.returncode and not allow_error:
-        ctx.log.error("command returned status %d" % proc.returncode)
-        ctx.log.error("command: %s" % cmd_print)
-        ctx.log.error("workdir: %s" % os.getcwd())
+        ctx.log.error(f'command returned status {proc.returncode}')
+        ctx.log.error(f'command: {cmd_print}')
+        ctx.log.error(f'workdir: {os.getcwd()}')
         for k, v in logenv.items():
-            ctx.log.error('%s=%s' % (k, v))
+            ctx.log.error(f'{k}={v}')
         assert proc.proc is not None
         if proc.proc.stdout is not None:
             output = proc.stdout
@@ -366,10 +366,10 @@ def download(ctx: Context, url: str, outfile: Optional[str] = None) -> None:
     :param outfile: optional path/filename to download to
     """
     if outfile:
-        ctx.log.debug("downloading %s to %s" % (url, outfile))
+        ctx.log.debug(f'downloading {url} to {outfile}')
     else:
         outfile = os.path.basename(urlparse(url).path)
-        ctx.log.debug("downloading %s" % url)
+        ctx.log.debug(f'downloading {url}')
     urlretrieve(url, outfile)
 
 class _Tee(io.IOBase):
@@ -442,7 +442,7 @@ def require_program(ctx: Context, name: str, error: Optional[str] = None) -> Non
         path = os.getenv('PATH', '')
 
     if shutil.which(name, path=path) is None:
-        msg = '"%s" not found in PATH' % name
+        msg = f'"{name}" not found in PATH'
         if error:
             msg += ": " + error
         raise FatalError(msg)

@@ -48,8 +48,7 @@ class PkgConfigCommand(Command):
 
     def run(self, ctx: Context) -> None:
         package = self.packages[ctx.args.package]
-        subparser = self.subparsers.add_parser(
-                '%s %s' % (ctx.args.command, package.ident()))
+        subparser = self.subparsers.add_parser(f'{ctx.args.command} {package.ident()}')
         pgroup = subparser.add_mutually_exclusive_group(required=True)
         for opt, desc, value in package.pkg_config_options(ctx):
             pgroup.add_argument(opt, action='store_const', dest='value',

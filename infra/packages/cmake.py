@@ -35,7 +35,7 @@ class CMake(Package):
         os.chdir('obj')
         if not os.path.exists('Makefile'):
             run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
-        run(ctx, ['make', '-j%d' % ctx.jobs])
+        run(ctx, ['make', f'-j{ctx.jobs}'])
 
     def install(self, ctx: Context) -> None:
         os.chdir('obj')

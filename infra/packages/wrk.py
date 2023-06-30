@@ -32,7 +32,7 @@ class Wrk(Package):
         if not os.path.exists('Makefile'):
             run(ctx, ['../src/configure',
                       '--prefix=' + self.path(ctx, 'install')])
-        run(ctx, 'make -j%d' % ctx.jobs)
+        run(ctx, f'make -j{ctx.jobs}')
 
     def install(self, ctx: Context) -> None:
         os.makedirs('install/bin', exist_ok=True)

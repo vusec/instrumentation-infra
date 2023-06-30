@@ -38,7 +38,7 @@ class PyElfTools(Package):
                   '--prefix=' + self.path(ctx, 'install')])
 
     def install_env(self, ctx: Context) -> None:
-        relpath = 'install/lib/python%s/site-packages' % self.python.version
+        relpath = f'install/lib/python{self.python.version}/site-packages'
         abspath = self.path(ctx, relpath)
         syspypath = os.getenv('PYTHONPATH', '').split(':')
         pypath = ctx.runenv.setdefault('PYTHONPATH', syspypath)
@@ -52,5 +52,6 @@ class PyElfTools(Package):
         return os.path.exists('src/build')
 
     def is_installed(self, ctx: Context) -> bool:
-        return os.path.exists('install/lib/%s/site-packages/elftools' %
-                              self.python.binary())
+        return os.path.exists(
+            f'install/lib/{self.python.binary()}/site-packages/elftools'
+        )

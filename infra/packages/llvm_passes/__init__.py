@@ -75,8 +75,7 @@ class LLVMPasses(Package):
 
     def _srcdir(self, ctx: Context) -> str:
         if not os.path.exists(self.custom_srcdir):
-            raise FatalError('llvm-passes dir "%s" does not exist' %
-                             self.custom_srcdir)
+            raise FatalError(f'llvm-passes dir "{self.custom_srcdir}" does not exist')
         return self.custom_srcdir
 
     def dependencies(self) -> Iterator[Package]:
@@ -91,7 +90,7 @@ class LLVMPasses(Package):
     def build(self, ctx: Context) -> None:
         os.makedirs('obj', exist_ok=True)
         os.chdir(self._srcdir(ctx))
-        self._run_make(ctx, '-j%d' % ctx.jobs)
+        self._run_make(ctx, f'-j{ctx.jobs}')
 
     def install(self, ctx: Context) -> None:
         os.chdir(self._srcdir(ctx))

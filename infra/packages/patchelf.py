@@ -18,7 +18,7 @@ class PatchElf(Package):
         return 'patchelf-' + self.version
 
     def fetch(self, ctx: Context) -> None:
-        tarname = 'patchelf-%s.tar.bz2' % self.version
+        tarname = f'patchelf-{self.version}.tar.bz2'
         download(ctx, 'https://nixos.org/releases/patchelf/patchelf-0.9/' + tarname)
         run(ctx, ['tar', '-xf', tarname])
         shutil.move('patchelf-' + self.version, 'src')
@@ -33,7 +33,7 @@ class PatchElf(Package):
         os.makedirs('obj', exist_ok=True)
         os.chdir('obj')
         run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
-        run(ctx, ['make', '-j%d' % ctx.jobs])
+        run(ctx, ['make', f'-j{ctx.jobs}'])
 
     def install(self, ctx: Context) -> None:
         os.chdir('obj')

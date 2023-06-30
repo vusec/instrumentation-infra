@@ -23,7 +23,7 @@ class Scons(Package):
     def fetch(self, ctx: Context) -> None:
         os.makedirs('src')
         os.chdir('src')
-        tarname = 'scons-local-%s.tar.gz' % self.version
+        tarname = f'scons-local-{self.version}.tar.gz'
         download(ctx, 'http://prdownloads.sourceforge.net/scons/' + tarname)
         untar(ctx, tarname)
 

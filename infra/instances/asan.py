@@ -108,4 +108,5 @@ class ASan(Clang):
         if not self.check_writes:
             opts['replace_intrin'] = 0
 
-        ctx.runenv['ASAN_OPTIONS'] = ':'.join('%s=%s' % i for i in opts.items())
+        ctx.runenv['ASAN_OPTIONS'] = \
+            ':'.join(f'{opt[0]}={opt[1]}' for opt in opts.items())

@@ -107,7 +107,7 @@ class SPEC2017(Target):
                        default_benchmarks: List[str] = ['intspeed_pure_c', 'intspeed_pure_cpp','fpspeed_pure_c'],
                        reporters: List[Union[ReportableTool, Type[ReportableTool]]] = [RusageCounters]):
         if source_type not in ('isofile', 'mounted', 'installed', 'tarfile', 'git'):
-            raise FatalError('invalid source type "%s"' % source_type)
+            raise FatalError(f'invalid source type "{source_type}"')
 
         if source_type == 'installed':
             shrc = source + '/shrc'
@@ -192,8 +192,8 @@ class SPEC2017(Target):
             run(ctx, ['tar', 'xf', self.source])
             srcdir = re.sub(r'(\.tar\.gz|\.tgz)$', '', os.path.basename(self.source))
             if not os.path.exists(srcdir):
-                raise FatalError('extracted SPEC tarfile in %s, could not find '
-                                 '%s/ afterwards' % (os.getcwd(), srcdir))
+                raise FatalError(f'extracted SPEC tarfile in {os.getcwd()}, could not '
+                                 f'find {srcdir}/ afterwards')
             shutil.move(srcdir, 'src')
             do_install('src')
             ctx.log.debug('removing SPEC-CPU2017 source files to save disk space')
@@ -218,10 +218,10 @@ class SPEC2017(Target):
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
             if '/' not in path:
-                path = '%s/%s.patch' % (config_root, path)
+                path = f'{config_root}/{path}.patch'
             if apply_patch(ctx, path, 1) and self.source_type == 'installed':
-                ctx.log.warning('applied patch %s to external SPEC-CPU2017 '
-                                'directory' % path)
+                ctx.log.warning(f'applied patch {path} to external SPEC-CPU2017 '
+                                f'directory')
 
     def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) \
             -> None:
@@ -238,10 +238,9 @@ class SPEC2017(Target):
         print_output = ctx.loglevel == logging.DEBUG
 
         for bench in self._get_benchmarks(ctx, instance):
-            cmd = 'killwrap_tree runcpu --config=%s --action=build %s' % \
-                  (config, bench)
+            cmd = f'killwrap_tree runcpu --config={config} --action=build {bench}'
             if pool:
-                jobid = 'build-%s-%s' % (instance.name, bench)
+                jobid = f'build-{instance.name}-{bench}'
                 outdir = os.path.join(ctx.paths.pool_results, 'build',
                                       self.name, instance.name)
                 os.makedirs(outdir, exist_ok=True)
@@ -249,8 +248,7 @@ class SPEC2017(Target):
                 self._run_bash(ctx, cmd, pool, jobid=jobid,
                               outfile=outfile, nnodes=1)
             else:
-                ctx.log.info('building %s-%s %s' %
-                             (self.name, instance.name, bench))
+                ctx.log.info(f'building {self.name}-{instance.name} {bench}')
                 self._run_bash(ctx, cmd, teeout=print_output)
 
     def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) \
@@ -259,8 +257,7 @@ class SPEC2017(Target):
         config_root = os.path.dirname(os.path.abspath(__file__))
 
         if not os.path.exists(self._install_path(ctx, 'config', config + '.cfg')):
-            raise FatalError('%s-%s has not been built yet!' %
-                             (self.name, instance.name))
+            raise FatalError(f'{self.name}-{instance.name} has not been built yet!')
 
         runargs = []
 
@@ -269,13 +266,13 @@ class SPEC2017(Target):
 
         # the pool scheduler will pass --iterations as -np to prun, so only run
         # one iteration in runspec
-        runargs += ['--iterations', '1' if pool else '%d' % ctx.args.iterations]
+        runargs += ['--iterations', '1' if pool else str(ctx.args.iterations)]
 
         # set output root to local disk when using prun to avoid noise due to
         # network lag when writing output files
         specdir = self._install_path(ctx)
         if isinstance(pool, PrunPool):
-            output_root = '/local/%s/cpu2017-output-root' % getpass.getuser()
+            output_root = f'/local/{getpass.getuser()}/cpu2017-output-root'
             runargs += ['--define', 'output_root=' + output_root]
         else:
             output_root = specdir
@@ -299,7 +296,7 @@ class SPEC2017(Target):
                                 f'SPEC2017 because using parallel=proc with '
                                 f'parallelmax > 1')
             else:
-                wrapper += ' taskset -c %d' % self.force_cpu
+                wrapper += f' taskset -c {self.force_cpu}'
 
         cmd = f'{wrapper} runcpu --config={config} --nobuild {qjoin(runargs)} {{bench}}'
 
@@ -309,7 +306,7 @@ class SPEC2017(Target):
             if isinstance(pool, PrunPool):
                 # prepare output dir on local disk before running,
                 # and move output files to network disk after completion
-                cmd = _unindent('''
+                cmd = _unindent(f'''
                 set -ex
 
                 benchdir="benchspec/CPU2017/{{bench}}"
@@ -373,7 +370,7 @@ class SPEC2017(Target):
 
                 # clean up
                 rm -rf "{output_root}"
-                ''').format(**locals())
+                ''')
 
                 # the script is passed like this: prun ... bash -c '<script>'
                 # this means that some escaping is necessary: use \$ instead of
@@ -381,7 +378,7 @@ class SPEC2017(Target):
                 cmd = cmd.replace('$', '\\$').replace('"', '\\"')
 
             for bench in benchmarks:
-                jobid = 'run-%s-%s' % (instance.name, bench)
+                jobid = f'run-{instance.name}-{bench}'
                 outfile = outfile_path(ctx, self, instance, bench)
                 def onsuccess_parse_log(job: Job) -> None:
                     for job_outfile in job.outfiles:
@@ -399,12 +396,12 @@ class SPEC2017(Target):
         config_root = os.path.dirname(os.path.abspath(__file__))
         cmd = [
             'bash', '-c',
-            '\n' + _unindent('''
-            cd %s
+            '\n' + _unindent(f'''
+            cd {self._install_path(ctx)}
             source shrc
-            source "%s/scripts/kill-tree-on-interrupt.inc"
-            %s
-            ''' % (self._install_path(ctx), config_root, command))
+            source "{config_root}/scripts/kill-tree-on-interrupt.inc"
+            {command}
+            ''')
         ]
         if pool:
             pool.run(ctx, cmd, onsuccess=onsuccess, **kwargs)
@@ -414,45 +411,45 @@ class SPEC2017(Target):
 
     def _make_spec_config(self, ctx: Context, instance: Instance) -> str:
         config_name = 'infra-' + instance.name
-        config_path = self._install_path(ctx, 'config/%s.cfg' % config_name)
+        config_path = self._install_path(ctx, f'config/{config_name}.cfg')
         ctx.log.debug('writing SPEC2017 config to ' + config_path)
 
         with open(config_path, 'w') as f:
             with redirect_stdout(f):
-                print('#--------- Global Settings -----------')
-                print('label                 = %s' % config_name)
-                print('makeflags             = -j%d' % ctx.jobs)
-                print('reportable            = no')
-                print('strict_rundir_verify  = no')
-                print('teeout                = yes')
-                print('tune                  = base')
-                print('')
+                print(f'#--------- Global Settings -----------')
+                print(f'label                 = {config_name}')
+                print(f'makeflags             = -j{ctx.jobs}')
+                print(f'reportable            = no')
+                print(f'strict_rundir_verify  = no')
+                print(f'teeout                = yes')
+                print(f'tune                  = base')
+                print(f'')
 
-                print('#--------- How Many CPUs? ------------')
-                print('intrate,fprate:')
-                print('   copies            = 1')
-                print('intspeed,fpspeed:')
-                print('   threads           = 1')
-                print('')
+                print(f'#--------- How Many CPUs? ------------')
+                print(f'intrate,fprate:')
+                print(f'   copies            = 1')
+                print(f'intspeed,fpspeed:')
+                print(f'   threads           = 1')
+                print(f'')
 
-                print('#--------- Compilers -----------------')
-                print('default:')
-                print('    CC                 = %s %s' % (ctx.cc, qjoin(ctx.cflags)))
-                print('    CXX                = %s %s' % (ctx.cxx, qjoin(ctx.cxxflags)))
-                print('    FC                 = %s %s' % (ctx.fc, qjoin(ctx.fcflags)))
-                print('    CLD                = %s %s' % (ctx.cc, qjoin(ctx.ldflags)))
-                print('    CXXLD              = %s %s' % (ctx.cxx, qjoin(ctx.ldflags)))
-                print('    COPTIMIZE          = -std=c99')
-                print('    CXXOPTIMIZE        = -std=c++03')
-                print('    CC_VERSION_OPTION  = --version')
-                print('    CXX_VERSION_OPTION = --version')
-                print('    FC_VERSION_OPTION  = --version')
-                print('')
+                print(f'#--------- Compilers -----------------')
+                print(f'default:')
+                print(f'    CC                 = {ctx.cc} {qjoin(ctx.cflags)}')
+                print(f'    CXX                = {ctx.cxx} {qjoin(ctx.cxxflags)}')
+                print(f'    FC                 = {ctx.fc} {qjoin(ctx.fcflags)}')
+                print(f'    CLD                = {ctx.cc} {qjoin(ctx.ldflags)}')
+                print(f'    CXXLD              = {ctx.cxx} {qjoin(ctx.ldflags)}')
+                print(f'    COPTIMIZE          = -std=c99')
+                print(f'    CXXOPTIMIZE        = -std=c++03')
+                print(f'    CC_VERSION_OPTION  = --version')
+                print(f'    CXX_VERSION_OPTION = --version')
+                print(f'    FC_VERSION_OPTION  = --version')
+                print(f'')
 
-                print('#--------- Portability -----------------')
-                print('default:')
-                print('     EXTRA_PORTABILITY = -DSPEC_LP64')
-                print('')
+                print(f'#--------- Portability -----------------')
+                print(f'default:')
+                print(f'     EXTRA_PORTABILITY = -DSPEC_LP64')
+                print(f'')
 
 
                 benchmark_flags = {
@@ -484,13 +481,13 @@ class SPEC2017(Target):
                 #            benchmark_flags[benchmark][flag].extend(value)
 
                 for benchmark, flags in benchmark_flags.items():
-                    print('%s:' % benchmark)
+                    print(f'{benchmark}:')
                     for flag, value in flags.items():
                         if flag == 'extra_lines':
                             for line in value:
                                 print(line)
                         else:
-                            print('%s   = %s' % (flag, qjoin(value)))
+                            print(f'{flag}   = {qjoin(value)}')
                     print('')
 
         return config_name
@@ -568,8 +565,8 @@ class SPEC2017(Target):
                 for errfile in errfiles:
                     path = os.path.join(fix_specpath(rundir), errfile)
                     if not os.path.exists(path):
-                        ctx.log.error('missing errfile %s, there was probably '
-                                      'an error' % path)
+                        ctx.log.error(f'missing errfile {path}, there was probably '
+                                      f'an error')
                         benchmark_error = True
                         continue
 
@@ -579,8 +576,8 @@ class SPEC2017(Target):
                             runtime_results[counter] += value
 
                 if benchmark_error:
-                    ctx.log.warning('cancel processing benchmark %s in log file '
-                                    '%s because of errors' % (benchmark, logpath))
+                    ctx.log.warning(f'cancel processing benchmark {benchmark} in log '
+                                    f'file {logpath} because of errors')
                 else:
                     yield {
                         'benchmark': benchmark,

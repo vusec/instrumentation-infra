@@ -34,7 +34,7 @@ def stdev_percent(numbers: Sequence[float]) -> float:
 def assert_all_same(values: Sequence[T]) -> T:
     uniq = set(values)
     if len(uniq) > 1:
-        raise FatalError('multiple values for "same" field: %s' % list(values))
+        raise FatalError(f'multiple values for "same" field: {list(values)}')
     return uniq.pop()
 
 
@@ -42,7 +42,7 @@ def assert_one(values: Sequence[T]) -> T:
     values = list(values)
     assert len(values) > 0
     if len(values) > 1:
-        raise FatalError('multiple values for "one" field: %s' % values)
+        raise FatalError(f'multiple values for "one" field: {values}')
     return values[0]
 
 
@@ -117,8 +117,8 @@ class ReportCommand(Command):
             tparser.add_argument('--groupby', metavar='FIELD',
                     choices=_reportable_fields(target),
                     default=target.aggregation_field,
-                    help='field to group by when aggregating results '
-                         '(default %s)' % target.aggregation_field)
+                    help=f'field to group by when aggregating results '
+                         f'(default {target.aggregation_field})')
             tparser.add_argument('--filter', nargs='+', default=[],
                     help='only report these values of the --groupby field')
             fieldarg = tparser.add_argument('-f', '--field', nargs='+',
@@ -182,7 +182,7 @@ class ReportCommand(Command):
         for instance in instances:
             prefix = instance + '\n'
             for f in fields:
-                header.append('%s_%s' % (instance, f))
+                header.append(f'{instance}_{f}')
                 human_header.append(prefix + f)
                 prefix = '\n'
 
@@ -233,8 +233,8 @@ class ReportCommand(Command):
 
             for i, (f, aggr) in enumerate(fields):
                 for ag in aggr:
-                    prefix = '%s\n%s\n' % ('' if i else instance, f)
-                    header.append('%s_%s_%s' % (instance, f, ag))
+                    prefix = f'{"" if i else instance}\n{f}\n'
+                    header.append(f'{instance}_{f}_{ag}')
                     human_header.append(prefix + ag)
                     prefix = '\n\n'
 
@@ -268,9 +268,9 @@ class ReportCommand(Command):
             data.append(row)
 
         if baseline_instance:
-            title = '%s overhead vs %s' % (target.name, baseline_instance)
+            title = f'{target.name} overhead vs {baseline_instance}'
         else:
-            title = '%s aggregated data' % target.name
+            title = f'{target.name} aggregated data'
 
         table_options: Dict[str, bool] = {}
 
@@ -294,17 +294,16 @@ class ReportCommand(Command):
             field = parts[0]
 
             if not ctx.args.raw and len(parts) == 1:
-                raise FatalError('need aggregation methods for "%s"' % field)
+                raise FatalError(f'need aggregation methods for "{field}"')
             elif ctx.args.raw and len(parts) > 1:
                 raise FatalError('cannot aggregate when reporting raw results')
 
             if field not in _reportable_fields(target):
-                raise FatalError('unknown field "%s"' % field)
+                raise FatalError(f'unknown field "{field}"')
 
             for aggr in parts[1:]:
                 if aggr not in _aggregate_fns:
-                    raise FatalError('unknown aggregator "%s" for %s' %
-                                     (aggr, field))
+                    raise FatalError(f'unknown aggregator "{aggr}" for {field}')
 
             yield field, tuple(parts[1:])
 
@@ -402,7 +401,7 @@ def report_table(ctx: Context,
         assert ctx.args.table == 'ascii'
         from terminaltables import AsciiTable as Table
 
-    table = Table([human_header] + data_rows, ' %s ' % title)
+    table = Table([human_header] + data_rows, f' {title} ')
     table.inner_column_border = False
     table.padding_left = 0
 
@@ -426,7 +425,8 @@ def _to_string(ctx: Context, n: Any) -> str:
     if isinstance(n, float):
         return _precise_float(n, ctx.args.precision)
     if isinstance(n, list):
-        return '[%s]' % ' '.join(_to_string(ctx, v) for v in n)
+        s = ' '.join(_to_string(ctx, v) for v in n)
+        return f'[{s}]'
     if isinstance(n, bool):
         return 'yes' if n else 'no'
     return str(n)
@@ -530,7 +530,7 @@ def parse_logs(ctx: Context, target: Target, instances: Iterable[Instance],
     abs_rundirs = []
     for d in rundirs:
         if not os.path.exists(d):
-            raise FatalError('rundir %s does not exist' % d)
+            raise FatalError(f'rundir {d} does not exist')
         abs_rundirs.append(os.path.abspath(d))
 
     instance_names = [instance.name for instance in instances]
@@ -546,8 +546,8 @@ def parse_logs(ctx: Context, target: Target, instances: Iterable[Instance],
                     if not instance_names or instance in instance_names:
                         instance_dirs.append((instance, instancedir))
         else:
-            ctx.log.warning('rundir %s contains no results for target %s' %
-                            (rundir, target.name))
+            ctx.log.warning(f'rundir {rundir} contains no results for target '
+                            f'{target.name}')
 
     for iname, idir in instance_dirs:
         instance_results: List[ResultDict] = results.setdefault(iname, [])
@@ -603,7 +603,7 @@ def process_log(ctx: Context, log_path: str, target: Target,
                             break
                         line = f.readline()
 
-                ctx.log.debug('caching %d results' % len(results))
+                ctx.log.debug(f'caching {len(results)} results')
                 for result in results:
                     log_result('cached', result, f)
             finally:

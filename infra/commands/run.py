@@ -26,8 +26,7 @@ class RunCommand(Command):
             tparser.add_argument('--force-rebuild-deps', action='store_true',
                     help='force rebuilding of dependencies (implies --build)')
             tparser.add_argument('-j', '--jobs', type=int, default=default_jobs,
-                    help='maximum number of build processes (default %d)' %
-                        default_jobs)
+                    help=f'maximum number of build processes (default {default_jobs})')
             tparser.add_argument('-i', '--iterations', metavar='ITERATIONS',
                     type=int, default=1,
                     help='number of runs per benchmark')
@@ -61,7 +60,7 @@ class RunCommand(Command):
 
         for instance in instances:
             oldctx = ctx.copy()
-            ctx.log.info('running %s-%s' % (target.name, instance.name))
+            ctx.log.info(f'running {target.name}-{instance.name}')
 
             load_deps(ctx, instance)
             instance.prepare_run(ctx)

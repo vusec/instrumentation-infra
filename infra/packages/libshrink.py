@@ -33,7 +33,7 @@ class LibShrink(Package):
         self.debug = debug
 
     def ident(self) -> str:
-        return 'libshrink-%d' % self.addrspace_bits
+        return f'libshrink-{self.addrspace_bits}'
 
     def dependencies(self) -> Iterator[Package]:
         yield Prelink('209')
@@ -47,7 +47,7 @@ class LibShrink(Package):
 
     def build(self, ctx: Context) -> None:
         os.chdir('src')
-        run(ctx, ['make', '-j%d' % ctx.jobs,
+        run(ctx, ['make', f'-j{ctx.jobs}',
                   'OBJDIR=' + self.path(ctx, 'obj'),
                   'DEBUG=' + ('1' if self.debug else '0')])
 

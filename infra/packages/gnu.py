@@ -18,13 +18,13 @@ class GNUTarPackage(Package, metaclass=ABCMeta):
         self.version = version
 
     def ident(self) -> str:
-        return '%s-%s' % (self.name, self.version)
+        return f'{self.name}-{self.version}'
 
     def fetch(self, ctx: Context) -> None:
         require_program(ctx, 'tar', 'required to unpack source tarfile')
-        ident = '%s-%s' % (self.name, self.version)
+        ident = f'{self.name}-{self.version}'
         tarname = ident + '.tar.' + self.tar_compression
-        download(ctx, 'http://ftp.gnu.org/gnu/%s/%s' % (self.name, tarname))
+        download(ctx, f'http://ftp.gnu.org/gnu/{self.name}/{tarname}')
         run(ctx, ['tar', '-xf', tarname])
         shutil.move(ident, 'src')
         os.remove(tarname)
@@ -34,7 +34,7 @@ class GNUTarPackage(Package, metaclass=ABCMeta):
         os.chdir('obj')
         if not os.path.exists('Makefile'):
             run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
-        run(ctx, ['make', '-j%d' % ctx.jobs])
+        run(ctx, ['make', f'-j{ctx.jobs}'])
 
     def install(self, ctx: Context) -> None:
         os.chdir('obj')
@@ -76,8 +76,8 @@ class Bash(GNUTarPackage):
         # environment and expect build scripts to source files instead.
         funcvars = [var for var in os.environ if var.startswith('BASH_FUNC_')]
         for funcvar in funcvars:
-            ctx.log.debug('removing %s from environment to avoid '
-                          'potential syntax errors' % funcvar)
+            ctx.log.debug(f'removing {funcvar} from environment to avoid '
+                          f'potential syntax errors')
             del os.environ[funcvar]
 
 
@@ -233,7 +233,7 @@ class BinUtils(Package):
         yield TexInfo('6.8')
 
     def fetch(self, ctx: Context) -> None:
-        tarname = 'binutils-%s.tar.bz2' % self.version
+        tarname = f'binutils-{self.version}.tar.bz2'
         download(ctx, 'http://ftp.gnu.org/gnu/binutils/' + tarname)
         run(ctx, ['tar', '-xf', tarname])
         shutil.move('binutils-' + self.version, 'src')
@@ -257,9 +257,9 @@ class BinUtils(Package):
             configure.append('--with-sysroot')
 
         run(ctx, configure)
-        run(ctx, ['make', '-j%d' % ctx.jobs])
+        run(ctx, ['make', f'-j{ctx.jobs}'])
         if self.gold:
-            run(ctx, ['make', '-j%d' % ctx.jobs, 'all-gold'])
+            run(ctx, ['make', f'-j{ctx.jobs}', 'all-gold'])
 
     def install(self, ctx: Context) -> None:
         os.chdir('obj')
@@ -275,7 +275,8 @@ class BinUtils(Package):
         return os.path.exists('src')
 
     def is_built(self, ctx: Context) -> bool:
-        return os.path.exists('obj/%s/ld-new' % ('gold' if self.gold else 'ld'))
+        ld = 'gold' if self.gold else 'ld'
+        return os.path.exists(f'obj/{ld}/ld-new')
 
     def is_installed(self, ctx: Context) -> bool:
         return os.path.exists('install/bin/ld')
@@ -296,9 +297,10 @@ class Netcat(GNUTarPackage):
     tar_compression = 'bz2'
 
     def fetch(self, ctx: Context) -> None:
-        tarname = 'netcat-%s.tar.bz2' % self.version
-        url = 'http://sourceforge.net/projects/netcat/files/netcat/%s/%s'
-        download(ctx, url % (self.version, tarname))
+        tarname = f'netcat-{self.version}.tar.bz2'
+        url = (f'http://sourceforge.net'
+               f'/projects/netcat/files/netcat/{self.version}/{tarname}')
+        download(ctx, url)
         run(ctx, ['tar', '-xf', tarname])
         shutil.move('netcat-' + self.version, 'src')
         os.remove(tarname)

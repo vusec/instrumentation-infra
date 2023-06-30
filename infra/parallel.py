@@ -134,8 +134,8 @@ class Pool(metaclass=ABCMeta):
                 if flags & select.EPOLLHUP:
                     job = self.jobs[fd]
                     if job.proc.poll() is None:
-                        self.log.debug('job %s hung up but does not yet have a '
-                                       'return code, check later' % job.jobid)
+                        self.log.debug(f'job {job.jobid} hung up but does not yet have a '
+                                       f'return code, check later')
                         continue
 
                     self.poller.unregister(fd)
@@ -202,20 +202,20 @@ class Pool(metaclass=ABCMeta):
     def onsuccess(self, job: Job) -> None:
         # don't log if onsuccess() returns False
         if not job.onsuccess or job.onsuccess(job) is not False:
-            self.log.info('job %s finished%s' %
-                        (job.jobid, self._get_elapsed(job)))
-            self.log.debug('command: %s' % job.proc.cmd_str)
+            self.log.info(f'job {job.jobid} finished {self._get_elapsed(job)}')
+            self.log.debug(f'command: {job.proc.cmd_str}')
 
     def onerror(self, job: Job) -> None:
         # don't log if onerror() returns False
         if not job.onerror or job.onerror(job) is not False:
-            self.log.error(f'job {job.jobid} returned status {job.proc.returncode}'
+            self.log.error(f'job {job.jobid} returned status {job.proc.returncode} '
                            f'{self._get_elapsed(job)}')
-            self.log.error('command: %s' % job.proc.cmd_str)
+            self.log.error(f'command: {job.proc.cmd_str}')
             sys.stdout.write(job.output)
 
     def _get_elapsed(self, job: Job) -> str:
-        return ' after %d seconds' % round(time.time() - job.start_time)
+        elapsed = round(time.time() - job.start_time)
+        return f'after {elapsed} seconds'
 
 
 class ProcessPool(Pool):
@@ -225,8 +225,8 @@ class ProcessPool(Pool):
             jobid = jobid_base
             outfile = outfile_base
             if nnodes > 1:
-                jobid += '-%d' % i
-                outfile += '-%d' % i
+                jobid += f'-{i}'
+                outfile += f'-{i}'
 
             self._wait_for_queue_space(1)
             ctx.log.info('running ' + jobid)
@@ -337,8 +337,8 @@ class SSHPool(Pool):
         starttime = self._ctx.starttime.strftime('%Y-%m-%d.%H-%M-%S')
         self._tempdir = os.path.join('/tmp', 'infra-' + starttime)
 
-        self._ctx.log.debug('creating SSHPool temp dir {self._tempdir} on '
-                'nodes {self.nodes}'.format(**locals()))
+        self._ctx.log.debug(f'creating SSHPool temp dir {self._tempdir} on '
+                            f'nodes {self.nodes}')
 
         for node in self.nodes:
             run(self._ctx, self._ssh_cmd(node, ['mkdir', '-p', self._tempdir]))
@@ -349,8 +349,8 @@ class SSHPool(Pool):
         if not self.has_created_tempdirs:
             return
         assert self._tempdir is not None
-        self._ctx.log.debug('cleaning up SSHPool temp directory '
-                '{self._tempdir} on nodes {self.nodes}'.format(**locals()))
+        self._ctx.log.debug(f'cleaning up SSHPool temp directory '
+                            f'{self._tempdir} on nodes {self.nodes}')
         for node in self.nodes:
             run(self._ctx, self._ssh_cmd(node, ['rm', '-rf', self._tempdir]))
         self.has_created_tempdirs = False
@@ -361,10 +361,10 @@ class SSHPool(Pool):
         if isinstance(sources, str): sources = [sources]
         if isinstance(target_nodes, str): target_nodes = [target_nodes]
         nodes = target_nodes or self.nodes
-        self._ctx.log.debug('syncing file to SSHPool nodes, sources={sources},'
-                'destination={destination}, nodes={nodes}'.format(**locals()))
+        self._ctx.log.debug(f'syncing file to SSHPool nodes, sources={sources},'
+                            f'destination={destination}, nodes={nodes}')
         for node in nodes:
-            dest = '%s:%s' % (node, os.path.join(self.tempdir, destination))
+            dest = f'{node}:{os.path.join(self.tempdir, destination)}'
             cmd = ['scp', *self.scp_opts, *sources, dest]
             run(self._ctx, cmd)
 
@@ -373,8 +373,8 @@ class SSHPool(Pool):
         if isinstance(source_nodes, str): source_nodes = [source_nodes]
         nodes = source_nodes or self.nodes
 
-        self._ctx.log.debug('syncing file from SSHPool nodes, source={source},'
-                'destination={destination}, nodes={nodes}'.format(**locals()))
+        self._ctx.log.debug(f'syncing file from SSHPool nodes, source={source},'
+                            f'destination={destination}, nodes={nodes}')
 
         for i, node in enumerate(nodes):
             dest = destination or os.path.basename(source)
@@ -382,7 +382,7 @@ class SSHPool(Pool):
                 dest += '.' + node
                 if len(nodes) != len(set(nodes)):
                     dest = f'{dest}{i}'
-            src = '%s:%s' % (node, os.path.join(self.tempdir, source))
+            src = f'{node}:{os.path.join(self.tempdir, source)}'
             cmd = ['scp', *self.scp_opts, src, dest]
             run(self._ctx, cmd)
 
@@ -409,8 +409,8 @@ class SSHPool(Pool):
             jobid = jobid_base
             outfile = outfile_base
             if nnodes > 1:
-                jobid += '-%d' % i
-                outfile += '-%d' % i
+                jobid += f'-{i}'
+                outfile += f'-{i}'
 
             self._wait_for_queue_space(1)
             override_node = nodes[i] if nodes else None
@@ -421,8 +421,8 @@ class SSHPool(Pool):
             tunnel_src = None
             if tunnel_to_nodes_dest:
                 tunnel_src = random.randint(10000, 30000)
-                ssh_node_opts += ['-Llocalhost:%d:0.0.0.0:%d' %
-                        (tunnel_src, tunnel_to_nodes_dest)]
+                ssh_node_opts += [f'-Llocalhost:{tunnel_src}:'
+                                  f'0.0.0.0:{tunnel_to_nodes_dest}']
 
             ssh_cmd = self._ssh_cmd(node, cmd, ssh_node_opts)
             proc = run(ctx, ssh_cmd, defer=True, stderr=STDOUT,
@@ -472,12 +472,12 @@ class PrunPool(Pool):
         require_program(ctx, 'prun')
         self._wait_for_queue_space(nnodes)
         ctx.log.info('scheduling ' + jobid_base)
-        cmd = ['prun', '-v', '-np', '%d' % nnodes, '-1',
+        cmd = ['prun', '-v', '-np', str(nnodes), '-1',
                '-o', outfile_base, *self.prun_opts, *cmd]
         proc = run(ctx, cmd, defer=True, stderr=STDOUT, bufsize=0,
                   universal_newlines=False, **kwargs)
         _set_non_blocking(proc.stdout_io)
-        outfiles = ['%s.%d' % (outfile_base, i) for i in range(nnodes)]
+        outfiles = [f'{outfile_base}.{i}' for i in range(nnodes)]
         job = PrunJob(proc, jobid_base, outfiles, nnodes)
         yield job
 
@@ -512,14 +512,14 @@ class PrunPool(Pool):
                 groupstrings = (join(m, '%03d') for m, c in groups)
             else:
                 # different cores, add /N suffix
-                groupstrings = ('%s/%s' % (join(m, '%03d'), join(c, '%d')) for m, c in groups)
+                groupstrings = (f'{join(m, "%03d")}/{join(c, "%d")}' for m, c in groups)
 
             if len(groups) == 1:
                 m, c = groups[0]
                 if len(m) == 1 and len(c) == 1:
                     return 'node' + next(groupstrings)
 
-            return 'node[%s]' % ','.join(groupstrings)
+            return f'node[{",".join(groupstrings)}]'
 
         buf = job.stdout.read(1024)
         if buf is None:
@@ -545,7 +545,7 @@ class PrunPool(Pool):
         if len(nodes) == job.nnodes:
             assert numseconds is not None
             nodestr = stringify_groups(group_nodes(nodes))
-            self.log.info('running %s on %s' % (job.jobid, nodestr))
+            self.log.info(f'running {job.jobid} on {nodestr}')
             job.start_time = time.time()
             job.logged = True
 
