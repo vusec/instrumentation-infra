@@ -1,9 +1,10 @@
 import os
 import shutil
-from typing import List, Iterator
+from typing import Iterator, List
+
 from ..context import Context
 from ..package import Package
-from ..util import run, apply_patch, download
+from ..util import apply_patch, download, run
 from .gnu import AutoMake
 
 
@@ -18,51 +19,51 @@ class LibUnwind(Package):
         self.patches = patches
 
     def ident(self) -> str:
-        return 'libunwind-' + self.version
+        return "libunwind-" + self.version
 
     def is_fetched(self, ctx: Context) -> bool:
-        return os.path.exists('src')
+        return os.path.exists("src")
 
     def fetch(self, ctx: Context) -> None:
-        urlbase = 'http://download.savannah.gnu.org/releases/libunwind/'
+        urlbase = "http://download.savannah.gnu.org/releases/libunwind/"
         dirname = self.ident()
-        tarname = dirname + '.tar.gz'
+        tarname = dirname + ".tar.gz"
         download(ctx, urlbase + tarname)
-        run(ctx, ['tar', '-xf', tarname])
-        shutil.move(dirname, 'src')
+        run(ctx, ["tar", "-xf", tarname])
+        shutil.move(dirname, "src")
         os.remove(tarname)
 
     def is_built(self, ctx: Context) -> bool:
-        return os.path.exists('obj/src/.libs/libunwind.so')
+        return os.path.exists("obj/src/.libs/libunwind.so")
 
     def _apply_patches(self, ctx: Context) -> None:
-        os.chdir(self.path(ctx, 'src'))
+        os.chdir(self.path(ctx, "src"))
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
-            if '/' not in path:
-                path = f'{config_root}/{path}.patch'
+            if "/" not in path:
+                path = f"{config_root}/{path}.patch"
             if apply_patch(ctx, path, 1):
-                ctx.log.warning(f'applied patch {path} to libunwind directory')
+                ctx.log.warning(f"applied patch {path} to libunwind directory")
         os.chdir(self.path(ctx))
 
     def build(self, ctx: Context) -> None:
         self._apply_patches(ctx)
 
-        os.makedirs('obj', exist_ok=True)
-        os.chdir('obj')
-        if not os.path.exists('Makefile'):
-            run(ctx, ['../src/configure', '--prefix=' + self.path(ctx, 'install')])
-        run(ctx, f'make -j{ctx.jobs}')
+        os.makedirs("obj", exist_ok=True)
+        os.chdir("obj")
+        if not os.path.exists("Makefile"):
+            run(ctx, ["../src/configure", "--prefix=" + self.path(ctx, "install")])
+        run(ctx, f"make -j{ctx.jobs}")
 
     def is_installed(self, ctx: Context) -> bool:
-        return os.path.exists('install/lib/libunwind.so')
+        return os.path.exists("install/lib/libunwind.so")
 
     def install(self, ctx: Context) -> None:
-        os.chdir('obj')
-        run(ctx, 'make install')
+        os.chdir("obj")
+        run(ctx, "make install")
 
     def configure(self, ctx: Context) -> None:
-        ctx.ldflags += ['-L' + self.path(ctx, 'install/lib'), '-lunwind']
+        ctx.ldflags += ["-L" + self.path(ctx, "install/lib"), "-lunwind"]
 
 
 class Gperftools(Package):
@@ -73,66 +74,70 @@ class Gperftools(Package):
     :param patches: optional patches to apply before building
     """
 
-    def __init__(self, commit: str, libunwind_version: str = '1.4-rc1',
-                 patches: List[str] = []):
+    def __init__(
+        self, commit: str, libunwind_version: str = "1.4-rc1", patches: List[str] = []
+    ):
         self.commit = commit
         self.libunwind = LibUnwind(libunwind_version)
         self.patches = patches
 
     def ident(self) -> str:
-        return 'gperftools-' + self.commit
+        return "gperftools-" + self.commit
 
     def dependencies(self) -> Iterator[Package]:
         yield AutoMake.default()
         yield self.libunwind
 
     def is_fetched(self, ctx: Context) -> bool:
-        return os.path.exists('src')
+        return os.path.exists("src")
 
     def fetch(self, ctx: Context) -> None:
-        run(ctx, 'git clone https://github.com/gperftools/gperftools.git src')
-        os.chdir('src')
-        run(ctx, ['git', 'checkout', self.commit])
+        run(ctx, "git clone https://github.com/gperftools/gperftools.git src")
+        os.chdir("src")
+        run(ctx, ["git", "checkout", self.commit])
 
     def is_built(self, ctx: Context) -> bool:
-        return os.path.exists('obj/.libs/libtcmalloc.so')
+        return os.path.exists("obj/.libs/libtcmalloc.so")
 
     def _apply_patches(self, ctx: Context) -> None:
-        os.chdir(self.path(ctx, 'src'))
+        os.chdir(self.path(ctx, "src"))
         config_root = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
-            if '/' not in path:
-                path = f'{config_root}/{path}.patch'
+            if "/" not in path:
+                path = f"{config_root}/{path}.patch"
             if apply_patch(ctx, path, 1):
-                ctx.log.warning(f'applied patch {path} to gperftools directory')
+                ctx.log.warning(f"applied patch {path} to gperftools directory")
         os.chdir(self.path(ctx))
 
     def build(self, ctx: Context) -> None:
         self._apply_patches(ctx)
 
-        if not os.path.exists('src/configure') or not os.path.exists('src/INSTALL'):
-            os.chdir('src')
-            run(ctx, 'autoreconf -vfi')
+        if not os.path.exists("src/configure") or not os.path.exists("src/INSTALL"):
+            os.chdir("src")
+            run(ctx, "autoreconf -vfi")
             self.goto_rootdir(ctx)
 
-        os.makedirs('obj', exist_ok=True)
-        os.chdir('obj')
-        if not os.path.exists('Makefile'):
-            prefix = self.path(ctx, 'install')
-            run(ctx, [
-                '../src/configure',
-                'CPPFLAGS=-I' + self.libunwind.path(ctx, 'install/include'),
-                'LDFLAGS=-L' + self.libunwind.path(ctx, 'install/lib'),
-                '--prefix=' + prefix
-            ])
-        run(ctx, f'make -j{ctx.jobs}')
+        os.makedirs("obj", exist_ok=True)
+        os.chdir("obj")
+        if not os.path.exists("Makefile"):
+            prefix = self.path(ctx, "install")
+            run(
+                ctx,
+                [
+                    "../src/configure",
+                    "CPPFLAGS=-I" + self.libunwind.path(ctx, "install/include"),
+                    "LDFLAGS=-L" + self.libunwind.path(ctx, "install/lib"),
+                    "--prefix=" + prefix,
+                ],
+            )
+        run(ctx, f"make -j{ctx.jobs}")
 
     def is_installed(self, ctx: Context) -> bool:
-        return os.path.exists('install/lib/libtcmalloc.so')
+        return os.path.exists("install/lib/libtcmalloc.so")
 
     def install(self, ctx: Context) -> None:
-        os.chdir('obj')
-        run(ctx, 'make install')
+        os.chdir("obj")
+        run(ctx, "make install")
 
     def configure(self, ctx: Context) -> None:
         """
@@ -145,10 +150,10 @@ class Gperftools(Package):
         :param ctx: the configuration context
         """
         self.libunwind.configure(ctx)
-        cflags = ['-fno-builtin-' + fn
-                  for fn in ('malloc', 'calloc', 'realloc', 'free')]
-        cflags += ['-I', self.path(ctx, 'install/include/gperftools')]
+        cflags = [
+            "-fno-builtin-" + fn for fn in ("malloc", "calloc", "realloc", "free")
+        ]
+        cflags += ["-I", self.path(ctx, "install/include/gperftools")]
         ctx.cflags += cflags
         ctx.cxxflags += cflags
-        ctx.ldflags += ['-L' + self.path(ctx, 'install/lib'),
-                        '-ltcmalloc', '-lpthread']
+        ctx.ldflags += ["-L" + self.path(ctx, "install/lib"), "-ltcmalloc", "-lpthread"]

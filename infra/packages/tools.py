@@ -1,11 +1,12 @@
 import os
-from os.path import exists, join
 from abc import ABCMeta, abstractmethod
-from typing import List, Iterator, Mapping
-from ..context import Context
+from os.path import exists, join
+from typing import Iterator, List, Mapping
+
 from ..commands.report import parse_results
+from ..context import Context
 from ..package import Package, PkgConfigOption
-from ..util import FatalError, run, ResultDict
+from ..util import FatalError, ResultDict, run
 
 
 class Tool(Package, metaclass=ABCMeta):
@@ -20,31 +21,34 @@ class Tool(Package, metaclass=ABCMeta):
         pass
 
     def build(self, ctx: Context) -> None:
-        self._run_make(ctx, f'-j{ctx.jobs}')
+        self._run_make(ctx, f"-j{ctx.jobs}")
 
     def install(self, ctx: Context) -> None:
-        self._run_make(ctx, 'install')
+        self._run_make(ctx, "install")
 
     def is_fetched(self, ctx: Context) -> bool:
         return True
 
     def is_built(self, ctx: Context) -> bool:
-        return all(exists(join('obj', f)) for f in self.built)
+        return all(exists(join("obj", f)) for f in self.built)
 
     def is_installed(self, ctx: Context) -> bool:
-        return all(exists(join('install', f)) for f in self.installed)
+        return all(exists(join("install", f)) for f in self.installed)
 
     def _srcpath(self, ctx: Context, *args: str) -> str:
-        return join(ctx.paths.infra, 'tools', self.name, *args)
+        return join(ctx.paths.infra, "tools", self.name, *args)
 
     def _run_make(self, ctx: Context, *args: str) -> None:
         os.chdir(self._srcpath(ctx))
-        run(ctx, [
-            'make',
-            'OBJDIR=' + self.path(ctx, 'obj'),
-            'INSTALLDIR=' + self.path(ctx, 'install'),
-            *args
-        ])
+        run(
+            ctx,
+            [
+                "make",
+                "OBJDIR=" + self.path(ctx, "obj"),
+                "INSTALLDIR=" + self.path(ctx, "install"),
+                *args,
+            ],
+        )
 
 
 class ReportableTool(Tool):
@@ -59,14 +63,16 @@ class ReportableTool(Tool):
     `cls.name`.
 
     """
+
     @staticmethod
     @abstractmethod
     def reportable_fields() -> Mapping[str, str]:
         pass
 
     @classmethod
-    def parse_results(cls, ctx: Context, path: str, allow_missing: bool = True) \
-            -> ResultDict:
+    def parse_results(
+        cls, ctx: Context, path: str, allow_missing: bool = True
+    ) -> ResultDict:
         """
         Parse any results containing counters by this package.
 
@@ -79,9 +85,11 @@ class ReportableTool(Tool):
             if allow_missing:
                 return {}
             else:
-                raise FatalError(f'Failure while parsing results: required '
-                                 f'reporter {cls.name} is missing from logs '
-                                 f'at {path}.')
+                raise FatalError(
+                    "Failure while parsing results: required "
+                    f"reporter {cls.name} is missing from logs "
+                    f"at {path}."
+                )
 
         aggregated_results: ResultDict = {}
         for results in all_results:
@@ -99,9 +107,10 @@ class Nothp(Tool):
     """
     :identifier: nothp
     """
-    name = 'nothp'
-    built = ['nothp']
-    installed = ['bin/nothp']
+
+    name = "nothp"
+    built = ["nothp"]
+    installed = ["bin/nothp"]
 
 
 class RusageCounters(ReportableTool):
@@ -120,24 +129,28 @@ class RusageCounters(ReportableTool):
 
     :identifier: rusage-counters
     """
-    name = 'rusage-counters'
-    built = ['librusagecounters.a']
-    installed = ['lib/librusagecounters.a']
+
+    name = "rusage-counters"
+    built = ["librusagecounters.a"]
+    installed = ["lib/librusagecounters.a"]
 
     @staticmethod
     def reportable_fields() -> Mapping[str, str]:
         return {
-            'maxrss':            'peak resident set size in KB',
-            'page_faults':       'number of page faults',
-            'io_operations':     'number of I/O operations',
-            'context_switches':  'number of context switches',
-            'estimated_runtime': 'benchmark runtime in seconds estimated by '
-                                 'rusage-counters constructor/destructor',
+            "maxrss": "peak resident set size in KB",
+            "page_faults": "number of page faults",
+            "io_operations": "number of I/O operations",
+            "context_switches": "number of context switches",
+            "estimated_runtime": (
+                "benchmark runtime in seconds estimated by "
+                "rusage-counters constructor/destructor"
+            ),
         }
 
     @classmethod
-    def parse_results(cls, ctx: Context, path: str, allow_missing: bool = False) \
-            -> ResultDict:
+    def parse_results(
+        cls, ctx: Context, path: str, allow_missing: bool = False
+    ) -> ResultDict:
         return super().parse_results(ctx, path, allow_missing)
 
     def configure(self, ctx: Context) -> None:
@@ -147,12 +160,17 @@ class RusageCounters(ReportableTool):
 
         :param ctx: the configuration context
         """
-        ctx.ldflags += ['-L' + self.path(ctx, 'install', 'lib'),
-                        '-Wl,--whole-archive', '-l:librusagecounters.a',
-                        '-Wl,--no-whole-archive']
+        ctx.ldflags += [
+            "-L" + self.path(ctx, "install", "lib"),
+            "-Wl,--whole-archive",
+            "-l:librusagecounters.a",
+            "-Wl,--no-whole-archive",
+        ]
 
     def pkg_config_options(self, ctx: Context) -> Iterator[PkgConfigOption]:
-        yield ('--includes', 'include path for reporting helpers',
-               ['-I', self._srcpath(ctx)])
+        yield (
+            "--includes",
+            "include path for reporting helpers",
+            ["-I", self._srcpath(ctx)],
+        )
         yield from super().pkg_config_options(ctx)
-

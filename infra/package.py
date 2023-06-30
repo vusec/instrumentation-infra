@@ -1,9 +1,9 @@
 import os
 import shutil
 from abc import ABCMeta, abstractmethod
-from typing import Iterator, Tuple, Union, Iterable, Any
-from .context import Context
+from typing import Any, Iterable, Iterator, Tuple, Union
 
+from .context import Context
 
 PkgConfigOption = Tuple[str, str, Union[str, Iterable[str]]]
 
@@ -52,11 +52,10 @@ class Package(metaclass=ABCMeta):
     """
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, self.__class__) and \
-               other.ident() == self.ident()
+        return isinstance(other, self.__class__) and other.ident() == self.ident()
 
     def __hash__(self) -> int:
-        return hash('package-' + self.ident())
+        return hash("package-" + self.ident())
 
     @abstractmethod
     def ident(self) -> str:
@@ -72,7 +71,7 @@ class Package(metaclass=ABCMeta):
         """
         pass
 
-    def dependencies(self) -> Iterator['Package']:
+    def dependencies(self) -> Iterator["Package"]:
         """
         Specify dependencies that should be built and installed in the run
         environment before building this package.
@@ -182,17 +181,17 @@ class Package(metaclass=ABCMeta):
         :param ctx: the configuration context
         """
         # XXX rename 'install_env' to 'load'?
-        binpath = self.path(ctx, 'install/bin')
+        binpath = self.path(ctx, "install/bin")
         if os.path.exists(binpath):
-            curbinpath = os.getenv('PATH', '').split(':')
-            prevbinpath = ctx.runenv.setdefault('PATH', curbinpath)
+            curbinpath = os.getenv("PATH", "").split(":")
+            prevbinpath = ctx.runenv.setdefault("PATH", curbinpath)
             assert isinstance(prevbinpath, list)
             prevbinpath.insert(0, binpath)
 
-        libpath = self.path(ctx, 'install/lib')
+        libpath = self.path(ctx, "install/lib")
         if os.path.exists(libpath):
-            curlibpath = os.getenv('LD_LIBRARY_PATH', '').split(':')
-            prevlibpath = ctx.runenv.setdefault('LD_LIBRARY_PATH', curlibpath)
+            curlibpath = os.getenv("LD_LIBRARY_PATH", "").split(":")
+            prevlibpath = ctx.runenv.setdefault("LD_LIBRARY_PATH", curlibpath)
             assert isinstance(prevlibpath, list)
             prevlibpath.insert(0, libpath)
 
@@ -215,12 +214,8 @@ class Package(metaclass=ABCMeta):
 
         :param ctx: the configuration context
         """
-        yield ('--root',
-               'absolute root path',
-               self.path(ctx))
-        yield ('--prefix',
-               'absolute install path',
-               self.path(ctx, 'install'))
+        yield ("--root", "absolute root path", self.path(ctx))
+        yield ("--prefix", "absolute install path", self.path(ctx, "install"))
 
 
 class NoEnvLoad(Package):
@@ -231,6 +226,7 @@ class NoEnvLoad(Package):
     This is useful for packages that are used by referening direct paths,
     instead of counting on their presence when calling :func:`util.run`.
     """
+
     def __init__(self, package: Package):
         """
         :param package: the package to wrap
@@ -238,7 +234,7 @@ class NoEnvLoad(Package):
         self.package = package
 
     def install_env(self, ctx: Context) -> None:
-        ctx.log.debug(f'cancel installation of {self.ident()} in env')
+        ctx.log.debug(f"cancel installation of {self.ident()} in env")
 
     def __eq__(self, other: object) -> bool:
         return self.package == other

@@ -1,21 +1,37 @@
-import os
-import sys
-import subprocess
-import shlex
 import io
-import threading
-import select
-import shutil
+import os
 import re
+import select
+import shlex
+import shutil
+import subprocess
+import sys
+import threading
 import typing
 from collections import OrderedDict
-from typing import Union, List, Dict, Iterable, Optional, Callable, Any, IO, AnyStr, \
-                   Mapping, TypeVar, MutableMapping, Iterator, KeysView, ValuesView, \
-                   ItemsView
-from urllib.request import urlretrieve
-from urllib.parse import urlparse
 from contextlib import redirect_stdout
 from dataclasses import dataclass
+from typing import (
+    IO,
+    Any,
+    AnyStr,
+    Callable,
+    Dict,
+    ItemsView,
+    Iterable,
+    Iterator,
+    KeysView,
+    List,
+    Mapping,
+    MutableMapping,
+    Optional,
+    TypeVar,
+    Union,
+    ValuesView,
+)
+from urllib.parse import urlparse
+from urllib.request import urlretrieve
+
 from .context import Context
 
 EnvDict = Mapping[str, Union[str, List[str]]]
@@ -24,7 +40,7 @@ ResultVal = Union[bool, int, float, str]
 ResultDict = MutableMapping[str, ResultVal]
 ResultsByInstance = MutableMapping[str, List[ResultDict]]
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def add_cflag(ctx: Context, flag: Union[List[str], str]) -> None:
@@ -51,8 +67,9 @@ def add_ldflag(ctx: Context, flag: Union[List[str], str]) -> None:
         ctx.ldflags.append(f)
 
 
-def add_lib_ldflag(ctx: Context, flag: Union[List[str], str],
-                   also_ldflag: bool = False) -> None:
+def add_lib_ldflag(
+    ctx: Context, flag: Union[List[str], str], also_ldflag: bool = False
+) -> None:
     """Add flag to ctx.lib_ldflags if new"""
     for f in flag if isinstance(flag, list) else [flag]:
         ctx.lib_ldflags.append(f)
@@ -62,23 +79,24 @@ def add_lib_ldflag(ctx: Context, flag: Union[List[str], str],
 
 class Index(MutableMapping[str, T]):
     mem: MutableMapping[str, T]
+
     def __init__(self, thing_name: str):
         self.mem = OrderedDict()
         self.thing_name = thing_name
 
     def __getitem__(self, key: str) -> T:
         if key not in self.mem:
-            raise FatalError(f'no {self.thing_name} called "{key}"')
+            raise FatalError(f"no {self.thing_name} called '{key}'")
         return self.mem[key]
 
     def __setitem__(self, key: str, value: T) -> None:
         if key in self.mem:
-            raise FatalError(f'{self.thing_name} "{key}" already exists')
+            raise FatalError(f"{self.thing_name} '{key}' already exists")
         self.mem[key] = value
 
     def __delitem__(self, key: str) -> None:
         if key not in self.mem:
-            raise FatalError(f'no {self.thing_name} called "{key}"')
+            raise FatalError(f"no {self.thing_name} called '{key}'")
         del self.mem[key]
 
     def __iter__(self) -> Iterator[str]:
@@ -113,7 +131,7 @@ class LazyIndex(Index):
         if value is None:
             self.mem[key] = value = self.find_value(key)
         if value is None:
-            raise FatalError(f'no {self.thing_name} called "{key}"')
+            raise FatalError(f"no {self.thing_name} called '{key}'")
         return value
 
 
@@ -152,11 +170,11 @@ def apply_patch(ctx: Context, path: str, strip_count: int) -> bool:
         # TODO: check modification time
         return False
 
-    ctx.log.debug(f'applying patch {name}')
-    require_program(ctx, 'patch', 'required to apply source patches')
+    ctx.log.debug(f"applying patch {name}")
+    require_program(ctx, "patch", "required to apply source patches")
 
     with open(path) as f:
-        run(ctx, f'patch -p{strip_count}', stdin=f)
+        run(ctx, f"patch -p{strip_count}", stdin=f)
 
     open(stamp, "w").close()
     return True
@@ -168,7 +186,7 @@ def join_env_paths(env: EnvDict) -> Dict[str, str]:
         if isinstance(v, str):
             ret[k] = v
         else:
-            ret[k] = ':'.join(v)
+            ret[k] = ":".join(v)
     return ret
 
 
@@ -189,7 +207,7 @@ class Process:
     @property
     def stdout(self) -> str:
         if self.proc is None:
-            raise Exception('invalid process has no stdout')
+            raise Exception("invalid process has no stdout")
         if self.stdout_override is not None:
             return self.stdout_override
         assert isinstance(self.proc.stdout, str)
@@ -198,7 +216,7 @@ class Process:
     @property
     def stdout_io(self) -> IO[AnyStr]:
         if self.proc is None:
-            raise Exception('invalid process has no stdout')
+            raise Exception("invalid process has no stdout")
         assert self.stdout_override is None
         assert self.proc.stdout is not None
         assert not isinstance(self.proc.stdout, (str, bytes))
@@ -209,9 +227,16 @@ class Process:
         return self.proc.poll()
 
 
-def run(ctx: Context, cmd: Union[str, Iterable[Any]], allow_error: bool = False,
-        silent: bool = False, teeout: bool = False, defer: bool = False,
-        env: EnvDict = {}, **kwargs: Any) -> Process:
+def run(
+    ctx: Context,
+    cmd: Union[str, Iterable[Any]],
+    allow_error: bool = False,
+    silent: bool = False,
+    teeout: bool = False,
+    defer: bool = False,
+    env: EnvDict = {},
+    **kwargs: Any,
+) -> Process:
     """
     Wrapper for :func:`subprocess.run` that does environment/output logging and
     provides a few useful options. The log file is ``build/log/commands.txt``.
@@ -253,9 +278,9 @@ def run(ctx: Context, cmd: Union[str, Iterable[Any]], allow_error: bool = False,
     cmd_print = qjoin(cmd)
     stdin = kwargs.get("stdin", None)
     if isinstance(stdin, io.FileIO):
-        cmd_print += ' < ' + shlex.quote(str(stdin.name))
-    ctx.log.debug(f'running: {cmd_print}')
-    ctx.log.debug(f'workdir: {os.getcwd()}')
+        cmd_print += " < " + shlex.quote(str(stdin.name))
+    ctx.log.debug(f"running: {cmd_print}")
+    ctx.log.debug(f"workdir: {os.getcwd()}")
 
     logenv = join_env_paths(ctx.runenv)
     logenv.update(join_env_paths(env))
@@ -265,9 +290,9 @@ def run(ctx: Context, cmd: Union[str, Iterable[Any]], allow_error: bool = False,
     strbuf = None
     log_output = False
     if defer or silent:
-        kwargs.setdefault('stdout', subprocess.PIPE)
-        kwargs.setdefault('stderr', subprocess.PIPE)
-    elif 'stdout' not in kwargs and ctx.runlog_file is not None:
+        kwargs.setdefault("stdout", subprocess.PIPE)
+        kwargs.setdefault("stderr", subprocess.PIPE)
+    elif "stdout" not in kwargs and ctx.runlog_file is not None:
         log_output = True
 
         # 'tee' output to logfile and string; does line buffering in a separate
@@ -281,13 +306,13 @@ def run(ctx: Context, cmd: Union[str, Iterable[Any]], allow_error: bool = False,
         assert isinstance(strbuf, io.StringIO)
 
         with redirect_stdout(ctx.runlog_file):
-            print('-' * 80)
-            print(f'command: {cmd_print}')
-            print(f'workdir: {os.getcwd()}')
+            print("-" * 80)
+            print(f"command: {cmd_print}")
+            print(f"workdir: {os.getcwd()}")
             for k, v in logenv.items():
-                print(f'{k}={v}')
-            hdr = '-- output: '
-            print(hdr + '-' * (80 - len(hdr)))
+                print(f"{k}={v}")
+            hdr = "-- output: "
+            print(hdr + "-" * (80 - len(hdr)))
 
         if teeout:
             kwargs["stdout"] = _Tee(ctx.runtee, sys.stdout)
@@ -307,8 +332,8 @@ def run(ctx: Context, cmd: Union[str, Iterable[Any]], allow_error: bool = False,
 
     except FileNotFoundError:
         logfn = ctx.log.debug if allow_error else ctx.log.error
-        logfn(f'command not found: {cmd_print}')
-        logfn(f'workdir:           {os.getcwd()}')
+        logfn(f"command not found: {cmd_print}")
+        logfn(f"workdir:           {os.getcwd()}")
         if allow_error:
             return Process(None, cmd_print, teeout)
         raise
@@ -324,15 +349,15 @@ def run(ctx: Context, cmd: Union[str, Iterable[Any]], allow_error: bool = False,
         ctx.runtee.writers[1] = io.StringIO()
 
         # add trailing newline to logfile for readability
-        ctx.runlog_file.write('\n')
+        ctx.runlog_file.write("\n")
         ctx.runlog_file.flush()
 
     if proc.returncode and not allow_error:
-        ctx.log.error(f'command returned status {proc.returncode}')
-        ctx.log.error(f'command: {cmd_print}')
-        ctx.log.error(f'workdir: {os.getcwd()}')
+        ctx.log.error(f"command returned status {proc.returncode}")
+        ctx.log.error(f"command: {cmd_print}")
+        ctx.log.error(f"workdir: {os.getcwd()}")
         for k, v in logenv.items():
-            ctx.log.error(f'{k}={v}')
+            ctx.log.error(f"{k}={v}")
         assert proc.proc is not None
         if proc.proc.stdout is not None:
             output = proc.stdout
@@ -366,11 +391,12 @@ def download(ctx: Context, url: str, outfile: Optional[str] = None) -> None:
     :param outfile: optional path/filename to download to
     """
     if outfile:
-        ctx.log.debug(f'downloading {url} to {outfile}')
+        ctx.log.debug(f"downloading {url} to {outfile}")
     else:
         outfile = os.path.basename(urlparse(url).path)
-        ctx.log.debug(f'downloading {url}')
+        ctx.log.debug(f"downloading {url}")
     urlretrieve(url, outfile)
+
 
 class _Tee(io.IOBase):
     def __init__(self, *writers: Union[io.IOBase, typing.IO]):
@@ -436,20 +462,26 @@ def require_program(ctx: Context, name: str, error: Optional[str] = None) -> Non
     :param error: optional error message
     :raises FatalError: if program is not found
     """
-    if 'PATH' in ctx.runenv:
-        path = ':'.join(ctx.runenv['PATH'])
+    if "PATH" in ctx.runenv:
+        path = ":".join(ctx.runenv["PATH"])
     else:
-        path = os.getenv('PATH', '')
+        path = os.getenv("PATH", "")
 
     if shutil.which(name, path=path) is None:
-        msg = f'"{name}" not found in PATH'
+        msg = f"'{name}' not found in PATH"
         if error:
             msg += ": " + error
         raise FatalError(msg)
 
 
-def untar(ctx: Context, tarname: str, dest: Optional[str] = None, *,
-          remove: bool = True, basename: Optional[str] = None) -> None:
+def untar(
+    ctx: Context,
+    tarname: str,
+    dest: Optional[str] = None,
+    *,
+    remove: bool = True,
+    basename: Optional[str] = None,
+) -> None:
     """
     TODO: docs
     """

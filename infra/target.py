@@ -1,8 +1,9 @@
+import argparse
 import os
 import shutil
-import argparse
 from abc import ABCMeta, abstractmethod
-from typing import Iterable, Iterator, Optional, Mapping
+from typing import Iterable, Iterator, Mapping, Optional
+
 from .context import Context
 from .instance import Instance
 from .package import Package
@@ -68,13 +69,13 @@ class Target(metaclass=ABCMeta):
 
     #: :class:`str` The default reportable field to group by when
     #               aggregating results.
-    aggregation_field: str = ''
+    aggregation_field: str = ""
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, self.__class__) and other.name == self.name
 
     def __hash__(self) -> int:
-        return hash('target-' + self.name)
+        return hash("target-" + self.name)
 
     def reportable_fields(self) -> Mapping[str, str]:
         """
@@ -161,8 +162,9 @@ class Target(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) \
-            -> None:
+    def build(
+        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
+    ) -> None:
         """
         Build the target object files. Called some time after :func:`fetch` (see
         :class:`above <Target>`).
@@ -195,8 +197,9 @@ class Target(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) \
-            -> None:
+    def run(
+        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
+    ) -> None:
         """
         Run the target binaries. This should be done using :func:`util.run` so
         that ``ctx.runenv`` is used (which can be set by an instance or
@@ -218,7 +221,6 @@ class Target(metaclass=ABCMeta):
         :param pool: parallel process pool if ``--parallel`` is specified
         """
         pass
-
 
     def parse_outfile(self, ctx: Context, outfile: str) -> Iterator[ResultDict]:
         """
@@ -276,7 +278,8 @@ class Target(metaclass=ABCMeta):
                 absbin = os.path.abspath(binary)
                 basedir = os.path.dirname(absbin)
                 for hook in ctx.hooks.post_build:
-                    ctx.log.info(f"Running post-build hook {hook} on {absbin} in {basedir}")
+                    ctx.log.info(
+                        f"Running post-build hook {hook} on {absbin} in {basedir}"
+                    )
                     os.chdir(basedir)
                     hook(ctx, absbin)
-

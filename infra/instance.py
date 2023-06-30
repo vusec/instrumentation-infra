@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser
 from typing import Iterator
+
 from .context import Context
 from .package import Package
 
@@ -34,7 +35,7 @@ class Instance(metaclass=ABCMeta):
         return isinstance(other, self.__class__) and other.name == self.name
 
     def __hash__(self) -> int:
-        return hash('instance-' + self.name)
+        return hash("instance-" + self.name)
 
     def add_build_args(self, parser: ArgumentParser) -> None:
         """

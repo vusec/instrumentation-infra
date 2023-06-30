@@ -1,15 +1,23 @@
-import os
-import io
-import logging
 import argparse
 import dataclasses
-from datetime import datetime
-from typing import Dict, List, Union, Optional, Any, Callable, TypeVar, Type, \
-                   TYPE_CHECKING
+import io
+import logging
+import os
 from dataclasses import dataclass, field, fields
+from datetime import datetime
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+)
 
-
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def slotted(cls: Type[T]) -> Type[T]:
@@ -24,13 +32,16 @@ def slotted(cls: Type[T]) -> Type[T]:
 
     if TYPE_CHECKING:
         from _typeshed import DataclassInstance
-    def slotted_setattr(self: 'DataclassInstance', key: str, value: Any) -> None:
+
+    def slotted_setattr(self: "DataclassInstance", key: str, value: Any) -> None:
         if key not in (f.name for f in fields(self)):
-            raise Exception(f'cannot set "{key}" in ctx: dynamically adding extra '
-                            f'fields to ctx is deprecated')
+            raise Exception(
+                f"cannot set '{key}' in ctx: dynamically adding extra "
+                "fields to ctx is deprecated"
+            )
         super(type(self), self).__setattr__(key, value)
 
-    setattr(cls, '__setattr__', slotted_setattr)
+    setattr(cls, "__setattr__", slotted_setattr)
     return cls
 
 
@@ -56,34 +67,41 @@ class ContextPaths:
     def root(self) -> str:
         """Root directory, that contains the user's script invoking the infra."""
         return os.path.dirname(self.setup)
+
     @property
     def buildroot(self) -> str:
         """Build directory."""
-        return os.path.join(self.root, 'build')
+        return os.path.join(self.root, "build")
+
     @property
     def log(self) -> str:
         """Directory containing all logs."""
-        return os.path.join(self.buildroot, 'log')
+        return os.path.join(self.buildroot, "log")
+
     @property
     def debuglog(self) -> str:
         """Path to the debug log."""
-        return os.path.join(self.log, 'debug.txt')
+        return os.path.join(self.log, "debug.txt")
+
     @property
     def runlog(self) -> str:
         """Path to the log of all executed commands."""
-        return os.path.join(self.log, 'commands.txt')
+        return os.path.join(self.log, "commands.txt")
+
     @property
     def packages(self) -> str:
         """Build directory for packages."""
-        return os.path.join(self.buildroot, 'packages')
+        return os.path.join(self.buildroot, "packages")
+
     @property
     def targets(self) -> str:
         """Build directory for targets."""
-        return os.path.join(self.buildroot, 'targets')
+        return os.path.join(self.buildroot, "targets")
+
     @property
     def pool_results(self) -> str:
         """Directory containing all results of running targets."""
-        return os.path.join(self.root, 'results')
+        return os.path.join(self.root, "results")
 
 
 @slotted
@@ -137,9 +155,9 @@ class Context:
     starttime: datetime = field(default_factory=datetime.now)
 
     #: Command(s) to prepend in front of the target's run command (executed directly on
-    #: the command line). This can be set to a custom shell script, or for example 
+    #: the command line). This can be set to a custom shell script, or for example
     #: ``perf`` or ``valgrind``.
-    target_run_wrapper: str = ''  # TODO: merge this with Tools?
+    target_run_wrapper: str = ""  # TODO: merge this with Tools?
 
     #: File object used for writing all executed commands, if enabled.
     runlog_file: Optional[io.TextIOWrapper] = None
@@ -148,27 +166,27 @@ class Context:
     runtee: Optional[io.IOBase] = None
 
     #: The amount of parallel jobs to use. Contains the value of the ``-j`` command-line
-    #: option, defaulting to the number of CPU cores returned by 
+    #: option, defaulting to the number of CPU cores returned by
     #: :func:`multiprocessing.cpu_count`.
     jobs: int = 8
 
     #: C compiler to use when building targets.
-    cc: str = 'cc'
+    cc: str = "cc"
 
     #: C++ compiler to use for building targets.
-    cxx: str = 'cxx'
+    cxx: str = "cxx"
 
     #: Fortran compiler to use for building targets.
-    fc: str = 'fc'
+    fc: str = "fc"
 
     #: Command for creating static library archives.
-    ar: str = 'ar'
+    ar: str = "ar"
 
     #: Command to read an object's symbols.
-    nm: str = 'nm'
+    nm: str = "nm"
 
     #: Command to generate the index of an archive.
-    ranlib: str = 'ranlib'
+    ranlib: str = "ranlib"
 
     #: C compilation flags to use when building targets.
     cflags: List[str] = field(default_factory=list)
@@ -188,14 +206,15 @@ class Context:
     #: In practice it is either empty or ``['-flto']`` when compiling with LLVM.
     lib_ldflags: List[str] = field(default_factory=list)
 
-    def copy(self) -> 'Context':
+    def copy(self) -> "Context":
         """
         Make a partial deepcopy of this Context, copying only fields of type
         ``ContextPaths|list|dict``.
         """
-        changes: Dict[str, Any] = {'paths': dataclasses.replace(self.paths)}
+        changes: Dict[str, Any] = {"paths": dataclasses.replace(self.paths)}
         for attr in dir(self):
-            if attr.startswith('_'): continue
+            if attr.startswith("_"):
+                continue
             attr_val = getattr(self, attr)
             if isinstance(attr_val, (list, dict)):
                 changes[attr] = attr_val.copy()

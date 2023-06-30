@@ -1,6 +1,6 @@
 from ..context import Context
 from ..package import Package
-from ..util import run, FatalError
+from ..util import FatalError, run
 
 
 class Python(Package):
@@ -15,17 +15,17 @@ class Python(Package):
         self.version = version
 
     def ident(self) -> str:
-        return 'python-' + self.version
+        return "python-" + self.version
 
     def binary(self) -> str:
         """
         Returns the name of the binary that should be in the PATH.
         """
-        return 'python' + self.version
+        return "python" + self.version
 
     def fetch(self, ctx: Context) -> None:
         if not self.is_installed(ctx):
-            raise FatalError(self.binary() + ' not found, please install it')
+            raise FatalError(self.binary() + " not found, please install it")
 
     def build(self, ctx: Context) -> None:
         pass
@@ -40,5 +40,5 @@ class Python(Package):
         return False
 
     def is_installed(self, ctx: Context) -> bool:
-        proc = run(ctx, [self.binary(), '--version'], allow_error=True, silent=True)
+        proc = run(ctx, [self.binary(), "--version"], allow_error=True, silent=True)
         return proc.returncode == 0

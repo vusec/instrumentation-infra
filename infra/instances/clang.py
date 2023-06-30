@@ -1,4 +1,5 @@
 from typing import Iterator, Union
+
 from ..context import Context
 from ..instance import Instance
 from ..package import Package
@@ -24,53 +25,55 @@ class Clang(Instance):
     :param alloc: which allocator to use (default: system)
     """
 
-    def __init__(self,
-                 llvm: LLVM,
-                 *,
-                 optlevel: Union[int, str] = 2,
-                 lto: bool = False,
-                 alloc: str = 'system'):
-        assert optlevel in (0, 1, 2, 3, 's'), 'invalid optimization level'
-        assert not (lto and optlevel == 0), 'LTO needs compile-time opts'
-        assert alloc in ('system', 'tcmalloc'), 'unsupported allocator'
+    def __init__(
+        self,
+        llvm: LLVM,
+        *,
+        optlevel: Union[int, str] = 2,
+        lto: bool = False,
+        alloc: str = "system"
+    ):
+        assert optlevel in (0, 1, 2, 3, "s"), "invalid optimization level"
+        assert not (lto and optlevel == 0), "LTO needs compile-time opts"
+        assert alloc in ("system", "tcmalloc"), "unsupported allocator"
 
         self.llvm = llvm
-        self.optflag = '-O' + str(optlevel)
+        self.optflag = "-O" + str(optlevel)
         self.lto = lto
         self.alloc = alloc
 
-        if self.alloc == 'tcmalloc':
-            self.gperftools = Gperftools('master')
+        if self.alloc == "tcmalloc":
+            self.gperftools = Gperftools("master")
 
     @property
     def name(self) -> str:
-        name = 'clang'
-        if self.optflag != '-O2':
+        name = "clang"
+        if self.optflag != "-O2":
             name += self.optflag
         if self.lto:
-            name += '-lto'
-        if self.alloc != 'system':
-            name += '-' + self.alloc
+            name += "-lto"
+        if self.alloc != "system":
+            name += "-" + self.alloc
         return name
 
     def dependencies(self) -> Iterator[Package]:
         yield self.llvm
-        if self.alloc == 'tcmalloc':
+        if self.alloc == "tcmalloc":
             yield self.gperftools
 
     def configure(self, ctx: Context) -> None:
         self.llvm.configure(ctx)
 
-        if self.alloc == 'tcmalloc':
+        if self.alloc == "tcmalloc":
             self.gperftools.configure(ctx)
         else:
-            assert self.alloc == 'system'
+            assert self.alloc == "system"
 
         ctx.cflags += [self.optflag]
         ctx.cxxflags += [self.optflag]
 
         if self.lto:
-            ctx.cflags += ['-flto']
-            ctx.cxxflags += ['-flto']
-            ctx.ldflags += ['-flto']
-            ctx.lib_ldflags += ['-flto']
+            ctx.cflags += ["-flto"]
+            ctx.cxxflags += ["-flto"]
+            ctx.ldflags += ["-flto"]
+            ctx.lib_ldflags += ["-flto"]

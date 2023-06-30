@@ -1,18 +1,18 @@
-import os
 import argparse
+import datetime
 import logging
+import os
 import sys
 import traceback
-import datetime
 from typing import List
-from . import commands
-from .context import Context, ContextPaths
-from .command import Command, get_deps
-from .util import FatalError, Index, LazyIndex
-from .instance import Instance
-from .target import Target
-from .package import Package
 
+from . import commands
+from .command import Command, get_deps
+from .context import Context, ContextPaths
+from .instance import Instance
+from .package import Package
+from .target import Target
+from .util import FatalError, Index, LazyIndex
 
 # disable .pyc file generation
 sys.dont_write_bytecode = True
@@ -64,12 +64,12 @@ class Setup:
                            Needed to allow build scripts to call back into the
                            setup script for build hooks.
         """
-        self.instances = Index('instance')
-        self.targets = Index('target')
-        self.commands = Index('command')
-        self.packages = LazyIndex('package', self._find_package)
+        self.instances = Index("instance")
+        self.targets = Index("target")
+        self.commands = Index("command")
+        self.packages = LazyIndex("package", self._find_package)
 
-        logger = logging.getLogger('autosetup')
+        logger = logging.getLogger("autosetup")
 
         infra_path = os.path.dirname(os.path.dirname(__file__))
         setup_path = os.path.abspath(setup_path)
@@ -95,7 +95,9 @@ class Setup:
             title="subcommands",
             metavar="COMMAND",
             dest="command",
-            description='run with "<command> --help" to see options for ' "individual commands",
+            description=(
+                'run with "<command> --help" to see options for individual commands'
+            ),
         )
         subparsers.required = True
 
@@ -118,7 +120,9 @@ class Setup:
                                 return completions[i:] + completions[:i]
                     return completions
 
-            silent_commands = [c.name for c in self.commands.values() if c.description is None]
+            silent_commands = [
+                c.name for c in self.commands.values() if c.description is None
+            ]
             MyCompleter()(parser, exclude=["--help"] + silent_commands)
         except ImportError:
             self.ctx.log.warning("Failed to set Python command-line autocompletion")
@@ -134,8 +138,8 @@ class Setup:
         os.makedirs(self.ctx.paths.targets, exist_ok=True)
 
     def _initialize_logger(self) -> None:
-        fmt = '%(asctime)s [%(levelname)s] %(message)s'
-        datefmt = '%H:%M:%S'
+        fmt = "%(asctime)s [%(levelname)s] %(message)s"
+        datefmt = "%H:%M:%S"
 
         log = self.ctx.log
         log.setLevel(logging.DEBUG)
@@ -157,7 +161,9 @@ class Setup:
         try:
             import coloredlogs
 
-            coloredlogs.install(logger=log, fmt=fmt, datefmt=datefmt, level=termlog.level)
+            coloredlogs.install(
+                logger=log, fmt=fmt, datefmt=datefmt, level=termlog.level
+            )
         except ImportError:
             pass
 
@@ -201,7 +207,7 @@ class Setup:
         for package in get_deps(*self.targets.all(), *self.instances.all()):
             if package.ident() == name:
                 return package
-        raise ValueError(f'Unknown package {name}')
+        raise ValueError(f"Unknown package {name}")
 
     def _run_command(self) -> None:
         try:
@@ -209,9 +215,9 @@ class Setup:
         except FatalError as e:
             self.ctx.log.error(str(e))
         except KeyboardInterrupt:
-            self.ctx.log.warning('exiting because of keyboard interrupt')
-        except Exception as e:
-            self.ctx.log.critical('unknown error\n' + traceback.format_exc().rstrip())
+            self.ctx.log.warning("exiting because of keyboard interrupt")
+        except Exception:
+            self.ctx.log.critical("unknown error\n" + traceback.format_exc().rstrip())
 
     def main(self) -> None:
         """

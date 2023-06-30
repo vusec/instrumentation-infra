@@ -1,9 +1,12 @@
 import os
 from typing import Iterator
+
 from ..context import Context
 from ..package import Package
-from ..util import run, join_env_paths
-from . import Prelink, PatchElf, PyElfTools
+from ..util import join_env_paths, run
+from .patchelf import PatchElf
+from .prelink import Prelink
+from .pyelftools import PyElfTools
 
 
 class LibShrink(Package):
@@ -23,43 +26,50 @@ class LibShrink(Package):
     :param debug: whether to compile with debug symbols
     """
 
-    git_url = 'https://github.com/vusec/libshrink.git'
+    git_url = "https://github.com/vusec/libshrink.git"
 
-    def __init__(self, addrspace_bits: int,
-                       commit: str = 'master',
-                       debug: bool = False):
+    def __init__(
+        self, addrspace_bits: int, commit: str = "master", debug: bool = False
+    ):
         self.addrspace_bits = addrspace_bits
         self.commit = commit
         self.debug = debug
 
     def ident(self) -> str:
-        return f'libshrink-{self.addrspace_bits}'
+        return f"libshrink-{self.addrspace_bits}"
 
     def dependencies(self) -> Iterator[Package]:
-        yield Prelink('209')
-        yield PatchElf('0.9')
-        yield PyElfTools('0.24', '2.7')
+        yield Prelink("209")
+        yield PatchElf("0.9")
+        yield PyElfTools("0.24", "2.7")
 
     def fetch(self, ctx: Context) -> None:
-        run(ctx, ['git', 'clone', self.git_url, 'src'])
-        os.chdir('src')
-        run(ctx, ['git', 'checkout', self.commit])
+        run(ctx, ["git", "clone", self.git_url, "src"])
+        os.chdir("src")
+        run(ctx, ["git", "checkout", self.commit])
 
     def build(self, ctx: Context) -> None:
-        os.chdir('src')
-        run(ctx, ['make', f'-j{ctx.jobs}',
-                  'OBJDIR=' + self.path(ctx, 'obj'),
-                  'DEBUG=' + ('1' if self.debug else '0')])
+        os.chdir("src")
+        run(
+            ctx,
+            [
+                "make",
+                f"-j{ctx.jobs}",
+                "OBJDIR=" + self.path(ctx, "obj"),
+                "DEBUG=" + ("1" if self.debug else "0"),
+            ],
+        )
 
     def install(self, ctx: Context) -> None:
         pass
 
     def is_fetched(self, ctx: Context) -> bool:
-        return os.path.exists('src')
+        return os.path.exists("src")
 
     def is_built(self, ctx: Context) -> bool:
-        return os.path.exists('obj/libshrink-static.a') and \
-               os.path.exists('obj/libshrink-preload.so')
+        return os.path.exists("obj/libshrink-static.a") and os.path.exists(
+            "obj/libshrink-preload.so"
+        )
 
     def is_installed(self, ctx: Context) -> bool:
         return self.is_built(ctx)
@@ -78,35 +88,47 @@ class LibShrink(Package):
         if static:
             # linker flags
             ctx.ldflags += [
-                '-L' + self.path(ctx, 'obj'),
-                '-Wl,-whole-archive',
-                '-lshrink-static',
-                '-Wl,-no-whole-archive',
-                '-ldl'
+                "-L" + self.path(ctx, "obj"),
+                "-Wl,-whole-archive",
+                "-lshrink-static",
+                "-Wl,-no-whole-archive",
+                "-ldl",
             ]
 
             # patch binary and prelink libraries after build
             ctx.hooks.post_build += [self._prelink_binary, self._fix_preinit]
         else:
-            raise NotImplementedError('libshrink does not have dynamic library support')
+            raise NotImplementedError("libshrink does not have dynamic library support")
 
     def _prelink_binary(self, ctx: Context, binary: str) -> None:
-        libpath = join_env_paths(ctx.runenv).get('LD_LIBRARY_PATH', '')
-        run(ctx, [
-            self.path(ctx, 'src/prelink_binary.py'),
-            '--set-rpath', '--in-place', '--static-lib',
-            '--out-dir', 'prelink-' + os.path.basename(binary),
-            '--library-path', libpath,
-            '--addrspace-bits', self.addrspace_bits,
-            binary
-        ])
+        libpath = join_env_paths(ctx.runenv).get("LD_LIBRARY_PATH", "")
+        run(
+            ctx,
+            [
+                self.path(ctx, "src/prelink_binary.py"),
+                "--set-rpath",
+                "--in-place",
+                "--static-lib",
+                "--out-dir",
+                "prelink-" + os.path.basename(binary),
+                "--library-path",
+                libpath,
+                "--addrspace-bits",
+                self.addrspace_bits,
+                binary,
+            ],
+        )
 
     def _fix_preinit(self, ctx: Context, binary: str) -> None:
-        run(ctx, [
-            self.path(ctx, 'src/fix_preinit.py'),
-            '--preinit-name', '__shrinkaddrspace_preinit',
-            binary
-        ])
+        run(
+            ctx,
+            [
+                self.path(ctx, "src/fix_preinit.py"),
+                "--preinit-name",
+                "__shrinkaddrspace_preinit",
+                binary,
+            ],
+        )
 
     def run_wrapper(self, ctx: Context) -> str:
         """
@@ -117,4 +139,4 @@ class LibShrink(Package):
 
         :param ctx: the configuration context
         """
-        return self.path(ctx, 'src/rpath_wrapper.sh')
+        return self.path(ctx, "src/rpath_wrapper.sh")

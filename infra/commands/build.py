@@ -2,14 +2,14 @@ import argparse
 import os
 from multiprocessing import cpu_count
 from typing import Union
-from ..context import Context
+
 from ..command import Command, get_deps
+from ..context import Context
+from ..instance import Instance
 from ..package import Package
 from ..target import Target
-from ..instance import Instance
 from ..util import FatalError
 from .clean import clean_package, clean_target
-
 
 default_jobs = min(cpu_count(), 64)
 
@@ -20,26 +20,48 @@ class BuildCommand(Command):
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         target_parsers = parser.add_subparsers(
-            title="target", metavar="TARGET", dest="target", help=" | ".join(self.targets)
+            title="target",
+            metavar="TARGET",
+            dest="target",
+            help=" | ".join(self.targets),
         )
         target_parsers.required = True
 
         for target in self.targets.values():
             tparser = target_parsers.add_parser(target.name)
 
-            tparser.add_argument('instances', nargs='+',
-                    metavar='INSTANCE', choices=self.instances,
-                    help=' | '.join(self.instances))
-            tparser.add_argument('-j', '--jobs', type=int, default=default_jobs,
-                    help=f'maximum number of build processes (default {default_jobs})')
-            tparser.add_argument('--deps-only', action='store_true',
-                    help='only build dependencies, not targets themselves')
-            tparser.add_argument('--force-rebuild-deps', action='store_true',
-                    help='always run the build commands')
-            tparser.add_argument('--clean', action='store_true',
-                    help='clean target first')
-            tparser.add_argument('--dry-run', action='store_true',
-                    help='don\'t actually build anything, just show what will be done')
+            tparser.add_argument(
+                "instances",
+                nargs="+",
+                metavar="INSTANCE",
+                choices=self.instances,
+                help=" | ".join(self.instances),
+            )
+            tparser.add_argument(
+                "-j",
+                "--jobs",
+                type=int,
+                default=default_jobs,
+                help=f"maximum number of build processes (default {default_jobs})",
+            )
+            tparser.add_argument(
+                "--deps-only",
+                action="store_true",
+                help="only build dependencies, not targets themselves",
+            )
+            tparser.add_argument(
+                "--force-rebuild-deps",
+                action="store_true",
+                help="always run the build commands",
+            )
+            tparser.add_argument(
+                "--clean", action="store_true", help="clean target first"
+            )
+            tparser.add_argument(
+                "--dry-run",
+                action="store_true",
+                help="don't actually build anything, just show what will be done",
+            )
 
             self.add_pool_args(tparser)
             target.add_build_args(tparser)
@@ -68,9 +90,9 @@ class BuildCommand(Command):
         if not ctx.args.deps_only:
             target.goto_rootdir(ctx)
             if target.is_fetched(ctx):
-                ctx.log.debug(f'{target.name} already fetched, skip')
+                ctx.log.debug(f"{target.name} already fetched, skip")
             else:
-                ctx.log.info(f'fetching {target.name}')
+                ctx.log.info(f"fetching {target.name}")
                 target.fetch(ctx)
 
         cached_deps = {obj: get_deps(obj) for obj in [target] + instances}
@@ -87,7 +109,7 @@ class BuildCommand(Command):
             for package in cached_deps[obj]:
                 force = ctx.args.force_rebuild_deps
                 build_package_once(package, force)
-                ctx.log.debug(f'install {package.ident()} in env')
+                ctx.log.debug(f"install {package.ident()} in env")
                 package.install_env(ctx)
 
         if ctx.args.deps_only and not instances:
@@ -105,7 +127,7 @@ class BuildCommand(Command):
             build_deps_once(target)
 
             if not ctx.args.deps_only:
-                ctx.log.info(f'building {target.name}-{instance.name}')
+                ctx.log.info(f"building {target.name}-{instance.name}")
                 if not ctx.args.dry_run:
                     target.goto_rootdir(ctx)
                     target.run_hooks_pre_build(ctx, instance)
@@ -121,17 +143,22 @@ class BuildCommand(Command):
 # This command does not appear in main --help usage because it is meant to be
 # used as a callback for build scripts
 class ExecHookCommand(Command):
-    name = 'exec-hook'
-    description = ''
+    name = "exec-hook"
+    description = ""
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
-        parser.add_argument('hooktype', choices=['pre-build', 'post-build'],
-                help='hook type')
-        parser.add_argument('instance',
-                metavar='INSTANCE', choices=self.instances,
-                help=' | '.join(self.instances))
-        parser.add_argument('targetfile', metavar='TARGETFILE',
-                help='file to run hook on')
+        parser.add_argument(
+            "hooktype", choices=["pre-build", "post-build"], help="hook type"
+        )
+        parser.add_argument(
+            "instance",
+            metavar="INSTANCE",
+            choices=self.instances,
+            help=" | ".join(self.instances),
+        )
+        parser.add_argument(
+            "targetfile", metavar="TARGETFILE", help="file to run hook on"
+        )
 
     def run(self, ctx: Context) -> None:
         instance = self.instances[ctx.args.instance]
@@ -139,9 +166,9 @@ class ExecHookCommand(Command):
 
         absfile = os.path.abspath(ctx.args.targetfile)
         if not os.path.exists(absfile):
-            raise FatalError(f'file {absfile} does not exist')
+            raise FatalError(f"file {absfile} does not exist")
 
-        hooktype = ctx.args.hooktype.replace('-', '_')
+        hooktype = ctx.args.hooktype.replace("-", "_")
         assert hasattr(ctx.hooks, hooktype)
 
         # don't build packages (should have been done already since this
@@ -163,17 +190,28 @@ class PkgBuildCommand(Command):
     description = "build a single package and its dependencies"
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
-        packagearg = parser.add_argument('package', metavar='PACKAGE',
-                help='package to build')
-        setattr(packagearg, 'completer', self.complete_package)
-        parser.add_argument('-j', '--jobs', type=int, default=default_jobs,
-                help=f'maximum number of build processes (default {default_jobs})')
-        parser.add_argument('--force-rebuild-deps', action='store_true',
-                help='always run the build commands')
-        parser.add_argument('--clean', action='store_true',
-                help='clean package first')
-        parser.add_argument('--dry-run', action='store_true',
-                help='don\'t actually build anything, just show what will be done')
+        packagearg = parser.add_argument(
+            "package", metavar="PACKAGE", help="package to build"
+        )
+        setattr(packagearg, "completer", self.complete_package)
+        parser.add_argument(
+            "-j",
+            "--jobs",
+            type=int,
+            default=default_jobs,
+            help=f"maximum number of build processes (default {default_jobs})",
+        )
+        parser.add_argument(
+            "--force-rebuild-deps",
+            action="store_true",
+            help="always run the build commands",
+        )
+        parser.add_argument("--clean", action="store_true", help="clean package first")
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="don't actually build anything, just show what will be done",
+        )
 
     def run(self, ctx: Context) -> None:
         main_package = self.packages[ctx.args.package]
@@ -205,11 +243,11 @@ def fetch_package(ctx: Context, package: Package, force_rebuild: bool) -> None:
     package.goto_rootdir(ctx)
 
     if package.is_fetched(ctx):
-        ctx.log.debug(f'{package.ident()} already fetched, skip')
+        ctx.log.debug(f"{package.ident()} already fetched, skip")
     elif not force_rebuild and package.is_installed(ctx):
-        ctx.log.debug(f'{package.ident()} already installed, skip fetching')
+        ctx.log.debug(f"{package.ident()} already installed, skip fetching")
     else:
-        ctx.log.info(f'fetching {package.ident()}')
+        ctx.log.info(f"fetching {package.ident()}")
         if not ctx.args.dry_run:
             package.goto_rootdir(ctx)
             package.fetch(ctx)
@@ -221,16 +259,16 @@ def build_package(ctx: Context, package: Package, force_rebuild: bool) -> None:
 
     if not force_rebuild:
         if built:
-            ctx.log.debug(f'{package.ident()} already built, skip')
+            ctx.log.debug(f"{package.ident()} already built, skip")
             return
         if package.is_installed(ctx):
-            ctx.log.debug(f'{package.ident()} already installed, skip building')
+            ctx.log.debug(f"{package.ident()} already installed, skip building")
             return
 
     load_deps(ctx, package)
 
-    force = ' (forced rebuild)' if force_rebuild and built else ''
-    ctx.log.info(f'building {package.ident()}' + force)
+    force = " (forced rebuild)" if force_rebuild and built else ""
+    ctx.log.info(f"building {package.ident()}" + force)
     if not ctx.args.dry_run:
         package.goto_rootdir(ctx)
         package.build(ctx)
@@ -241,10 +279,10 @@ def install_package(ctx: Context, package: Package, force_rebuild: bool) -> None
     installed = package.is_installed(ctx)
 
     if not force_rebuild and installed:
-        ctx.log.debug(f'{package.ident()} already installed, skip')
+        ctx.log.debug(f"{package.ident()} already installed, skip")
     else:
-        force = ' (forced reinstall)' if force_rebuild and installed else ''
-        ctx.log.info(f'installing {package.ident()}' + force)
+        force = " (forced reinstall)" if force_rebuild and installed else ""
+        ctx.log.info(f"installing {package.ident()}" + force)
         if not ctx.args.dry_run:
             package.goto_rootdir(ctx)
             package.install(ctx)
@@ -253,7 +291,7 @@ def install_package(ctx: Context, package: Package, force_rebuild: bool) -> None
 
 
 def load_package(ctx: Context, package: Package) -> None:
-    ctx.log.debug(f'install {package.ident()} into env')
+    ctx.log.debug(f"install {package.ident()} into env")
     if not ctx.args.dry_run:
         package.install_env(ctx)
 
