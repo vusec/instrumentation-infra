@@ -508,9 +508,21 @@ class SPEC2017(Target):
                 print(f"     EXTRA_PORTABILITY = -DSPEC_LP64")
                 print(f"")
 
+                arch_suffixes = {
+                    "x86_64": "X64",
+                    "aarch64": "AARCH64",
+                    "arm64": "AARCH64",
+                }
+                if ctx.arch not in arch_suffixes:
+                    raise RuntimeError(
+                        f"Architecture '{ctx.arch}' is not supported by SPEC17 target"
+                        " currently; please consult the example configs, specify the"
+                        " right arch_suffix, and add any additional required changes."
+                    )
+
                 benchmark_flags = {
                     "500.perlbench_r,600.perlbench_s": {
-                        "PORTABILITY": ["-DSPEC_LINUX_X64"],
+                        "PORTABILITY": [f"-DSPEC_LINUX_{arch_suffixes[ctx.arch]}"],
                     },
                     "523.xalancbmk_r,623.xalancbmk_s": {
                         "PORTABILITY": ["-DSPEC_LINUX"],

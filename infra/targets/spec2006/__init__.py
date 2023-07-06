@@ -529,10 +529,22 @@ class SPEC2006(Target):
                 print(f"PORTABILITY    = -DSPEC_CPU_LP64")
                 print(f"")
 
-                # TODO: feed perlbench -DSPEC_CPU_LINUX if not x86_64?
+                arch_perlbench_portability = {
+                    "x86_64": "SPEC_CPU_LINUX_X64",
+                    "aarch64": "SPEC_CPU_LINUX",  # Not officially supported
+                    "arm64": "SPEC_CPU_LINUX",  # Not officially supported
+                }
+                if ctx.arch not in arch_perlbench_portability:
+                    raise RuntimeError(
+                        f"Architecture '{ctx.arch}' is not supported by SPEC06 target"
+                        " currently; please consult the example configs, specify the"
+                        " right arch_perlbench_portability, and add any additional"
+                        " required changes."
+                    )
+
                 benchmark_flags = {
                     "400.perlbench=default=default=default": {
-                        "CPORTABILITY": ["-DSPEC_CPU_LINUX_X64"]
+                        "CPORTABILITY": [f"-D{arch_perlbench_portability[ctx.arch]}"]
                     },
                     "403.gcc=default=default=default": {
                         "CPORTABILITY": ["-DSPEC_CPU_LINUX"]

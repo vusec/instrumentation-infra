@@ -2,6 +2,7 @@ import argparse
 import datetime
 import logging
 import os
+import platform
 import sys
 import traceback
 from typing import List
@@ -76,6 +77,8 @@ class Setup:
         workdir = os.getcwd()
         paths = ContextPaths(infra_path, setup_path, workdir)
         self.ctx = Context(paths, logger)
+
+        self.ctx.arch = platform.machine()
 
     def _parse_argv(self) -> None:
         parser = argparse.ArgumentParser(

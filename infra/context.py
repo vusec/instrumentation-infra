@@ -170,6 +170,11 @@ class Context:
     #: :func:`multiprocessing.cpu_count`.
     jobs: int = 8
 
+    #: Architecture to build targets for. Initialized to :func:`platform.machine`.
+    #: Valid values include ``x86_64`` and ``arm64``/``aarch64``; for more, refer to
+    #: ``uname -m`` and :func:`platform.machine`.
+    arch: str = "unknown"
+
     #: C compiler to use when building targets.
     cc: str = "cc"
 
