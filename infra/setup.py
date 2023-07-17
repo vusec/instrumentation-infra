@@ -1,15 +1,19 @@
-import os
 import argparse
+import datetime
 import logging
+import os
+import platform
 import sys
 import traceback
-import datetime
+from typing import List
+
 from . import commands
 from .command import Command, get_deps
-from .util import FatalError, Namespace, Index, LazyIndex
+from .context import Context, ContextPaths
 from .instance import Instance
+from .package import Package
 from .target import Target
-
+from .util import FatalError, Index, LazyIndex
 
 # disable .pyc file generation
 sys.dont_write_bytecode = True
@@ -35,7 +39,7 @@ class Setup:
         setup.add_target(MyBeautifulTarget())
         setup.main()
 
-    :func:`main` creates a :py:attr:`configuration context<ctx>` that it passes
+    :func:`main` creates a :class:`context <context.Context>` that it passes
     to methods of targets/instances/packages. You can see it being used as
     ``ctx`` by many API methods below. The context contains setup configuration
     data, such as absolute build paths, and environment variables for build/run
@@ -48,106 +52,10 @@ class Setup:
     methods receive the context as a parameter.
     """
 
-    ctx = None
-    """
-    :class:`util.Namespace` The configuration context.
-
-    Consider an example project hosted in directory `/project`, with the
-    infrastructure cloned as a submodule in `/project/infra` and a setup script
-    like the one :ref:`above <setup-example>` in `/project/setup.py`. The context
-    will look like this after initialization::
-
-        Namespace({
-            'log':         logging.Logger(...),
-            'args':        argparse.Namespace(...),
-            'jobs':        64,
-            'paths':       Namespace({
-                               'root':         '/project',
-                               'setup':        '/project/setup.py',
-                               'infra':        '/project/infra'
-                               'buildroot':    '/project/build',
-                               'log':          '/project/build/log',
-                               'debuglog':     '/project/build/log/debug.txt',
-                               'runlog':       '/project/build/log/commands.txt',
-                               'packages':     '/project/build/packages',
-                               'targets':      '/project/build/targets',
-                               'pool_results': '/project/results'
-                           }),
-            'runenv':      Namespace({}),
-            'cc':          'cc',
-            'cxx':         'c++',
-            'cpp':         'cpp',
-            'ld':          'ld',
-            'ar':          'ar',
-            'nm':          'nm',
-            'ranlib':      'ranlib',
-            'cflags':      [],
-            'cxxflags':    [],
-            'cppflags':    [],
-            'ldflags':     [],
-            'lib_ldflags': [],
-            'ldlibs':      [],
-            'hooks':       Namespace({
-                               'post_build': [],
-                               'pre_build': [],
-                           }),
-            'starttime':   datetime.datetime
-        })
-
-    The :class:`util.Namespace` class is simply a :class:`dict` whose members
-    can be accessed like attributes.
-
-    ``ctx.log`` is a logging object used for status updates. Use this to
-    provide useful information about what your implementation is doing.
-
-    ``ctx.args`` is populated with processed command-line arguments, It is
-    available to read custom build/run arguments from that are added by
-    targets/instances.
-
-    ``ctx.jobs`` contains the value of the ``-j`` command-line option,
-    defaulting to the number of CPU cores returned by
-    :func:`multiprocessing.cpu_count`.
-
-    ``ctx.paths`` are absolute paths to be used (readonly) throughout the
-    framework.
-
-    ``ctx.runenv`` defines environment variables for :func:`util.run`, which is
-    a wrapper for :func:`subprocess.run` that does logging and other useful
-    things.
-
-    ``ctx.{cc,cxx,cpp,ld,ar,nm,ranlib}`` define default tools of the compiler
-    toolchain, and should be used by target definitions to configure build
-    scripts. ``ctx.{c,cxx,ld}flags`` similarly define build flags for targets
-    in a list and should be joined into a string using :func:`util.qjoin` when
-    being passed as a string to a build script by a target definition.
-
-    ``ctx.{c,cxx,cpp,ld}flags`` should be set by instances to define flags for
-    compiling targets.
-
-    ``ctx.ldlibs`` list of libraries to link to target (space-separated)
-
-    ``ctx.lib_ldflags`` is a special set of linker flags set by some packages,
-    and is passed when linking target libraries that will later be (statically)
-    linked into the binary. In practice it is either empty or ``['-flto']`` when
-    compiling with LLVM. Also useful to separate linker flags when runnign LTO
-    passed for targets using ``./configure`` scripts.
-
-    ``ctx.hooks.post_build`` defines a list of post-build hooks, which are
-    python functions called with the path to the binary as the only parameter.
-
-    ``ctx.hooks.pre_build`` defines a list of pre-build hooks, which are python
-    functions called with the path to the binary as the only parameter.
-
-    ``ctx.starttime`` is set to ``datetime.datetime.now()``.
-
-    ``ctx.workdir`` is set to the work directory from which the setup script is
-    invoked.
-
-    ``ctx.target_run_wrapper`` can be set to a program to prepend in front of
-    the target's run command (executed directly on the command line). This can
-    be set to a custom shell script, or for example something like ``perf`` or
-    ``valgrind``.
-    """
+    ctx: Context
+    instances: Index[Instance]
+    targets: Index[Target]
+    commands: Index[Command]
 
     _max_default_jobs = 64
 
@@ -157,15 +65,22 @@ class Setup:
                            Needed to allow build scripts to call back into the
                            setup script for build hooks.
         """
-        self.setup_path = os.path.abspath(setup_path)
         self.instances = Index("instance")
         self.targets = Index("target")
         self.commands = Index("command")
         self.packages = LazyIndex("package", self._find_package)
-        self.ctx = Namespace()
-        self._init_context()
 
-    def _parse_argv(self):
+        logger = logging.getLogger("autosetup")
+
+        infra_path = os.path.dirname(os.path.dirname(__file__))
+        setup_path = os.path.abspath(setup_path)
+        workdir = os.getcwd()
+        paths = ContextPaths(infra_path, setup_path, workdir)
+        self.ctx = Context(paths, logger)
+
+        self.ctx.arch = platform.machine()
+
+    def _parse_argv(self) -> None:
         parser = argparse.ArgumentParser(
             description="Frontend for building/running instrumented benchmarks."
         )
@@ -183,7 +98,9 @@ class Setup:
             title="subcommands",
             metavar="COMMAND",
             dest="command",
-            description='run with "<command> --help" to see options for ' "individual commands",
+            description=(
+                'run with "<command> --help" to see options for individual commands'
+            ),
         )
         subparsers.required = True
 
@@ -197,8 +114,8 @@ class Setup:
 
             # use a custom completer that moves non-positional options to the
             # end of the completion list, and excludes --help
-            class MyCompleter(argcomplete.CompletionFinder):
-                def filter_completions(self, completions):
+            class MyCompleter(argcomplete.finders.CompletionFinder):
+                def filter_completions(self, completions: List[str]) -> List[str]:
                     completions = super().filter_completions(completions)
                     if completions:
                         for i, value in enumerate(completions):
@@ -206,7 +123,9 @@ class Setup:
                                 return completions[i:] + completions[:i]
                     return completions
 
-            silent_commands = [c.name for c in self.commands.values() if c.description is None]
+            silent_commands = [
+                c.name for c in self.commands.values() if c.description is None
+            ]
             MyCompleter()(parser, exclude=["--help"] + silent_commands)
         except ImportError:
             self.ctx.log.warning("Failed to set Python command-line autocompletion")
@@ -216,54 +135,12 @@ class Setup:
         if "jobs" in self.ctx.args:
             self.ctx.jobs = self.ctx.args.jobs
 
-    def _complete_pkg(self, prefix, _parsed_args, **_kwargs):
-        objs = list(self.targets.values())
-        objs += list(self.instances.values())
-        for package in get_deps(objs):
-            name = package.ident()
-            if name.startswith(prefix):
-                yield name
-
-    def _init_context(self):
-        self.ctx.hooks = Namespace(post_build=[], pre_build=[])
-
-        self.ctx.paths = paths = Namespace()
-        paths.setup = self.setup_path
-        paths.root = os.path.dirname(self.setup_path)
-        paths.infra = os.path.dirname(os.path.dirname(__file__))
-        paths.buildroot = os.path.join(paths.root, "build")
-        paths.log = os.path.join(paths.buildroot, "log")
-        paths.debuglog = os.path.join(paths.log, "debug.txt")
-        paths.runlog = os.path.join(paths.log, "commands.txt")
-        paths.packages = os.path.join(paths.buildroot, "packages")
-        paths.targets = os.path.join(paths.buildroot, "targets")
-        paths.pool_results = os.path.join(paths.root, "results")
-
-        self.ctx.runenv = Namespace()
-        self.ctx.cc = "cc"
-        self.ctx.cxx = "c++"
-        self.ctx.cpp = "cpp"
-        self.ctx.ld = "ld"
-        self.ctx.ar = "ar"
-        self.ctx.nm = "nm"
-        self.ctx.ranlib = "ranlib"
-        self.ctx.cflags = []
-        self.ctx.cxxflags = []
-        self.ctx.cppflags = []
-        self.ctx.ldflags = []
-        self.ctx.lib_ldflags = []
-        self.ctx.ldlibs = []
-
-        self.ctx.starttime = None
-        self.ctx.workdir = None
-        self.ctx.log = logging.getLogger("autosetup")
-
-    def _create_dirs(self):
+    def _create_dirs(self) -> None:
         os.makedirs(self.ctx.paths.log, exist_ok=True)
         os.makedirs(self.ctx.paths.packages, exist_ok=True)
         os.makedirs(self.ctx.paths.targets, exist_ok=True)
 
-    def _initialize_logger(self):
+    def _initialize_logger(self) -> None:
         fmt = "%(asctime)s [%(levelname)s] %(message)s"
         datefmt = "%H:%M:%S"
 
@@ -287,20 +164,24 @@ class Setup:
         try:
             import coloredlogs
 
-            coloredlogs.install(logger=log, fmt=fmt, datefmt=datefmt, level=termlog.level)
+            coloredlogs.install(
+                logger=log, fmt=fmt, datefmt=datefmt, level=termlog.level
+            )
         except ImportError:
             pass
 
-    def add_command(self, command: Command):
+    def add_command(self, command: Command) -> None:
         """
         Register a setup command.
 
         :param command: The command to register.
         """
         self.commands[command.name] = command
-        command.set_maps(self.instances, self.targets, self.packages)
+        command.instances = self.instances
+        command.targets = self.targets
+        command.packages = self.packages
 
-    def add_instance(self, instance: Instance):
+    def add_instance(self, instance: Instance) -> None:
         """
         Register an instance. Only registered instances can be referenced in
         commands, so also :doc:`built-in instances <instances>` must be
@@ -313,7 +194,7 @@ class Setup:
 
         self.instances[instance.name] = instance
 
-    def add_target(self, target: Target):
+    def add_target(self, target: Target) -> None:
         """
         Register a target. Only registered targets can be referenced in
         commands, so also :doc:`built-in targets <targets>` must be registered.
@@ -325,13 +206,13 @@ class Setup:
 
         self.targets[target.name] = target
 
-    def _find_package(self, name):
+    def _find_package(self, name: str) -> Package:
         for package in get_deps(*self.targets.all(), *self.instances.all()):
             if package.ident() == name:
                 return package
-        return None
+        raise ValueError(f"Unknown package {name}")
 
-    def _run_command(self):
+    def _run_command(self) -> None:
         try:
             self.commands[self.ctx.args.command].run(self.ctx)
         except FatalError as e:
@@ -339,9 +220,9 @@ class Setup:
         except KeyboardInterrupt:
             self.ctx.log.warning("exiting because of keyboard interrupt")
         except Exception:
-            self.ctx.log.critical("unkown error\n" + traceback.format_exc().rstrip())
+            self.ctx.log.critical("unknown error\n" + traceback.format_exc().rstrip())
 
-    def main(self):
+    def main(self) -> None:
         """
         Run the configured setup:
 
@@ -350,7 +231,6 @@ class Setup:
         #. Run the issued command.
         """
         self.ctx.starttime = datetime.datetime.now()
-        self.ctx.workdir = os.getcwd()
 
         self.add_command(commands.BuildCommand())
         self.add_command(commands.PkgBuildCommand())

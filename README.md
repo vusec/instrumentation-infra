@@ -7,6 +7,9 @@ About
 builds benchmark programs with custom instrumentation flags (e.g., LLVM passes)
 and runs them. Documentation is available [here][docs].
 
+The minimum required version of Python is currently 3.8+. Additionally,
+a C-compiler is required for most uses of this infra.
+
 For an example of how to this infra, see the [skeleton repository][skeleton].
 See our [infra-sanitizers][sanitizers] repository for a large collection of
 sanitizers that have already been ported to use this infrastructure.

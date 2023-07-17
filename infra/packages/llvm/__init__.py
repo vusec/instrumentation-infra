@@ -1,10 +1,13 @@
 import os
 import shutil
-from typing import List, Iterable, Optional
+from dataclasses import dataclass
+from typing import Iterable, Iterator, List, Optional
+
+from ...context import Context
 from ...package import Package
-from ...util import Namespace, run, apply_patch, download, param_attrs
-from ..gnu import Bash, CoreUtils, BinUtils, Make, AutoMake
+from ...util import apply_patch, download, run
 from ..cmake import CMake
+from ..gnu import AutoMake, Bash, BinUtils, CoreUtils, Make
 from ..ninja import Ninja
 
 
@@ -45,16 +48,19 @@ class LLVM(Package):
                         to pass to cmake
     """
 
-    #supported_versions = ('3.8.0', '3.9.1', '4.0.0', '5.0.0')
-    binutils = BinUtils('2.38', gold=True)
+    # supported_versions = ('3.8.0', '3.9.1', '4.0.0', '5.0.0')
+    binutils = BinUtils("2.38", gold=True)
 
-    def __init__(self, version: str,
-                       compiler_rt: bool,
-                       commit: Optional[str] = None,
-                       lld: bool = False,
-                       patches: List[str] = [],
-                       build_flags: List[str] = []):
-        #if version not in self.supported_versions:
+    def __init__(
+        self,
+        version: str,
+        compiler_rt: bool,
+        commit: Optional[str] = None,
+        lld: bool = False,
+        patches: List[str] = [],
+        build_flags: List[str] = [],
+    ):
+        # if version not in self.supported_versions:
         #    raise FatalError('LLVM version must be one of %s' %
         #            '/'.join(self.supported_versions))
 
@@ -65,187 +71,202 @@ class LLVM(Package):
         self.build_flags = build_flags
         self.commit = commit
 
-        if compiler_rt and version == '4.0.0':
-            patches.append('compiler-rt-typefix')
+        if compiler_rt and version == "4.0.0":
+            patches.append("compiler-rt-typefix")
 
-    def ident(self):
-        suffix = '-lld' if self.lld else ''
-        return 'llvm-' + self.version + suffix
+    def ident(self) -> str:
+        suffix = "-lld" if self.lld else ""
+        return "llvm-" + self.version + suffix
 
-    def dependencies(self):
+    def dependencies(self) -> Iterator[Package]:
         # TODO: prune these
-        yield Bash('4.3')
-        yield CoreUtils('9.1')
+        yield Bash("4.3")
+        yield CoreUtils("9.1")
         yield self.binutils
-        yield Make('4.3')
+        yield Make("4.3")
         yield AutoMake.default()
-        yield CMake('3.16.3')
-        yield Ninja('1.8.2')
+        yield CMake("3.16.3")
+        yield Ninja("1.8.2")
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         if self.commit is not None:
-            run(ctx, ['git', 'clone', 'https://github.com/llvm/llvm-project.git', 'src'])
-            os.chdir('src')
-            run(ctx, ['git', 'checkout', self.commit])
+            run(
+                ctx, ["git", "clone", "https://github.com/llvm/llvm-project.git", "src"]
+            )
+            os.chdir("src")
+            run(ctx, ["git", "checkout", self.commit])
             return
 
-        def get(repo, clonedir):
+        def get(repo: str, clonedir: str) -> None:
             basedir = os.path.dirname(clonedir)
             if basedir:
                 os.makedirs(basedir, exist_ok=True)
 
-            #url = 'http://llvm.org/svn/llvm-project/%s/trunk' % repo
-            #run(ctx, ['svn', 'co', '-r' + ctx.params.commit, url, clonedir])
+            # url = 'http://llvm.org/svn/llvm-project/%s/trunk' % repo
+            # run(ctx, ['svn', 'co', '-r' + ctx.params.commit, url, clonedir])
 
-            dirname = '%s-%s.src' % (repo, self.version)
-            tarname = dirname + '.tar.xz'
-            major_version = int(self.version.split('.')[0])
+            dirname = f"{repo}-{self.version}.src"
+            tarname = f"{dirname}.tar.xz"
+            major_version = int(self.version.split(".")[0])
 
             if major_version >= 8:
                 # use github now
-                url_prefix = 'https://github.com/llvm/llvm-project/releases/download'
-                download(ctx, '%s/llvmorg-%s/%s' % (url_prefix, self.version, tarname))
+                url_prefix = "https://github.com/llvm/llvm-project/releases/download"
+                download(ctx, f"{url_prefix}/llvmorg-{self.version}/{tarname}")
             else:
-                download(ctx, 'https://releases.llvm.org/%s/%s' % (self.version, tarname))
+                download(ctx, f"https://releases.llvm.org/{self.version}/{tarname}")
 
-            run(ctx, ['tar', '-xf', tarname])
+            run(ctx, ["tar", "-xf", tarname])
             shutil.move(dirname, clonedir)
             os.remove(tarname)
 
-        major_version = int(self.version.split('.')[0])
+        major_version = int(self.version.split(".")[0])
 
         # starting with 9.0.1 the llvm-project is available completely
         # specifically with 15+ the separate tarballs are pretty broken
         if major_version >= 9:
-            get('llvm-project', 'src')
+            get("llvm-project", "src")
         else:
             # download and unpack sources
-            get('llvm', 'src')
+            get("llvm", "src")
 
             if major_version >= 8:
-                get('clang', 'src/tools/clang')
+                get("clang", "src/tools/clang")
             else:
-                get('cfe', 'src/tools/clang')
+                get("cfe", "src/tools/clang")
 
             if self.compiler_rt:
-                get('compiler-rt', 'src/projects/compiler-rt')
+                get("compiler-rt", "src/projects/compiler-rt")
             if self.lld:
-                get('lld', 'src/projects/lld')
+                get("lld", "src/projects/lld")
 
-    def build(self, ctx):
-        major_version = int(self.version.split('.')[0])
+    def build(self, ctx: Context) -> None:
+        major_version = int(self.version.split(".")[0])
         # TODO: verify that any applied patches are in self.patches, error
         # otherwise
 
         # apply patches from the directory this file is in
         # do this in build() instead of fetch() to make sure patches are applied
         # with --force-rebuild
-        os.chdir('src')
+        os.chdir("src")
         config_path = os.path.dirname(os.path.abspath(__file__))
         for path in self.patches:
             original_dir = None
             if isinstance(path, tuple):
-                # if path is a tuple then you can specify the directory to apply the path
-                # to at index 0 and the actual path at index 1
+                # if path is a tuple then you can specify the directory to apply the
+                # path to at index 0 and the actual path at index 1
                 # e.g. ('llvm', 'patches/LLVM-uniqueptr-fix.patch'))
                 original_dir = os.getcwd()
                 patch_dir, path = path
                 os.chdir(patch_dir)
 
-            if '/' not in path:
-                path = '%s/%s-%s.patch' % (config_path, path, self.version)
+            if "/" not in path:
+                path = f"{config_path}/{path}-{self.version}.patch"
             apply_patch(ctx, path, 1)
 
             if original_dir:
                 os.chdir(original_dir)
-        os.chdir('..')
+        os.chdir("..")
 
-        os.makedirs('obj', exist_ok=True)
-        os.chdir('obj')
+        os.makedirs("obj", exist_ok=True)
+        os.chdir("obj")
         if self.commit or major_version >= 9:
-            projects = ['clang']
+            projects = ["clang"]
             if self.lld:
-                projects.append('lld')
-            projects = ','.join(projects)
+                projects.append("lld")
             runtimes = []
             if self.compiler_rt:
-                runtimes.append('compiler-rt')
-            runtimes = ','.join(runtimes)
-            run(ctx, [
-                'cmake',
-                '-G', 'Ninja',
-                '-DCMAKE_INSTALL_PREFIX=' + self.path(ctx, 'install'),
-                '-DLLVM_BINUTILS_INCDIR=' + self.binutils.path(ctx, 'install/include'),
-                f'-DLLVM_ENABLE_PROJECTS={projects}',
-                f'-DLLVM_ENABLE_RUNTIMES={runtimes}',
-                '-DCMAKE_BUILD_TYPE=Release',
-                '-DLLVM_ENABLE_ASSERTIONS=On',
-                '-DLLVM_OPTIMIZED_TABLEGEN=On',
-                '-DCMAKE_C_COMPILER=gcc',
-                '-DCMAKE_CXX_COMPILER=g++', # must be the same as used for compiling passes
-                *self.build_flags,
-                '../src/llvm'
-            ])
+                runtimes.append("compiler-rt")
+            run(
+                ctx,
+                [
+                    "cmake",
+                    "-G",
+                    "Ninja",
+                    "-DCMAKE_INSTALL_PREFIX=" + self.path(ctx, "install"),
+                    "-DLLVM_BINUTILS_INCDIR="
+                    + self.binutils.path(ctx, "install/include"),
+                    f"-DLLVM_ENABLE_PROJECTS={','.join(projects)}",
+                    f"-DLLVM_ENABLE_RUNTIMES={','.join(runtimes)}",
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DLLVM_ENABLE_ASSERTIONS=On",
+                    "-DLLVM_OPTIMIZED_TABLEGEN=On",
+                    "-DCMAKE_C_COMPILER=gcc",
+                    # must be the same as used for compiling passes
+                    "-DCMAKE_CXX_COMPILER=g++",
+                    *self.build_flags,
+                    "../src/llvm",
+                ],
+            )
         else:
-            run(ctx, [
-                'cmake',
-                '-G', 'Ninja',
-                '-DCMAKE_INSTALL_PREFIX=' + self.path(ctx, 'install'),
-                '-DLLVM_BINUTILS_INCDIR=' + self.binutils.path(ctx, 'install/include'),
-                '-DCMAKE_BUILD_TYPE=Release',
-                '-DLLVM_ENABLE_ASSERTIONS=On',
-                '-DLLVM_OPTIMIZED_TABLEGEN=On',
-                '-DCMAKE_C_COMPILER=gcc',
-                '-DCMAKE_CXX_COMPILER=g++', # must be the same as used for compiling passes
-                *self.build_flags,
-                '../src'
-            ])
-        run(ctx, 'cmake --build . -- -j %d' % ctx.jobs)
+            run(
+                ctx,
+                [
+                    "cmake",
+                    "-G",
+                    "Ninja",
+                    "-DCMAKE_INSTALL_PREFIX=" + self.path(ctx, "install"),
+                    "-DLLVM_BINUTILS_INCDIR="
+                    + self.binutils.path(ctx, "install/include"),
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DLLVM_ENABLE_ASSERTIONS=On",
+                    "-DLLVM_OPTIMIZED_TABLEGEN=On",
+                    "-DCMAKE_C_COMPILER=gcc",
+                    # must be the same as used for compiling passes
+                    "-DCMAKE_CXX_COMPILER=g++",
+                    *self.build_flags,
+                    "../src",
+                ],
+            )
+        run(ctx, f"cmake --build . -- -j {ctx.jobs}")
 
-    def install(self, ctx):
-        os.chdir('obj')
-        run(ctx, 'cmake --build . --target install')
+    def install(self, ctx: Context) -> None:
+        os.chdir("obj")
+        run(ctx, "cmake --build . --target install")
 
-    def is_fetched(self, ctx):
-        return os.path.exists('src')
+    def is_fetched(self, ctx: Context) -> bool:
+        return os.path.exists("src")
 
-    def is_built(self, ctx):
-        return os.path.exists('obj/bin/llvm-config')
+    def is_built(self, ctx: Context) -> bool:
+        return os.path.exists("obj/bin/llvm-config")
 
-    def is_installed(self, ctx):
+    def is_installed(self, ctx: Context) -> bool:
         if not self.patches:
             # allow preinstalled LLVM if version matches
             # TODO: do fuzzy matching on version?
-            proc = run(ctx, 'llvm-config --version', allow_error=True)
+            proc = run(ctx, "llvm-config --version", allow_error=True)
             if proc and proc.returncode == 0:
                 installed_version = proc.stdout.strip()
                 if installed_version == self.version:
                     return True
                 else:
-                    ctx.log.debug('installed llvm-config version %s is '
-                                  'different from required %s' %
-                                  (installed_version, self.version))
+                    ctx.log.debug(
+                        f"installed llvm-config version {installed_version} "
+                        f"is different from required {self.version}"
+                    )
 
-        return os.path.exists('install/bin/llvm-config')
+        return os.path.exists("install/bin/llvm-config")
 
-    def configure(self, ctx: Namespace):
+    def configure(self, ctx: Context) -> None:
         """
         Set LLVM toolchain programs in **ctx**. Should be called from the
         ``configure`` method of an instance.
 
         :param ctx: the configuration context
         """
-        ctx.cc = 'clang'
-        ctx.cxx = 'clang++'
-        ctx.ar = 'llvm-ar'
-        ctx.nm = 'llvm-nm'
-        ctx.ranlib = 'llvm-ranlib'
+        ctx.cc = "clang"
+        ctx.cxx = "clang++"
+        ctx.ar = "llvm-ar"
+        ctx.nm = "llvm-nm"
+        ctx.ranlib = "llvm-ranlib"
         ctx.cflags = []
         ctx.cxxflags = []
         ctx.ldflags = []
 
     @staticmethod
-    def add_plugin_flags(ctx: Namespace, *flags: Iterable[str], gold_passes: bool = True):
+    def add_plugin_flags(
+        ctx: Context, *flags: Iterable[str], gold_passes: bool = True
+    ) -> None:
         """
         Helper to pass link-time flags to the LLVM gold plugin. Prefixes all
         **flags** with ``-Wl,-plugin-opt=`` before adding them to
@@ -256,11 +277,12 @@ class LLVM(Package):
         """
         for flag in flags:
             if gold_passes:
-                ctx.ldflags.append('-Wl,-plugin-opt=' + str(flag))
+                ctx.ldflags.append("-Wl,-plugin-opt=" + str(flag))
             else:
-                ctx.ldflags.append('-Wl,-mllvm=' + str(flag))
+                ctx.ldflags.append("-Wl,-mllvm=" + str(flag))
 
 
+@dataclass
 class LLVMBinDist(Package):
     """
     LLVM + Clang binary distribution package.
@@ -272,40 +294,41 @@ class LLVMBinDist(Package):
     :param target: target machine in tarfile name, e.g., "x86_64-linux-gnu-ubuntu-16.10"
     :param suffix: if nonempty, create {clang,clang++,opt,llvm-config}<suffix> binaries
     """
-    @param_attrs
-    def __init__(self, version, target, bin_suffix=''):
-        pass
 
-    def ident(self):
-        return 'llvmbin-' + self.version
+    version: str
+    target: str
+    bin_suffix: str
 
-    def is_fetched(self, ctx):
-        return os.path.exists('src')
+    def ident(self) -> str:
+        return "llvmbin-" + self.version
 
-    def fetch(self, ctx):
-        ident = 'clang+llvm-%s-%s' % (self.version, self.target)
-        tarname = ident + '.tar.xz'
-        download(ctx, 'http://releases.llvm.org/%s/%s' % (self.version, tarname))
-        run(ctx, ['tar', '-xf', tarname])
-        shutil.move(ident, 'src')
+    def is_fetched(self, ctx: Context) -> bool:
+        return os.path.exists("src")
+
+    def fetch(self, ctx: Context) -> None:
+        ident = f"clang+llvm-{self.version}-{self.target}"
+        tarname = ident + ".tar.xz"
+        download(ctx, f"http://releases.llvm.org/{self.version}/{tarname}")
+        run(ctx, ["tar", "-xf", tarname])
+        shutil.move(ident, "src")
         os.remove(tarname)
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return True
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         pass
 
-    def is_installed(self, ctx):
-        return os.path.exists('install')
+    def is_installed(self, ctx: Context) -> bool:
+        return os.path.exists("install")
 
-    def install(self, ctx):
-        shutil.move('src', 'install')
-        os.chdir('install/bin')
+    def install(self, ctx: Context) -> None:
+        shutil.move("src", "install")
+        os.chdir("install/bin")
 
         if self.bin_suffix:
-            for src in ('clang', 'clang++', 'opt', 'llvm-config'):
+            for src in ("clang", "clang++", "opt", "llvm-config"):
                 tgt = src + self.bin_suffix
                 if os.path.exists(src) and not os.path.exists(tgt):
-                    ctx.log.debug('creating symlink %s -> %s' % (tgt, src))
+                    ctx.log.debug(f"creating symlink {tgt} -> {src}")
                     os.symlink(src, tgt)

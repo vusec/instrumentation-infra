@@ -1,5 +1,6 @@
+from ..context import Context
 from ..package import Package
-from ..util import run, FatalError
+from ..util import FatalError, run
 
 
 class Python(Package):
@@ -13,31 +14,31 @@ class Python(Package):
     def __init__(self, version: str):
         self.version = version
 
-    def ident(self):
-        return 'python-' + self.version
+    def ident(self) -> str:
+        return "python-" + self.version
 
     def binary(self) -> str:
         """
         Returns the name of the binary that should be in the PATH.
         """
-        return 'python' + self.version
+        return "python" + self.version
 
-    def fetch(self, ctx):
+    def fetch(self, ctx: Context) -> None:
         if not self.is_installed(ctx):
-            raise FatalError(self.binary() + ' not found, please install it')
+            raise FatalError(self.binary() + " not found, please install it")
 
-    def build(self, ctx):
+    def build(self, ctx: Context) -> None:
         pass
 
-    def install(self, ctx):
+    def install(self, ctx: Context) -> None:
         pass
 
-    def is_fetched(self, ctx):
+    def is_fetched(self, ctx: Context) -> bool:
         return False
 
-    def is_built(self, ctx):
+    def is_built(self, ctx: Context) -> bool:
         return False
 
-    def is_installed(self, ctx):
-        proc = run(ctx, [self.binary(), '--version'], allow_error=True, silent=True)
-        return proc and proc.returncode == 0
+    def is_installed(self, ctx: Context) -> bool:
+        proc = run(ctx, [self.binary(), "--version"], allow_error=True, silent=True)
+        return proc.returncode == 0
