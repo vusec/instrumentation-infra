@@ -114,7 +114,7 @@ class Setup:
 
             # use a custom completer that moves non-positional options to the
             # end of the completion list, and excludes --help
-            class MyCompleter(argcomplete.finders.CompletionFinder):
+            class MyCompleter(argcomplete.CompletionFinder):
                 def filter_completions(self, completions: List[str]) -> List[str]:
                     completions = super().filter_completions(completions)
                     if completions:
