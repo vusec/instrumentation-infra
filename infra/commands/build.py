@@ -191,7 +191,10 @@ class PkgBuildCommand(Command):
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         packagearg = parser.add_argument(
-            "package", metavar="PACKAGE", help="package to build"
+            "package",
+            metavar="PACKAGE",
+            choices=self.packages,
+            help=" | ".join(self.packages),
         )
         setattr(packagearg, "completer", self.complete_package)
         parser.add_argument(
