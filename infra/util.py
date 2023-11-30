@@ -361,6 +361,10 @@ def download(ctx: Context, url: str, outfile: Optional[str] = None) -> None:
     else:
         outfile = os.path.basename(urlparse(url).path)
         ctx.log.debug(f"downloading {url}")
+
+    if os.path.exists(outfile):
+        ctx.log.warning(f"overwriting existing outfile: {outfile}")
+
     urlretrieve(url, outfile)
 
 
@@ -443,19 +447,32 @@ def require_program(ctx: Context, name: str, error: Optional[str] = None) -> Non
 def untar(
     ctx: Context,
     tarname: str,
-    dest: Optional[str] = None,
+    dest: str | None = None,
     *,
     remove: bool = True,
-    basename: Optional[str] = None,
+    basename: str | None = None,
 ) -> None:
     """
-    TODO: docs
+    Extract a given archive using `tar -xf`. Optionally deletes the archive
+    after extracting and renames the extracted directory.
+
+    :param ctx: the configuration context
+    :param tarname: name/path of the archive to extract
+    :param dest: directory holding extracted archive contents, defaults to None
+    :param remove: remove the archive after extracting, defaults to True
+    :param basename: name of output directory, defaults to archive name without .tar.*
     """
+    require_program(ctx, "tar", "required to unpack source tarfile")
+
     if basename is None:
         basename = re.sub(r"\.tar(\.\w+)?", "", tarname)
-    require_program(ctx, "tar", "required to unpack source tarfile")
+
+    ctx.log.debug(f"Extracting {tarname} (output directory basename: {basename})")
     run(ctx, ["tar", "-xf", tarname])
+
     if dest:
+        ctx.log.debug(f"Moving output directory {basename} to {dest}")
         shutil.move(basename, dest)
     if remove:
+        ctx.log.debug(f"Deleting original archive {tarname}")
         os.remove(tarname)
