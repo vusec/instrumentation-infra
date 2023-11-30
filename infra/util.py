@@ -43,40 +43,6 @@ ResultsByInstance = MutableMapping[str, List[ResultDict]]
 T = TypeVar("T")
 
 
-def add_cflag(ctx: Context, flag: Union[List[str], str]) -> None:
-    """Add flag to ctx.cflags if new"""
-    for f in flag if isinstance(flag, list) else [flag]:
-        ctx.cflags.append(f)
-
-
-def add_cxxflag(ctx: Context, flag: Union[List[str], str]) -> None:
-    """Add flag to ctx.cxxflags if new"""
-    for f in flag if isinstance(flag, list) else [flag]:
-        ctx.cxxflags.append(f)
-
-
-def add_c_cxxflag(ctx: Context, flag: Union[List[str], str]) -> None:
-    """Add a flag both to ctx.cflags & ctx.cxxflags if new"""
-    add_cflag(ctx, flag)
-    add_cxxflag(ctx, flag)
-
-
-def add_ldflag(ctx: Context, flag: Union[List[str], str]) -> None:
-    """Add flag to ctx.ldflags if new"""
-    for f in flag if isinstance(flag, list) else [flag]:
-        ctx.ldflags.append(f)
-
-
-def add_lib_ldflag(
-    ctx: Context, flag: Union[List[str], str], also_ldflag: bool = False
-) -> None:
-    """Add flag to ctx.lib_ldflags if new"""
-    for f in flag if isinstance(flag, list) else [flag]:
-        ctx.lib_ldflags.append(f)
-    if also_ldflag:
-        add_ldflag(ctx, flag)
-
-
 class Index(MutableMapping[str, T]):
     mem: MutableMapping[str, T]
 
