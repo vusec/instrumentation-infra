@@ -240,7 +240,7 @@ def run(
                    :class:`subprocess.Popen` if ``defer==True``)
     :returns: a handle to the completed or running process
     """
-    cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd]
+    cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd if str(c)]
     cmd_print = qjoin(cmd)
     stdin = kwargs.get("stdin", None)
     if isinstance(stdin, io.FileIO):
@@ -345,7 +345,7 @@ def qjoin(args: Iterable[Any]) -> str:
 
     :param args: arguments to join
     """
-    return " ".join(shlex.quote(str(arg)) for arg in args)
+    return " ".join(shlex.quote(str(arg)) for arg in args if str(arg))
 
 
 def download(ctx: Context, url: str, outfile: Optional[str] = None) -> None:
