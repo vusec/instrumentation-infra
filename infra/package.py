@@ -195,8 +195,20 @@ class Package(metaclass=ABCMeta):
             assert isinstance(prevlibpath, list)
             prevlibpath.insert(0, libpath)
 
-    def goto_rootdir(self, ctx: Context) -> None:
-        path = self.path(ctx)
+    def goto_rootdir(self, ctx: Context, *args: str) -> None:
+        """
+        Change directories into the local directory for this package; optionally
+        suffixed with a subpath. Creates new directories if they did not exist.
+
+        :param ctx: the configuration context
+        :param args: additional subpath relative to this package's base directory
+        """
+        path = self.path(ctx, *args)
+
+        if os.path.isfile(path):
+            ctx.log.warning(f"{path} points to a file; switching to parent: {os.path.dirname(path)}")
+            path = os.path.dirname(path)
+
         os.makedirs(path, exist_ok=True)
         os.chdir(path)
 
