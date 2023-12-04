@@ -147,12 +147,24 @@ def apply_patch(ctx: Context, path: str, strip_count: int) -> bool:
 
 
 def join_env_paths(env: EnvDict) -> Dict[str, str]:
+    """
+    Convert an environment dictionary to a dictionary mapping variable names to their values, all as
+    strings. Lists in the given dictionary are converted to ":"-delimited lists (e.g. like $PATH).
+
+    Note: the given dictionary should contain only str or list[str], but for both this function will
+    also attempt to convert them to string if possible.
+
+    :param EnvDict env: the environment dicitonary to convert (should contain str or list[str])
+    :return Dict[str, str]: a str-to-str mapping that can be used to pass to e.g. subprocess.run()
+    """
     ret = {}
     for k, v in env.items():
         if isinstance(v, str):
             ret[k] = v
+        elif isinstance(v, Iterable):
+            ret[k] = ":".join([str(x) for x in v])
         else:
-            ret[k] = ":".join(v)
+            ret[k] = str(v)
     return ret
 
 
