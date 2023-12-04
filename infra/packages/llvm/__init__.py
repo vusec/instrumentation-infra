@@ -510,10 +510,17 @@ class LLVM(Package):
             set_def_and_add("PATH", Path(self.path(ctx, "install", "bin")))
             set_def_and_add("LD_LIBRARY_PATH", Path(self.path(ctx, "install", "lib")))
 
-    def configure(self, ctx: Context) -> None:
+        self.load(ctx)
+
+    def load(self, ctx: Context) -> None:
         """
-        Configures the ctx object to use the clang/clang++ compiler built by this LLVM instance
-        after this function is called. Typically called from an instance's `configure()` function.
+        Loads the binaries/libraries from this specific LLVM instance into the configuration
+        context such that any targets/packages built after calling this will be built using
+        this LLVM instance.
+
+        Typically called from a pre-build hook when only using this LLVM instance to build
+        a specific target, or from an instance's configure function/at the end of the
+        install_env function such that this LLVM instance is used immediately.
 
         :param Context ctx: the configuration context
         """
@@ -529,6 +536,13 @@ class LLVM(Package):
         ctx.nm = str(bindir.joinpath("llvm-nm"))
         ctx.ranlib = str(bindir.joinpath("llvm-ranlib"))
 
+    def configure(self, ctx: Context) -> None:
+        """
+        Configures a clean context that will be used for building this LLVM instance;
+        clears the set of cflags/cxxflags/etc
+
+        :param Context ctx: the configuration context
+        """
         # Initialise the flags but if there's already values in them, print a warning before clearing
         if len(ctx.cflags) > 0 or len(ctx.cxxflags) > 0 or len(ctx.ldflags) > 0 or len(ctx.lib_ldflags) > 0:
             ctx.log.warning("Non-empty cflags/cxxflags/ldflags/lib_ldflags while configuring LLVM!")
@@ -551,12 +565,12 @@ class LLVM(Package):
         return str(self.rootdir.joinpath(*args)) if self.use_extern else super().path(ctx, *args)
 
     @staticmethod
-    def load_pass_plugin(ctx: Context, *libs: str) -> None:
+    def load_pass_plugin(ctx: Context, libs: Iterable[str]) -> None:
         """
         For compiler pass plugins, load the compiler passes from the given shared library objects.
 
         :param Context ctx: the configuration context
-        :param str *libs: add a variable number of shared libraries to load
+        :param Iterable[str] libs: add a variable number of shared libraries to load
         """
         for lib in libs:
             ctx.log.debug(f"Adding compiler pass plugin: {lib}")
@@ -564,14 +578,14 @@ class LLVM(Package):
             ctx.cxxflags.append(f"-fpass-plugin={lib}")
 
     @staticmethod
-    def add_lto_pass(ctx: Context, old_mgr: bool = True, new_mgr: bool = True, *libs: str) -> None:
+    def add_lto_pass(ctx: Context, libs: Iterable[str], old_mgr: bool = True, new_mgr: bool = True) -> None:
         """
         Helper function to load a given LTO pass using the old and/or new (LLVM >= 13) pass manager(s)
 
         :param Context ctx: the configuration context
+        :param Iterable[str] libs: shared library files containing LTO passes to load
         :param bool old_mgr: load using old pass manager (i.e. -Wl,-mllvm=-load=[lib]), defaults to true
         :param bool new_mgr: load using new pass manager (i.e. -Wl,--load-pass-plugin=[lib]), defaults to true
-        :param str libs: shared library files containing LTO passes to load
         """
         for lib in libs:
             ctx.log.debug(f"Adding link-time optimisation pass: {lib}")
@@ -581,14 +595,15 @@ class LLVM(Package):
                 ctx.ldflags.append(f"-Wl,--load-pass-plugin={lib}")
 
     @staticmethod
-    def add_lto_pass_flags(ctx: Context, gold_passes: bool = False, *flags: str) -> None:
+    def add_lto_pass_flags(ctx: Context, flags: Iterable[str], gold_passes: bool = False) -> None:
         """
         Helper function to add link-time flags to the inserted LTO passes; prefixes the given flags with
         `-Wl,-plugin-opt=` when using the gold plugin; otherwise add them using the interface expected
         by ld.lld (i.e. prepends `-Wl,-mllvm=`). Requires ld.lld to be enabled.
 
         :param Context ctx: the configuration context
-        :param str *flags: the LTO pass flags to add to `ctx.ldflags`
+        :param Iterable[str] *flags: the LTO pass flags to add to `ctx.ldflags`
+        :param bool gold_passes: insert the pass using syntax for gold plugin
         """
         for flag in flags:
             if gold_passes:
