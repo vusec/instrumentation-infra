@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 from requests import patch
+from sympy import Q
 
 from ...context import Context
 from ...package import Package
@@ -510,9 +511,10 @@ class LLVM(Package):
             set_def_and_add("PATH", Path(self.path(ctx, "install", "bin")))
             set_def_and_add("LD_LIBRARY_PATH", Path(self.path(ctx, "install", "lib")))
 
+        # Ensure required variables are loaded & set into the configuration context
         self.load(ctx)
 
-    def load(self, ctx: Context) -> None:
+    def load(self, ctx: Context, reset_flags: bool = True) -> None:
         """
         Loads the binaries/libraries from this specific LLVM instance into the configuration
         context such that any targets/packages built after calling this will be built using
@@ -522,7 +524,13 @@ class LLVM(Package):
         a specific target, or from an instance's configure function/at the end of the
         install_env function such that this LLVM instance is used immediately.
 
+        By default, this function will reset the cflags/cxxflags/ldflags to avoid flags used
+        for building LLVM itself (with possibly a different compiler) conflicting with flags
+        for LLVM tools when building dependencies/targets with this LLVM toolchain. The
+        `llvm-config` tool is used to get appropriate initial values for [c/cxx/ld]flags.
+
         :param Context ctx: the configuration context
+        :param bool reset_flags: clear flags used to build LLVM itself, defaults to True
         """
         # If using an external LLVM, use its bindir, otherwise relative to local build
         bindir = self.bindir if self.use_extern else Path(self.path(ctx, "install", "bin"))
@@ -535,6 +543,38 @@ class LLVM(Package):
         ctx.ar = str(bindir.joinpath("llvm-ar"))
         ctx.nm = str(bindir.joinpath("llvm-nm"))
         ctx.ranlib = str(bindir.joinpath("llvm-ranlib"))
+
+        # If resetting [c/cxx/ld]flags, clear the values currently in ctx.[...]flags
+        if reset_flags:
+            ctx.cflags = []
+            ctx.cxxflags = []
+            ctx.ldflags = []
+            ctx.lib_ldflags = []
+            ctx.fcflags = []
+
+        # Get flags to use for objects that use LLVM from `llvm-config`
+        llvm_conf = bindir.joinpath("llvm-config")
+        assert llvm_conf.exists()
+
+        # Ignore flags that overwrite the default used C standard
+        for f in run(ctx, [llvm_conf, "--cflags"], silent=True).stdout.strip().split():
+            if f.startswith("-std="):
+                continue
+            ctx.cflags.append(f)
+
+        # Ignore exception-handling disabling or overwriting the default c++ standard
+        for f in run(ctx, [llvm_conf, "--cxxflags"], silent=True).stdout.strip().split():
+            if f.startswith("-std=") or f == "-fno-exceptions":
+                continue
+            ctx.cxxflags.append(f)
+
+        # Include the LLVM include library (i.e. -L...)
+        for f in run(ctx, [llvm_conf, "--ldflags"], silent=True).stdout.strip().split():
+            ctx.ldflags.append(f)
+
+        # Actually link the LLVM shared library (i.e. -lLLVM...)
+        for f in run(ctx, [llvm_conf, "--libs"], silent=True).stdout.strip().split():
+            ctx.ldflags.append(f)
 
     def configure(self, ctx: Context) -> None:
         """
