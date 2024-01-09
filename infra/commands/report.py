@@ -105,7 +105,12 @@ class ReportCommand(Command):
         subparsers.required = True
 
         for name, target in self.targets.items():
-            tparser = subparsers.add_parser(name)
+            tparser = subparsers.add_parser(
+                name=name,
+                help=f"report configuration options for target {name} ({target.name})",
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            )
+
             rundirsarg = tparser.add_argument(
                 "rundirs",
                 nargs="+",
@@ -129,9 +134,7 @@ class ReportCommand(Command):
                 dest="cache",
                 help="cached results in the bottom of log files",
             )
-            tparser.add_argument(
-                "--refresh", action="store_true", help="refresh cached results in logs"
-            )
+            tparser.add_argument("--refresh", action="store_true", help="refresh cached results in logs")
 
             add_table_report_args(tparser)
 
@@ -153,10 +156,7 @@ class ReportCommand(Command):
                 metavar="FIELD",
                 choices=_reportable_fields(target),
                 default=target.aggregation_field,
-                help=(
-                    "field to group by when aggregating results "
-                    f"(default {target.aggregation_field})"
-                ),
+                help=("field to group by when aggregating results " f"(default {target.aggregation_field})"),
             )
             tparser.add_argument(
                 "--filter",
@@ -254,9 +254,7 @@ class ReportCommand(Command):
 
         rows: Dict[str, List[Tuple[ResultVal, ...]]] = {}
         for instance in instances:
-            rows[instance] = sorted(
-                tuple(r[f] for f in fields) for r in results[instance]
-            )
+            rows[instance] = sorted(tuple(r[f] for f in fields) for r in results[instance])
 
         instance_rows = [rows[i] for i in instances]
         joined_rows: List[List[ResultVal]] = []
@@ -274,19 +272,14 @@ class ReportCommand(Command):
         fields: FieldAggregators,
     ) -> None:
         def keep(result: ResultDict) -> bool:
-            return (
-                not ctx.args.filter or str(result[ctx.args.groupby]) in ctx.args.filter
-            )
+            return not ctx.args.filter or str(result[ctx.args.groupby]) in ctx.args.filter
 
         baseline_instance = ctx.args.overhead
 
         instances = sorted(results)
         groupby_values = sorted(
             set(
-                result[ctx.args.groupby]
-                for instance_results in results.values()
-                for result in instance_results
-                if keep(result)
+                result[ctx.args.groupby] for instance_results in results.values() for result in instance_results if keep(result)
             )
         )
         grouped: Dict[Tuple[Tuple[ResultVal, str], str], List[ResultVal]] = {}
@@ -388,9 +381,7 @@ class _FieldCompleter:
     def __init__(self, target: Target):
         self.fields = _reportable_fields(target)
 
-    def __call__(
-        self, prefix: str, parsed_args: argparse.Namespace, **kwargs: Any
-    ) -> Iterator[str]:
+    def __call__(self, prefix: str, parsed_args: argparse.Namespace, **kwargs: Any) -> Iterator[str]:
         parts = prefix.split(":")
         if len(parts) == 1:
             field_prefix = parts[0]
@@ -419,10 +410,7 @@ def add_table_report_args(parser: argparse.ArgumentParser) -> None:
         "--table",
         choices=("fancy", "ascii", "csv", "tsv", "ssv"),
         default="fancy" if can_fancy else "ascii",
-        help=(
-            "output mode for tables: UTF-8 formatted (default) / "
-            "ASCII tables / {comma,tab,space}-separated"
-        ),
+        help=("output mode for tables: UTF-8 formatted (default) / " "ASCII tables / {comma,tab,space}-separated"),
     )
 
     parser.add_argument(
@@ -484,10 +472,7 @@ def report_table(
         return n_string
 
     # stringify data
-    data_rows = [
-        [pad(_to_string(ctx, v), v, col) for col, v in enumerate(row)]
-        for row in data_rows
-    ]
+    data_rows = [[pad(_to_string(ctx, v), v, col) for col, v in enumerate(row)] for row in data_rows]
 
     # print human-readable table
     if ctx.args.table == "fancy":
@@ -576,18 +561,14 @@ def outfile_path(ctx: Context, target: Target, instance: Instance, *args: str) -
     :returns: ``results/run.YY-MM-DD.HH-MM-SS/<target>/<instance>[/<arg>...]``
     """
     rundir = ctx.starttime.strftime("run.%Y-%m-%d.%H-%M-%S")
-    path = os.path.join(
-        ctx.paths.pool_results, rundir, target.name, instance.name, *args
-    )
+    path = os.path.join(ctx.paths.pool_results, rundir, target.name, instance.name, *args)
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
     # Maintain a 'last' symlink to latest results
     symname = os.path.join(ctx.paths.pool_results, "last")
     if os.path.exists(symname):
         os.unlink(symname)
-    os.symlink(
-        os.path.join(ctx.paths.pool_results, rundir), symname, target_is_directory=True
-    )
+    os.symlink(os.path.join(ctx.paths.pool_results, rundir), symname, target_is_directory=True)
 
     return path
 
@@ -647,9 +628,7 @@ def parse_logs(
                     if not instance_names or instance in instance_names:
                         instance_dirs.append((instance, instancedir))
         else:
-            ctx.log.warning(
-                f"rundir {rundir} contains no results for target {target.name}"
-            )
+            ctx.log.warning(f"rundir {rundir} contains no results for target {target.name}")
 
     for iname, idir in instance_dirs:
         instance_results: List[ResultDict] = results.setdefault(iname, [])
@@ -659,9 +638,7 @@ def parse_logs(
             if not os.path.isfile(path):
                 continue
 
-            fresults = process_log(
-                ctx, path, target, write_cache=write_cache, read_cache=read_cache
-            )
+            fresults = process_log(ctx, path, target, write_cache=write_cache, read_cache=read_cache)
             instance_results += fresults
 
     return results
@@ -776,34 +753,22 @@ def parse_all_results(ctx: Context, path: str) -> Iterator[Tuple[str, ResultDict
                     result = {}
                 elif re.match(r"end \w+", statement):
                     if result is None:
-                        ctx.log.error(
-                            f"missing start for '{bname}' end statement at"
-                            f" {path}:{lineno}"
-                        )
+                        ctx.log.error(f"missing start for '{bname}' end statement at" f" {path}:{lineno}")
                     else:
                         assert bname is not None
                         ename = statement[4:]
                         if ename != bname:
-                            ctx.log.error(
-                                "begin/end name mismatch at "
-                                f"{path}:{lineno}: {ename} != {bname}"
-                            )
+                            ctx.log.error("begin/end name mismatch at " f"{path}:{lineno}: {ename} != {bname}")
 
                         yield bname, result
                         result = bname = None
                 elif result is None:
-                    ctx.log.error(
-                        f"ignoring {result_prefix} statement outside of "
-                        f"begin-end at {path}:{lineno}"
-                    )
+                    ctx.log.error(f"ignoring {result_prefix} statement outside of " f"begin-end at {path}:{lineno}")
                 else:
                     name, value = statement.split(": ", 1)
 
                     if name in result:
-                        ctx.log.warning(
-                            f"duplicate metadata entry for '{name}' at {path}:{lineno},"
-                            " using the last one"
-                        )
+                        ctx.log.warning(f"duplicate metadata entry for '{name}' at {path}:{lineno}," " using the last one")
 
                     result[name] = _unbox_value(value)
 

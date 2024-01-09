@@ -27,8 +27,12 @@ class BuildCommand(Command):
         )
         target_parsers.required = True
 
-        for target in self.targets.values():
-            tparser = target_parsers.add_parser(target.name)
+        for name, target in self.targets.items():
+            tparser = target_parsers.add_parser(
+                name=name,
+                help=f"{self.name} configuration options for {target.name}",
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            )
 
             tparser.add_argument(
                 "instances",
@@ -55,7 +59,9 @@ class BuildCommand(Command):
                 help="always run the build commands",
             )
             tparser.add_argument(
-                "--clean", action="store_true", help="clean target first"
+                "--clean",
+                action="store_true",
+                help="clean target first",
             )
             tparser.add_argument(
                 "--dry-run",
@@ -148,7 +154,9 @@ class ExecHookCommand(Command):
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
-            "hooktype", choices=["pre-build", "post-build"], help="hook type"
+            "hooktype",
+            choices=["pre-build", "post-build"],
+            help="hook type",
         )
         parser.add_argument(
             "instance",
@@ -157,7 +165,9 @@ class ExecHookCommand(Command):
             help=" | ".join(self.instances),
         )
         parser.add_argument(
-            "targetfile", metavar="TARGETFILE", help="file to run hook on"
+            "targetfile",
+            metavar="TARGETFILE",
+            help="file to run hook on",
         )
 
     def run(self, ctx: Context) -> None:
@@ -197,6 +207,7 @@ class PkgBuildCommand(Command):
             help=" | ".join(self.packages),
         )
         setattr(packagearg, "completer", self.complete_package)
+
         parser.add_argument(
             "-j",
             "--jobs",
@@ -209,7 +220,11 @@ class PkgBuildCommand(Command):
             action="store_true",
             help="always run the build commands",
         )
-        parser.add_argument("--clean", action="store_true", help="clean package first")
+        parser.add_argument(
+            "--clean",
+            action="store_true",
+            help="clean package first",
+        )
         parser.add_argument(
             "--dry-run",
             action="store_true",

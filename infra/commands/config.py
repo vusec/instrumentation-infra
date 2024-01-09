@@ -11,12 +11,8 @@ class ConfigCommand(Command):
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         group = parser.add_mutually_exclusive_group(required=True)
-        group.add_argument(
-            "--instances", action="store_true", help="list all registered instances"
-        )
-        group.add_argument(
-            "--targets", action="store_true", help="list all registered targets"
-        )
+        group.add_argument("--instances", action="store_true", help="list all registered instances")
+        group.add_argument("--targets", action="store_true", help="list all registered targets")
         group.add_argument(
             "--packages",
             action="store_true",
@@ -42,9 +38,12 @@ class PkgConfigCommand(Command):
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         packagearg = parser.add_argument(
-            "package", metavar="PACKAGE", help="package to configure"
+            "package",
+            metavar="PACKAGE",
+            help="package to configure",
         )
         setattr(packagearg, "completer", self.complete_package)
+
         parser.add_argument(
             "args",
             nargs=argparse.REMAINDER,
@@ -53,18 +52,20 @@ class PkgConfigCommand(Command):
             help="configuration args (package dependent)",
         )
 
-        self.subparsers = parser.add_subparsers(
-            title="pkg-config options", metavar="", description=""
-        )
+        self.subparsers = parser.add_subparsers(title="pkg-config options", metavar="", description="")
 
     def run(self, ctx: Context) -> None:
-        package = self.packages[ctx.args.package]
-        subparser = self.subparsers.add_parser(f"{ctx.args.command} {package.ident()}")
+        name = ctx.args.package
+        package = self.packages[name]
+
+        subparser = self.subparsers.add_parser(
+            name=name,
+            help=f"package configuration options for {package.ident()}",
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        )
         pgroup = subparser.add_mutually_exclusive_group(required=True)
         for opt, desc, value in package.pkg_config_options(ctx):
-            pgroup.add_argument(
-                opt, action="store_const", dest="value", const=value, help=desc
-            )
+            pgroup.add_argument(opt, action="store_const", dest="value", const=value, help=desc)
         value = subparser.parse_args(ctx.args.args).value
 
         # for lists (handy for flags), join by spaces while adding quotes where

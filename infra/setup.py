@@ -82,7 +82,8 @@ class Setup:
 
     def _parse_argv(self) -> None:
         parser = argparse.ArgumentParser(
-            description="Frontend for building/running instrumented benchmarks."
+            description="Frontend for building/running instrumented benchmarks",
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         )
 
         # global options
@@ -91,21 +92,23 @@ class Setup:
             "--verbosity",
             default="info",
             choices=["critical", "error", "warning", "info", "debug"],
-            help="set logging verbosity (default info)",
+            help="set logging verbosity of infrastructure utility",
         )
 
         subparsers = parser.add_subparsers(
             title="subcommands",
             metavar="COMMAND",
             dest="command",
-            description=(
-                'run with "<command> --help" to see options for individual commands'
-            ),
+            description=('run with "<command> --help" to see options for individual commands'),
         )
         subparsers.required = True
 
         for name, command in self.commands.items():
-            subparser = subparsers.add_parser(name, help=command.description)
+            subparser = subparsers.add_parser(
+                name=name,
+                help=command.description,
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            )
             command.add_args(subparser)
 
         # enable bash autocompletion if supported
@@ -123,9 +126,7 @@ class Setup:
                                 return completions[i:] + completions[:i]
                     return completions
 
-            silent_commands = [
-                c.name for c in self.commands.values() if c.description is None
-            ]
+            silent_commands = [c.name for c in self.commands.values() if c.description is None]
             MyCompleter()(parser, exclude=["--help"] + silent_commands)
         except ImportError:
             self.ctx.log.warning("Failed to set Python command-line autocompletion")
@@ -164,9 +165,7 @@ class Setup:
         try:
             import coloredlogs
 
-            coloredlogs.install(
-                logger=log, fmt=fmt, datefmt=datefmt, level=termlog.level
-            )
+            coloredlogs.install(logger=log, fmt=fmt, datefmt=datefmt, level=termlog.level)
         except ImportError:
             pass
 

@@ -18,8 +18,12 @@ class RunCommand(Command):
         )
         target_parsers.required = True
 
-        for target in self.targets.values():
-            tparser = target_parsers.add_parser(target.name)
+        for name, target in self.targets.items():
+            tparser = target_parsers.add_parser(
+                name=self.name,
+                help=f"configuration options for running {target.name}",
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            )
 
             tparser.add_argument(
                 "instances",
