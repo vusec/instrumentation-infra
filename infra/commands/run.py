@@ -20,7 +20,7 @@ class RunCommand(Command):
 
         for name, target in self.targets.items():
             tparser = target_parsers.add_parser(
-                name=self.name,
+                name=name,
                 help=f"configuration options for running {target.name}",
                 formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             )
