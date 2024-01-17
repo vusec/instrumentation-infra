@@ -443,7 +443,7 @@ class LLVM(Package):
             [
                 "cmake",
                 "-S",
-                self.path(ctx, "llvm") if self.version.major >= 8 else self.path(ctx),
+                self.path(ctx, "llvm-project/llvm") if self.version.major >= 8 else self.path(ctx),
                 "-B",
                 self.path(ctx, "build"),
                 "-G",
