@@ -29,7 +29,7 @@ class BuildCommand(Command):
 
         for name, target in self.targets.items():
             tparser = target_parsers.add_parser(
-                name=name,
+                name=target.name,
                 help=f"{self.name} configuration options for {target.name}",
                 formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             )
