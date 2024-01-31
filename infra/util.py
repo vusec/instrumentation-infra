@@ -348,28 +348,15 @@ def run(
     return proc
 
 
-def qjoin(args: Iterable[Any], split_tuples: bool = True) -> str:
+def qjoin(args: Iterable[Any]) -> str:
     """
     Join the command-line arguments to a single string to make it safe to pass to paste in a shell.
     Basically, this adds quotes to each element containing spaces (using :func:`shlex.quote`).
     Arguments are additionally stringified (using :class:`str`) before joining them together.
 
-    If :param:`split_tuples` is `True`, any tuples in the list of arguments will be joined with a
-    space separator, preserving their order. This is useful when a program does not support supplying
-    the value to a parameter using the equals (`=`) sign but instead relies on separation by spaces.
-    For example, `-Xclang <arg>` should not get quoted to `"-Xclang <arg>"`, nor can it be supplied
-    through `-Xclang=<arg>` for all versions of Clang. Because :param:`args` is of type
-    :type:`Iterable` and supports unordered objects, `-Xclang` and `<arg>` are not always passed
-    directly following each other, so they can instead be passed as a tuple.
-
     :param args: arguments to join
-    :param split_tuples: whether tuples should be unpacked into space-separated arguments
     """
-    return " ".join(
-        (qjoin(arg, split_tuples=split_tuples) if split_tuples and isinstance(arg, tuple) else shlex.quote(str(arg)))
-        for arg in args
-        if str(arg)
-    )
+    return " ".join(shlex.quote(str(arg)) for arg in args if str(arg))
 
 
 def download(ctx: Context, url: str, outfile: Optional[str] = None) -> None:

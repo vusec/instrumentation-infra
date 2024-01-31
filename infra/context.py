@@ -35,10 +35,7 @@ def slotted(cls: Type[T]) -> Type[T]:
 
     def slotted_setattr(self: "DataclassInstance", key: str, value: Any) -> None:
         if key not in (f.name for f in fields(self)):
-            raise Exception(
-                f"cannot set '{key}' in ctx: dynamically adding extra "
-                "fields to ctx is deprecated"
-            )
+            raise Exception(f"cannot set '{key}' in ctx: dynamically adding extra " "fields to ctx is deprecated")
         super(type(self), self).__setattr__(key, value)
 
     setattr(cls, "__setattr__", slotted_setattr)
