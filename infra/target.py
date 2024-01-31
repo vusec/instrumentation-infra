@@ -136,8 +136,20 @@ class Target(metaclass=ABCMeta):
         """
         return os.path.join(ctx.paths.targets, self.name, *args)
 
-    def goto_rootdir(self, ctx: Context) -> None:
-        path = self.path(ctx)
+    def goto_rootdir(self, ctx: Context, *args: str) -> None:
+        """
+        Change directories into the local directory for this package; optionally
+        suffixed with a subpath. Creates new directories if they did not exist.
+
+        :param ctx: the configuration context
+        :param args: additional subpath relative to this package's base directory
+        """
+        path = self.path(ctx, *args)
+
+        if os.path.isfile(path):
+            ctx.log.warning(f"{path} points to a file; switching to parent: {os.path.dirname(path)}")
+            path = os.path.dirname(path)
+
         os.makedirs(path, exist_ok=True)
         os.chdir(path)
 
@@ -162,9 +174,7 @@ class Target(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def build(
-        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
-    ) -> None:
+    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
         """
         Build the target object files. Called some time after :func:`fetch` (see
         :class:`above <Target>`).
@@ -197,9 +207,7 @@ class Target(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def run(
-        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
-    ) -> None:
+    def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
         """
         Run the target binaries. This should be done using :func:`util.run` so
         that ``ctx.runenv`` is used (which can be set by an instance or
@@ -278,8 +286,6 @@ class Target(metaclass=ABCMeta):
                 absbin = os.path.abspath(binary)
                 basedir = os.path.dirname(absbin)
                 for hook in ctx.hooks.post_build:
-                    ctx.log.info(
-                        f"Running post-build hook {hook} on {absbin} in {basedir}"
-                    )
+                    ctx.log.info(f"Running post-build hook {hook} on {absbin} in {basedir}")
                     os.chdir(basedir)
                     hook(ctx, absbin)

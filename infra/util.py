@@ -359,13 +359,14 @@ def qjoin(args: Iterable[Any]) -> str:
     return " ".join(shlex.quote(str(arg)) for arg in args if str(arg))
 
 
-def download(ctx: Context, url: str, outfile: Optional[str] = None) -> None:
+def download(ctx: Context, url: str, outfile: Optional[str] = None) -> str:
     """
     Download a file (logs to the debug log).
 
     :param ctx: the configuration context
     :param url: URL to the file to download
     :param outfile: optional path/filename to download to
+    :returns: the name of the downloaded file
     """
     if outfile:
         ctx.log.debug(f"downloading {url} to {outfile}")
@@ -377,6 +378,7 @@ def download(ctx: Context, url: str, outfile: Optional[str] = None) -> None:
         ctx.log.warning(f"overwriting existing outfile: {outfile}")
 
     urlretrieve(url, outfile)
+    return outfile
 
 
 class _Tee(io.IOBase):
