@@ -356,13 +356,13 @@ class LLVM(Package):
 
         # Clear old source files/trees
         ctx.log.debug(f"Clearing destination (empty: {dest.is_dir() and any(dest.iterdir())}): {dest}")
-        if dest.is_dir():
+        if dest.is_dir() and dest.exists():
             shutil.rmtree(dest)
         os.makedirs(dest.parent, exist_ok=True)
 
         # Download & extract
         download(ctx, url, outfile=str(archive))
-        untar(ctx, tar_name, dest, remove=True, basename=src_name)
+        untar(ctx, tar_name, str(dest), remove=True, basename=src_name)
 
     def fetch(self, ctx: Context) -> None:
         if self.use_extern:
@@ -490,15 +490,19 @@ class LLVM(Package):
             :param str var: which variable to take from the system environment as default & prepend to
             :param Path val: the actual value to prepend
             """
+            if not val.exists():
+                ctx.log.warning(f"Cannot add '{val}' to '{var}'; '{val}' does not exist!")
+                return
+
             # Get current value from runenv and take the OS' value of the variable as the default
             current = ctx.runenv.setdefault(var, os.environ.get(var, "").split(":"))
 
-            # Sanity checks; new value to add must exist and the variable to add to must be a list
-            assert isinstance(current, list)
-            assert val.exists()
-
-            # Actually add the given value to the front of the list in the running environment
-            current.insert(0, str(val))
+            # If the environment variable is a list, add the value to FRONT of the list (so it's used first)
+            if isinstance(current, list):
+                current.insert(0, str(val))
+                ctx.log.debug(f"New '{var}': '{current}'")
+            else:
+                ctx.log.warning(f"Cannot add '{val}' to '{var}'; '{var}' is not a list (got: '{type(current)})")
 
         if self.use_extern:
             # Sanity checks; these should've been set in the __init__ function
@@ -534,47 +538,39 @@ class LLVM(Package):
         """
         # If using an external LLVM, use its bindir, otherwise relative to local build
         bindir = self.bindir if self.use_extern else Path(self.path(ctx, "install", "bin"))
+        if isinstance(bindir, list):
+            # The clang/clang++ compilers should always be configured
+            ctx.cc = str(bindir.joinpath("clang"))
+            ctx.cxx = str(bindir.joinpath("clang++"))
 
-        # The clang/clang++ compilers should always be configured
-        ctx.cc = str(bindir.joinpath("clang"))
-        ctx.cxx = str(bindir.joinpath("clang++"))
-
-        # Set the LLVM tools to be used by default as well (e.g. ar, ranlib, etc)
-        ctx.ar = str(bindir.joinpath("llvm-ar"))
-        ctx.nm = str(bindir.joinpath("llvm-nm"))
-        ctx.ranlib = str(bindir.joinpath("llvm-ranlib"))
+            # Set the LLVM tools to be used by default as well (e.g. ar, ranlib, etc)
+            ctx.ar = str(bindir.joinpath("llvm-ar"))
+            ctx.nm = str(bindir.joinpath("llvm-nm"))
+            ctx.ranlib = str(bindir.joinpath("llvm-ranlib"))
+        else:
+            ctx.log.error(f"Cannot load LLVM; '{bindir}' is not a Path object (got: '{type(bindir)}')")
 
         # If resetting [c/cxx/ld]flags, clear the values currently in ctx.[...]flags
         if reset_flags:
-            ctx.cflags = []
-            ctx.cxxflags = []
-            ctx.ldflags = []
-            ctx.lib_ldflags = []
-            ctx.fcflags = []
 
-        # Get flags to use for objects that use LLVM from `llvm-config`
-        llvm_conf = bindir.joinpath("llvm-config")
-        assert llvm_conf.exists()
+            def clear_list(l: list[str]):
+                try:
+                    from varname import nameof
 
-        # Ignore flags that overwrite the default used C standard
-        for f in run(ctx, [llvm_conf, "--cflags"], silent=True).stdout.strip().split():
-            if f.startswith("-std="):
-                continue
-            ctx.cflags.append(f)
+                    if not len(l) == 0:
+                        ctx.log.warning(f"Clearing non-empty argument list '{nameof(l)}'; old flags: '{l}'")
+                    l.clear()
+                    ctx.log.debug(f"Cleared arugment list: '{nameof(l)}'")
+                except ImportError as e:
+                    ctx.log.warning(f"Clearing non-empty argument list: '{repr(l)}'; old flags: '{l}'")
+                    l.clear()
+                    ctx.log.debug(f"Successfully cleared argument list: '{repr(l)}'")
 
-        # Ignore exception-handling disabling or overwriting the default c++ standard
-        for f in run(ctx, [llvm_conf, "--cxxflags"], silent=True).stdout.strip().split():
-            if f.startswith("-std=") or f == "-fno-exceptions":
-                continue
-            ctx.cxxflags.append(f)
-
-        # Include the LLVM include library (i.e. -L...)
-        for f in run(ctx, [llvm_conf, "--ldflags"], silent=True).stdout.strip().split():
-            ctx.ldflags.append(f)
-
-        # Actually link the LLVM shared library (i.e. -lLLVM...)
-        for f in run(ctx, [llvm_conf, "--libs"], silent=True).stdout.strip().split():
-            ctx.ldflags.append(f)
+            clear_list(ctx.cflags)
+            clear_list(ctx.cxxflags)
+            clear_list(ctx.ldflags)
+            clear_list(ctx.lib_ldflags)
+            clear_list(ctx.fcflags)
 
     def configure(self, ctx: Context) -> None:
         """
@@ -602,7 +598,10 @@ class LLVM(Package):
         super().clean(ctx)
 
     def path(self, ctx: Context, *args: str) -> str:
-        return str(self.rootdir.joinpath(*args)) if self.use_extern else super().path(ctx, *args)
+        if self.use_extern:
+            assert isinstance(self.rootdir, Path)
+            return str(self.rootdir.joinpath(*args))
+        return super().path(ctx, *args)
 
     @staticmethod
     def load_pass_plugin(ctx: Context, libs: Iterable[str]) -> None:
