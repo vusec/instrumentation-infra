@@ -338,7 +338,7 @@ def run(
             ctx.log.error(f"{k}={v}")
         assert proc.proc is not None
         if proc.proc.stdout is not None:
-            output = proc.stdout
+            output = proc.proc.stdout
             if isinstance(output, bytes):
                 output = output.decode()
             assert isinstance(output, str)
