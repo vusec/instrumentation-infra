@@ -271,15 +271,19 @@ class LLVM(Package):
         return self.name
 
     def dependencies(self) -> Iterator[Package]:
-        yield from [] if self.use_extern else [
-            self.make,
-            self.bash,
-            self.cmake,
-            self.ninja,
-            self.binutils,
-            self.coreutils,
-            self.automake,
-        ]
+        yield from (
+            []
+            if self.use_extern
+            else [
+                self.make,
+                self.bash,
+                self.cmake,
+                self.ninja,
+                self.binutils,
+                self.coreutils,
+                self.automake,
+            ]
+        )
 
     def is_fetched(self, ctx: Context) -> bool:
         if self.use_extern:
@@ -537,40 +541,40 @@ class LLVM(Package):
         :param bool reset_flags: clear flags used to build LLVM itself, defaults to True
         """
         # If using an external LLVM, use its bindir, otherwise relative to local build
-        bindir = self.bindir if self.use_extern else Path(self.path(ctx, "install", "bin"))
-        if isinstance(bindir, list):
-            # The clang/clang++ compilers should always be configured
-            ctx.cc = str(bindir.joinpath("clang"))
-            ctx.cxx = str(bindir.joinpath("clang++"))
+        if self.use_extern:
+            # Sanity checks; these should've been set in the __init__ function
+            assert isinstance(self.bindir, Path) and self.bindir.exists()
+            assert isinstance(self.libdir, Path) and self.libdir.exists()
 
-            # Set the LLVM tools to be used by default as well (e.g. ar, ranlib, etc)
-            ctx.ar = str(bindir.joinpath("llvm-ar"))
-            ctx.nm = str(bindir.joinpath("llvm-nm"))
-            ctx.ranlib = str(bindir.joinpath("llvm-ranlib"))
+            ctx.cc = str(self.bindir.joinpath("clang"))
+            ctx.cxx = str(self.bindir.joinpath("clang++"))
+            ctx.ar = str(self.bindir.joinpath("llvm-ar"))
+            ctx.nm = str(self.bindir.joinpath("llvm-nm"))
+            ctx.ranlib = str(self.bindir.joinpath("llvm-ranlib"))
         else:
-            ctx.log.error(f"Cannot load LLVM; '{bindir}' is not a Path object (got: '{type(bindir)}')")
+            ctx.cc = str(self.path(ctx, "install", "bin", "clang"))
+            ctx.cxx = str(self.path(ctx, "install", "bin", "clang++"))
+            ctx.ar = str(self.path(ctx, "install", "bin", "llvm-ar"))
+            ctx.nm = str(self.path(ctx, "install", "bin", "llvm-nm"))
+            ctx.ranlib = str(self.path(ctx, "install", "bin", "llvm-ranlib"))
 
         # If resetting [c/cxx/ld]flags, clear the values currently in ctx.[...]flags
         if reset_flags:
-
-            def clear_list(l: list[str]):
-                try:
-                    from varname import nameof
-
-                    if not len(l) == 0:
-                        ctx.log.warning(f"Clearing non-empty argument list '{nameof(l)}'; old flags: '{l}'")
-                    l.clear()
-                    ctx.log.debug(f"Cleared arugment list: '{nameof(l)}'")
-                except ImportError as e:
-                    ctx.log.warning(f"Clearing non-empty argument list: '{repr(l)}'; old flags: '{l}'")
-                    l.clear()
-                    ctx.log.debug(f"Successfully cleared argument list: '{repr(l)}'")
-
-            clear_list(ctx.cflags)
-            clear_list(ctx.cxxflags)
-            clear_list(ctx.ldflags)
-            clear_list(ctx.lib_ldflags)
-            clear_list(ctx.fcflags)
+            if not len(ctx.cflags) == 0:
+                ctx.log.warning(f"Clearing non-empty argument list 'ctx.cflags'; old flags: {ctx.cflags}")
+            if not len(ctx.cxxflags) == 0:
+                ctx.log.warning(f"Clearing non-empty argument list 'ctx.cxxflags'; old flags: {ctx.cxxflags}")
+            if not len(ctx.ldflags) == 0:
+                ctx.log.warning(f"Clearing non-empty argument list 'ctx.ldflags'; old flags: {ctx.ldflags}")
+            if not len(ctx.lib_ldflags) == 0:
+                ctx.log.warning(f"Clearing non-empty argument list 'ctx.lib_ldflags'; old flags: {ctx.lib_ldflags}")
+            if not len(ctx.fcflags) == 0:
+                ctx.log.warning(f"Clearing non-empty argument list 'ctx.fcflags'; old flags: {ctx.fcflags}")
+            ctx.cflags.clear()
+            ctx.cxxflags.clear()
+            ctx.ldflags.clear()
+            ctx.lib_ldflags.clear()
+            ctx.fcflags.clear()
 
     def configure(self, ctx: Context) -> None:
         """
