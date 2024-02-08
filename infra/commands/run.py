@@ -66,6 +66,8 @@ class RunCommand(Command):
         instances = self.instances.select(ctx.args.instances)
         pool = self.make_pool(ctx)
 
+        self.enable_run_log(ctx)
+
         ctx.args.dry_run = False
         oldctx = ctx.copy()
 
