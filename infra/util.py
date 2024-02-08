@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import sys
 import threading
-from time import sleep
 import typing
 from collections import OrderedDict
 from contextlib import redirect_stdout
@@ -308,7 +307,6 @@ def run(
             return proc
 
         proc = Process(subprocess.run(cmd, env=renv, **kwargs), cmd_print, teeout)
-        sleep(1)
 
     except FileNotFoundError:
         logfn = ctx.log.debug if allow_error else ctx.log.error
