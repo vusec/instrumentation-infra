@@ -1,3 +1,4 @@
+from itertools import chain
 import logging
 import os
 import shutil
@@ -512,15 +513,24 @@ class LLVM(Package):
             # Sanity checks; these should've been set in the __init__ function
             assert self.bindir is not None and self.libdir is not None
 
-            # Add the directories from `llvm-config --bindir` and `llvm-config --libdir` to the runenv
+            # Add the binary directory to the PATH variable
             set_def_and_add("PATH", self.bindir)
-            set_def_and_add("LD_LIBRARY_PATH", self.libdir)
+
+            # Get all directories with library objects (since compiler-rt and others can be put in lib/.../*.so)
+            for libdir in {d.parent for d in chain(self.libdir.rglob("*.so"), self.libdir.rglob("*.a"))}:
+                set_def_and_add("LD_LIBRARY_PATH", libdir)
+
         else:
+            # Add the binary directory to the PATH variable
             set_def_and_add("PATH", Path(self.path(ctx, "install", "bin")))
-            set_def_and_add("LD_LIBRARY_PATH", Path(self.path(ctx, "install", "lib")))
+
+            # Get all directories with library objects (since compiler-rt and others can be put in lib/.../*.so)
+            libdir = Path(self.path(ctx, "install", "lib"))
+            for _libdir in {d.parent for d in chain(libdir.rglob("*.so"), libdir.rglob("*.a"))}:
+                set_def_and_add("LD_LIBRARY_PATH", _libdir)
 
         # Ensure required variables are loaded & set into the configuration context
-        self.load(ctx)
+        self.load(ctx, False)
 
     def load(self, ctx: Context, reset_flags: bool = True) -> None:
         """
