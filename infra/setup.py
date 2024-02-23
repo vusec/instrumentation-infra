@@ -143,7 +143,7 @@ class Setup:
 
     def _initialize_logger(self) -> None:
         fmt = "%(asctime)s [%(levelname)s] %(message)s"
-        datefmt = "%H:%M:%S"
+        datefmt = "%H:%M:%S.uuu"
 
         log = self.ctx.log
         log.setLevel(logging.DEBUG)
@@ -168,6 +168,15 @@ class Setup:
             coloredlogs.install(logger=log, fmt=fmt, datefmt=datefmt, level=termlog.level)
         except ImportError:
             pass
+
+    def _finalize_logger(self) -> None:
+        if self.ctx.runlog_file is not None:
+            self.ctx.runlog_file.flush()
+            self.ctx.runlog_file.close()
+
+        for handler in self.ctx.log.handlers:
+            handler.flush()
+            handler.close()
 
     def add_command(self, command: Command) -> None:
         """
@@ -244,3 +253,4 @@ class Setup:
         self._create_dirs()
         self._initialize_logger()
         self._run_command()
+        self._finalize_logger()
