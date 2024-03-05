@@ -1,4 +1,5 @@
 import io
+import logging
 import os
 import re
 import select
@@ -6,7 +7,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+import textwrap
 import threading
+from time import sleep
 import typing
 from collections import OrderedDict
 from contextlib import redirect_stdout
@@ -22,6 +25,7 @@ from typing import (
     Iterator,
     KeysView,
     List,
+    Literal,
     Mapping,
     MutableMapping,
     Optional,
@@ -168,6 +172,48 @@ def join_env_paths(env: EnvDict) -> Dict[str, str]:
     return ret
 
 
+class StrippingFormatter(logging.Formatter):
+    """Formatter that strips ANSI escape sequences from the message"""
+
+    # 7-bit C1 ANSI sequences
+    ansi_escape = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]")
+
+    def format(self, record: logging.LogRecord) -> str:
+        if isinstance(record.msg, str):
+            record.msg = self.ansi_escape.sub("", record.msg)
+        return super().format(record)
+
+
+class MultiFormatter(logging.Formatter):
+    """Wraps long lines & indents subsequent lines to configured width"""
+
+    def __init__(
+        self,
+        fmt: str | None = None,
+        datefmt: str | None = None,
+        style: Literal["%", "{", "$"] = "%",
+        validate: bool = True,
+        hdr_wrapper: textwrap.TextWrapper | None = None,
+        msg_wrapper: textwrap.TextWrapper | None = None,
+        *,
+        defaults: Mapping[str, Any] | None = None,
+    ) -> None:
+        self.hdr_wrapper = hdr_wrapper
+        self.msg_wrapper = msg_wrapper
+        super().__init__(fmt, datefmt, style, validate, defaults=defaults)
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Aligns (multiline) message indented to width of formatted header"""
+        # If no wrapper was set, just format regularly
+        if self.hdr_wrapper is None or self.msg_wrapper is None:
+            return super().format(record)
+
+        first, *trailing = super().format(record).splitlines()
+        head = self.hdr_wrapper.fill(first)
+        rest = "\n".join(self.msg_wrapper.fill(line) for line in trailing)
+        return head if len(rest) == 0 else head + "\n" + rest
+
+
 @dataclass
 class Process:
     proc: Union[None, subprocess.CompletedProcess, subprocess.Popen]
@@ -221,6 +267,14 @@ def run(
     Where possible, use this wrapper in favor of :func:`subprocess.run` to
     facilitate easier debugging.
 
+    Note that this requires the runlog file (:var:`ctx.runlog_file`) to be enabled
+    for the running command (by calling :func:`command.enable_run_log(ctx)`); no
+    output is logged otherwise.
+
+    Note also that this function by default captures the output of the command;
+    this can be disabled by passing `stdout=...` to the call. The `stderr` stream
+    is redirected to `stdout`.
+
     It is useful to permanently have a terminal window open running ``tail -f
     build/log/commands.txt``, This way, command output is available in case of
     errors but does not clobber the setup's progress log.
@@ -231,13 +285,17 @@ def run(
     ``env`` is logged to the log file. Any lists of strings in environment
     values are joined with a ':' separator.
 
+    If the command cannot be found, an error is reported to the command line
+    and -- unless :param:`allow_error` is `True` -- the `FileNotFound` exception
+    is propagated.
+
     If the command exits with a non-zero status code, the corresponding output
     is logged to the command line and the process is killed with
-    ``sys.exit(-1)``.
+    ``sys.exit(-1)``, unless :param:`allow_error` is `True`.
 
     :param ctx: the configuration context
-    :param cmd: command to run, can be a string or a list of strings like in
-                :func:`subprocess.run`
+    :param cmd: command to run; can be a string or as a list of objects that
+                support stringification, as in :func:`subprocess.run()`
     :param allow_error: avoids calling ``sys.exit(-1)`` if the command returns
                         an error
     :param silent: disables output logging (only logs the invocation and
@@ -252,98 +310,127 @@ def run(
                    :class:`subprocess.Popen` if ``defer==True``)
     :returns: a handle to the completed or running process
     """
-    cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd if str(c)]
-    cmd_print = qjoin(cmd)
-    stdin = kwargs.get("stdin", None)
-    if isinstance(stdin, io.FileIO):
-        cmd_print += " < " + shlex.quote(str(stdin.name))
-    ctx.log.debug(f"running: {cmd_print}")
-    ctx.log.debug(f"workdir: {os.getcwd()}")
+    if isinstance(cmd, str):
+        cmd_list = shlex.split(cmd.strip())
+    else:
+        cmd_list = [str(arg).strip() for arg in cmd if str(arg).strip()]
 
-    logenv = join_env_paths(ctx.runenv)
-    logenv.update(join_env_paths(env))
-    renv = os.environ.copy()
-    renv.update(logenv)
+    cmd_str = qjoin(cmd_list)  # Safe to print to terminal
+    log_output = False  # Set to true iff not captured & runlog file is enabled
+    local_tee: _Tee | None = None  # Set to used tee
+    str_buf: io.StringIO | None = None  # Buffer to redirect stdout into
 
-    strbuf = None
-    log_output = False
+    # If a file is provided for stdin, add '< <filename>' to the command string
+    if "stdin" in kwargs and isinstance(kwargs["stdin"], io.FileIO):
+        cmd_str = f"{cmd_str} < {shlex.quote(str(kwargs['stdin']).strip())}"
+    ctx.log.info(f"Running command: '{cmd_str}'")
+    ctx.log.debug(f"Working directory: '{os.getcwd()}'")
+
+    # Running env is OS' overriden by runenv & passed env, log only runenv & passed env
+    local_env = join_env_paths(ctx.runenv) | join_env_paths(env)
+    run_env = os.environ | join_env_paths(local_env)
+    ctx.log.debug(f"Local command environment: '{local_env}'")
+
+    # Set "text=True" to read output as text, not binary
+    kwargs.setdefault("text", True)
+
+    # If defer/silent are true, redirect & capture output (if not done by caller) & don't log it
     if defer or silent:
         kwargs.setdefault("stdout", subprocess.PIPE)
         kwargs.setdefault("stderr", subprocess.PIPE)
     elif "stdout" not in kwargs and ctx.runlog_file is not None:
         log_output = True
 
-        # 'tee' output to logfile and string; does line buffering in a separate
-        # thread to be able to flush the logfile during long-running commands
-        # (use tail -f to view command output)
+        # If logging output, ensure the running tee is configured (create it if not)
         if ctx.runtee is None:
             ctx.runtee = _Tee(ctx.runlog_file, io.StringIO())
         assert isinstance(ctx.runtee, _Tee)
+        assert len(ctx.runtee.writers) == 2
+        assert isinstance(ctx.runtee.writers[1], io.StringIO)
 
-        strbuf = ctx.runtee.writers[1]
-        assert isinstance(strbuf, io.StringIO)
+        # Store the string I/O buffer to store the tee'd stdout as a string in Process
+        str_buf = ctx.runtee.writers[1]
+        assert isinstance(str_buf, io.StringIO)
 
-        with redirect_stdout(ctx.runlog_file):
-            print("-" * 80)
-            print(f"command: {cmd_print}")
-            print(f"workdir: {os.getcwd()}")
-            for k, v in logenv.items():
-                print(f"{k}={v}")
-            hdr = "-- output: "
-            print(hdr + "-" * (80 - len(hdr)))
+        # If teeing, split output to runtee & stdout, otherwise just use the runtee
+        local_tee = _Tee(ctx.runtee, sys.stdout) if teeout else ctx.runtee
+        kwargs["stdout"] = local_tee
 
-        if teeout:
-            kwargs["stdout"] = _Tee(ctx.runtee, sys.stdout)
-        else:
-            kwargs["stdout"] = ctx.runtee
-
+        # If not overwritten by the caller, redirect stderr to the process' stdout
         kwargs.setdefault("stderr", subprocess.STDOUT)
 
-    kwargs.setdefault("universal_newlines", True)
+        # Write the command, the working directory, and the local environment to runlog file
+        ctx.runlog_file.write(f"{'-' * 80}\n")
+        ctx.runlog_file.write(f"Command: {cmd_str}\n")
+        ctx.runlog_file.write(f"Working directory: {os.getcwd()}\n")
+        ctx.runlog_file.write("Local environment:\n")
+        ctx.runlog_file.write("\n".join([f"\t{key}={val}" for key, val in local_env.items()]))
 
+    if local_tee is not None:
+        local_tee.flush_all()
+    for handler in ctx.log.handlers:
+        handler.flush()
+
+    # If deferring, return immediately; check if command exists by catching FileNotFoundError
     try:
         if defer:
-            proc = Process(subprocess.Popen(cmd, env=renv, **kwargs), cmd_print, False)
-            return proc
-
-        proc = Process(subprocess.run(cmd, env=renv, **kwargs), cmd_print, teeout)
-
+            return Process(subprocess.Popen(cmd_list, env=run_env, **kwargs), cmd_str=cmd_str, teeout=False)
+        proc = Process(subprocess.run(cmd_list, env=run_env, **kwargs), cmd_str=cmd_str, teeout=teeout)
     except FileNotFoundError:
-        logfn = ctx.log.debug if allow_error else ctx.log.error
-        logfn(f"command not found: {cmd_print}")
-        logfn(f"workdir:           {os.getcwd()}")
+        logger = ctx.log.error if allow_error else ctx.log.critical
+        logger(f"Command not found: {cmd_str}")
+        logger(f"Working directory: {os.getcwd()}")
+        logger(f"Failure environment:")
+        logger("\n".join([f"\t{key}={val}" for key, val in local_env.items()]))
+
+        if local_tee is not None:
+            local_tee.flush_all()
+        for handler in ctx.log.handlers:
+            handler.flush()
+
         if allow_error:
-            return Process(None, cmd_print, teeout)
+            return Process(None, cmd_str=cmd_str, teeout=teeout)
         raise
+
+    if local_tee is not None:
+        local_tee.flush_all()
+    for handler in ctx.log.handlers:
+        handler.flush()
 
     if log_output:
         assert ctx.runlog_file is not None
+        assert ctx.runtee is not None
+        assert local_tee is not None
+        assert isinstance(str_buf, io.StringIO)
         assert isinstance(ctx.runtee, _Tee)
-        assert isinstance(strbuf, io.StringIO)
+        assert isinstance(local_tee, _Tee)
 
-        proc.stdout_override = strbuf.getvalue()
-
-        # delete dangling buffer to free up memory
+        # Store string buffer's contents & clear dangling buffer from ctx.runtee
+        proc.stdout_override = str_buf.getvalue()
         ctx.runtee.writers[1] = io.StringIO()
 
-        # add trailing newline to logfile for readability
+        # Write newline to logfile for readability & flush all buffers
         ctx.runlog_file.write("\n")
-        ctx.runlog_file.flush()
+        local_tee.flush_all()
 
-    if proc.returncode and not allow_error:
-        ctx.log.error(f"command returned status {proc.returncode}")
-        ctx.log.error(f"command: {cmd_print}")
-        ctx.log.error(f"workdir: {os.getcwd()}")
-        for k, v in logenv.items():
-            ctx.log.error(f"{k}={v}")
+    if proc.returncode != 0 and not allow_error:
+        ctx.log.critical(f"Command return code: {proc.returncode}")
+        ctx.log.critical(f"Executed command: {cmd_str}")
+        ctx.log.critical(f"Working directory: {os.getcwd()}")
+        ctx.log.critical(f"Failure environment:")
+        ctx.log.critical("\n".join([f"\t{key}={val}" for key, val in local_env.items()]))
+
         assert proc.proc is not None
         if proc.proc.stdout is not None:
-            output = proc.proc.stdout
-            if isinstance(output, bytes):
-                output = output.decode()
+            if isinstance(proc.proc.stdout, bytes):
+                output = proc.proc.stdout.decode()
+            else:
+                output = proc.proc.stdout
             assert isinstance(output, str)
             sys.stdout.write(output)
-        sys.exit(-1)
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            sys.exit(proc.returncode)
 
     return proc
 
@@ -356,7 +443,7 @@ def qjoin(args: Iterable[Any]) -> str:
 
     :param args: arguments to join
     """
-    return " ".join(shlex.quote(str(arg)) for arg in args if str(arg))
+    return " ".join(shlex.quote(str(arg).strip()) for arg in args if str(arg).strip())
 
 
 def download(ctx: Context, url: str, outfile: Optional[str] = None) -> str:
@@ -382,12 +469,24 @@ def download(ctx: Context, url: str, outfile: Optional[str] = None) -> str:
 
 
 class _Tee(io.IOBase):
+    """
+    Extension of io.IOBase to split output over multiple given writers (other IOBases,
+    IO objects, or other _Tee objects). An asynchronous thread is started to read
+    input from the given I/O objects without blocking the main thread. If all output
+    should be flushed, :func:`_Tee.flush_all()` can be used.
+    """
+
+    ansi_escape = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]")  # 7-bit C1 ANSI sequences
+
     def __init__(self, *writers: Union[io.IOBase, typing.IO]):
         super().__init__()
         assert len(writers) > 0
         self.writers = list(writers)
         self.readfd, self.writefd = os.pipe()
         self.running = False
+        self.do_sync = False
+        self.synced = threading.Event()
+        self.contin = threading.Event()
         self.thread = threading.Thread(target=self._flusher)
         self.thread.daemon = True
         self.thread.start()
@@ -397,28 +496,52 @@ class _Tee(io.IOBase):
         poller = select.poll()
         poller.register(self.readfd, select.POLLIN | select.POLLPRI)
         buf = b""
+
         while self.running:
-            for fd, flag in poller.poll():
+            # Check for output; periodically check for do_sync to allow for deep flushing
+            for fd, flag in poller.poll(100):
                 assert fd == self.readfd
                 if flag & (select.POLLIN | select.POLLPRI):
-                    buf += os.read(fd, io.DEFAULT_BUFFER_SIZE)
+                    buf += os.read(self.readfd, io.DEFAULT_BUFFER_SIZE)
                     nl = buf.find(b"\n") + 1
                     while nl > 0:
                         self.write(buf[:nl].decode(errors="replace"))
                         self.flush()
                         buf = buf[nl:]
                         nl = buf.find(b"\n") + 1
+            if self.do_sync:
+                if buf:
+                    self.write(buf.decode(errors="replace"))
+                    self.flush()
+                    buf = b""  # Clear old data
+                self.synced.set()
+                self.contin.wait()
+
+        # Write any remaining data if there is any
+        if buf:
+            self.write(buf.decode(errors="replace"))
+            self.flush()
+            buf = b""  # Clear old data
 
     def flush(self) -> None:
-        for w in self.writers:
-            w.flush()
+        for writer in self.writers:
+            writer.flush()
+
+    def flush_all(self) -> None:
+        self.do_sync = True
+        self.synced.wait()
+        for writer in self.writers:
+            if isinstance(writer, _Tee):
+                writer.flush_all()
+        self.do_sync = False
+        self.contin.set()
 
     def write(self, data: str) -> int:
-        len1 = self.writers[0].write(data)
-        for w in self.writers[1:]:
-            len2 = w.write(data)
-            assert len2 == len1
-        return len1
+        total = 0
+        for writer in self.writers:
+            total += writer.write(data if writer.isatty() else self.ansi_escape.sub("", data))
+            writer.flush()
+        return total
 
     emit = write
 
@@ -430,8 +553,14 @@ class _Tee(io.IOBase):
 
     def close(self) -> None:
         if self.running:
+            self.do_sync = True
+            self.synced.wait()
+            for writer in self.writers:
+                if isinstance(writer, _Tee):
+                    writer.close()
             self.running = False
-            self.thread.join(0)
+            self.contin.set()
+            self.thread.join()
             os.close(self.readfd)
             os.close(self.writefd)
 

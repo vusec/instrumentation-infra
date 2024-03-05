@@ -4,8 +4,10 @@ import logging
 import os
 import platform
 import sys
+import textwrap
 import traceback
 from typing import List
+from shutil import get_terminal_size
 
 from . import commands
 from .command import Command, get_deps
@@ -13,7 +15,7 @@ from .context import Context, ContextPaths
 from .instance import Instance
 from .package import Package
 from .target import Target
-from .util import FatalError, Index, LazyIndex
+from .util import FatalError, Index, LazyIndex, MultiFormatter, StrippingFormatter
 
 # disable .pyc file generation
 sys.dont_write_bytecode = True
@@ -142,34 +144,136 @@ class Setup:
         os.makedirs(self.ctx.paths.targets, exist_ok=True)
 
     def _initialize_logger(self) -> None:
-        fmt = "%(asctime)s [%(levelname)s] %(message)s"
-        datefmt = "%H:%M:%S.uuu"
-
-        log = self.ctx.log
-        log.setLevel(logging.DEBUG)
-        log.propagate = False
+        # Store the user-configured verbosity level
         self.ctx.loglevel = getattr(logging, self.ctx.args.verbosity.upper())
 
-        termlog = logging.StreamHandler(sys.stdout)
-        termlog.setLevel(self.ctx.loglevel)
-        termlog.setFormatter(logging.Formatter(fmt, datefmt))
-        log.addHandler(termlog)
+        # Set logger to DEBUG (set lvl per handler instead) & disable propagation to ancestors
+        self.ctx.log.setLevel(logging.DEBUG)
+        self.ctx.log.propagate = False
+        logging.addLevelName(logging.NOTSET, "ANY")
+        logging.addLevelName(logging.DEBUG, "DBG")
+        logging.addLevelName(logging.INFO, "INF")
+        logging.addLevelName(logging.WARN, "WRN")
+        logging.addLevelName(logging.WARNING, "WRN")
+        logging.addLevelName(logging.ERROR, "ERR")
+        logging.addLevelName(logging.CRITICAL, "CRT")
+        logging.addLevelName(logging.FATAL, "FTL")
 
-        # always write debug log to file
-        debuglog = logging.FileHandler(self.ctx.paths.debuglog, mode="w")
-        debuglog.setLevel(logging.DEBUG)
-        debuglog.setFormatter(logging.Formatter(fmt, "%Y-%m-%d " + datefmt))
-        log.addHandler(debuglog)
+        # Separate formats for command line output & file (debug.txt): stream output has colours
+        # enabled if supported (see coloredlogs) & is less verbose than output to debug.txt
+        strm_fmt = "%(asctime)s.%(msecs)03d |%(levelname)s| %(message)s"
+        file_fmt = "%(asctime)s.%(msecs)03d [%(funcName)s(%(module)s::%(lineno)d)] |%(levelname)s| %(message)s"
+        strm_date_fmt = "%H:%M:%S"
+        file_date_fmt = "%Y-%m-%d %H:%M:%S"
 
-        # colorize log if supported
+        hdr_wrapper = textwrap.TextWrapper(
+            width=get_terminal_size((80, 24))[0],
+            initial_indent="",
+            subsequent_indent=" " * 19,
+            expand_tabs=True,
+            replace_whitespace=True,
+            fix_sentence_endings=False,
+            break_long_words=True,
+            drop_whitespace=True,
+            break_on_hyphens=True,
+            tabsize=4,
+        )
+        msg_wrapper = textwrap.TextWrapper(
+            width=get_terminal_size((80, 24))[0],
+            initial_indent=" " * 19,
+            subsequent_indent=" " * 19,
+            expand_tabs=True,
+            replace_whitespace=True,
+            fix_sentence_endings=False,
+            break_long_words=True,
+            drop_whitespace=True,
+            break_on_hyphens=True,
+            tabsize=4,
+        )
+
         try:
             import coloredlogs
 
-            coloredlogs.install(logger=log, fmt=fmt, datefmt=datefmt, level=termlog.level)
+            class ColourMultiFormatter(coloredlogs.ColoredFormatter):
+                """Wraps long lines & indents subsequent lines to configured width"""
+
+                def __init__(
+                    self,
+                    fmt=None,
+                    datefmt=None,
+                    level_styles=None,
+                    field_styles=None,
+                    hdr_wrapper: textwrap.TextWrapper | None = None,
+                    msg_wrapper: textwrap.TextWrapper | None = None,
+                ):
+                    self.hdr_wrapper = hdr_wrapper
+                    self.msg_wrapper = msg_wrapper
+                    super().__init__(fmt, datefmt, level_styles, field_styles)
+
+                def format(self, record: logging.LogRecord) -> str:
+                    """Aligns (multiline) message indented to width of formatted header"""
+                    # If no wrapper was set, just format regularly
+                    if self.hdr_wrapper is None or self.msg_wrapper is None:
+                        return super().format(record)
+
+                    first, *trailing = super().format(record).splitlines()
+                    head = self.hdr_wrapper.fill(first)
+                    rest = "\n".join(self.msg_wrapper.fill(line) for line in trailing)
+                    return head if len(rest) == 0 else head + "\n" + rest
+
+            coloredlogs.install(
+                level=self.ctx.loglevel,
+                logger=self.ctx.log,
+                fmt=strm_fmt,
+                datefmt=strm_date_fmt,
+                stream=sys.stdout,
+            )
+            for handler in self.ctx.log.handlers:
+                if isinstance(handler.formatter, coloredlogs.ColoredFormatter):
+                    handler.setFormatter(
+                        ColourMultiFormatter(
+                            fmt=strm_fmt,
+                            datefmt=strm_date_fmt,
+                            level_styles=coloredlogs.DEFAULT_LEVEL_STYLES
+                            | {
+                                "any": coloredlogs.DEFAULT_LEVEL_STYLES["spam"],
+                                "dbg": coloredlogs.DEFAULT_LEVEL_STYLES["debug"],
+                                "inf": coloredlogs.DEFAULT_LEVEL_STYLES["info"],
+                                "wrn": coloredlogs.DEFAULT_LEVEL_STYLES["warning"],
+                                "err": coloredlogs.DEFAULT_LEVEL_STYLES["error"],
+                                "crt": coloredlogs.DEFAULT_LEVEL_STYLES["critical"],
+                                "ftl": coloredlogs.DEFAULT_LEVEL_STYLES["critical"],
+                            },
+                            field_styles=coloredlogs.DEFAULT_FIELD_STYLES | {},
+                            hdr_wrapper=hdr_wrapper,
+                            msg_wrapper=msg_wrapper,
+                        )
+                    )
+
         except ImportError:
-            pass
+            strm_hndlr = logging.StreamHandler(sys.stdout)
+            strm_hndlr.setLevel(self.ctx.loglevel)
+            strm_hndlr.setFormatter(
+                MultiFormatter(
+                    fmt=strm_fmt,
+                    datefmt=strm_date_fmt,
+                    hdr_wrapper=hdr_wrapper,
+                    msg_wrapper=msg_wrapper,
+                )
+            )
+            self.ctx.log.addHandler(strm_hndlr)
+
+        # Add a file handler for outputting all messages (even when logging level is set lower
+        # to debug.txt); also strips ANSI escape sequences from the messages before outputting
+        file_hndlr = logging.FileHandler(self.ctx.paths.debuglog, mode="w")
+        file_hndlr.setLevel(logging.DEBUG)
+        file_hndlr.setFormatter(StrippingFormatter(fmt=file_fmt, datefmt=file_date_fmt))
+        self.ctx.log.addHandler(file_hndlr)
 
     def _finalize_logger(self) -> None:
+        if self.ctx.runtee is not None:
+            self.ctx.runtee.close()
+
         if self.ctx.runlog_file is not None:
             self.ctx.runlog_file.flush()
             self.ctx.runlog_file.close()
