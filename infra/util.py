@@ -332,7 +332,7 @@ def run(
     ctx.log.debug(f"Local command environment: '{local_env}'")
 
     # Set "text=True" to read output as text, not binary
-    kwargs.setdefault("text", True)
+    kwargs.setdefault("universal_newlines", True)
 
     # If defer/silent are true, redirect & capture output (if not done by caller) & don't log it
     if defer or silent:
