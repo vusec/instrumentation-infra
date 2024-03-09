@@ -234,8 +234,11 @@ class Process:
             raise Exception("invalid process has no stdout")
         if self.stdout_override is not None:
             return self.stdout_override
-        assert isinstance(self.proc.stdout, str)
-        return self.proc.stdout
+        if isinstance(self.proc.stdout, str):
+            return self.proc.stdout
+        if isinstance(self.proc.stdout, bytes):
+            return self.proc.stdout.decode()
+        raise ValueError(f"Only bytes/str values for proc.stdout are supported, got {type(self.proc.stdout)}")
 
     @property
     def stdout_io(self) -> IO[AnyStr]:
@@ -249,6 +252,41 @@ class Process:
     def poll(self) -> Optional[int]:
         assert isinstance(self.proc, subprocess.Popen)
         return self.proc.poll()
+
+
+def get_cmd_list(raw_cmd: str | Iterable[Any]) -> list[str] | None:
+    """Converts the given raw command string/iterable to a list of strings to pass to something
+    like :func:`subprocess.run`. The given object :param:`raw_cmd` can be a string, in which case
+    :func:`shlex.split()` is used to split it into components. If the given object :param:`raw_cmd`
+    is an iterable, each element is stringified (by calling :func:`str()` on the element) and
+    stripped. If any object from the iterable does not support conversion to string, this function
+    returns None. Empty elements (including after stripping) are discarded.
+
+    :param str | Iterable[Any] raw_cmd: the raw command (usually passed to :func:`run()`)
+    :return list[str] | None: the command split into parts as it would on the command line
+    """
+    if isinstance(raw_cmd, str):
+        return shlex.split(raw_cmd.strip())
+    try:
+        return [str(arg).strip() for arg in raw_cmd if str(arg).strip()]
+    except ValueError:
+        return None
+
+
+def get_safe_cmd_str(cmd_list: Iterable[str], stdin: Any | None = None) -> str:
+    """Converts the given command list (e.g. output of :func:`get_cmd_list()`) to a safe-to-print
+    string. Uses :func:`qjoin()` (which uses :func:`shlex.quote()`) to convert each element from
+    the iterable to a safely quoted element. The concatenated string is returned.
+
+    If :param:`stdin` is given (and is :type:`io.FileIO`), "< [IN_FILE]" is appended to the string
+
+    :param Iterable[str] cmd_list: command to convert to string; output of :func:`get_cmd_list()`
+    :param io.FileIO | None stdin: _description_, defaults to None optional input file
+    :return str: a safe to print string
+    """
+    if not isinstance(stdin, io.FileIO):
+        return qjoin(cmd_list)
+    return f"{qjoin(cmd_list)} < {shlex.quote(str(stdin))}"
 
 
 def run(
@@ -310,66 +348,54 @@ def run(
                    :class:`subprocess.Popen` if ``defer==True``)
     :returns: a handle to the completed or running process
     """
-    if isinstance(cmd, str):
-        cmd_list = shlex.split(cmd.strip())
-    else:
-        cmd_list = [str(arg).strip() for arg in cmd if str(arg).strip()]
+    cmd_list = get_cmd_list(raw_cmd=cmd)
+    assert cmd_list is not None
 
-    cmd_str = qjoin(cmd_list)  # Safe to print to terminal
-    log_output = False  # Set to true iff not captured & runlog file is enabled
-    local_tee: _Tee | None = None  # Set to used tee
-    str_buf: io.StringIO | None = None  # Buffer to redirect stdout into
+    cmd_str = get_safe_cmd_str(cmd_list, kwargs.get("stdin", None))
+    ctx.log.info(f"Running command: {cmd_str}")
+    ctx.log.debug(f"Running in directory: {os.getcwd()}")
 
-    # If a file is provided for stdin, add '< <filename>' to the command string
-    if "stdin" in kwargs and isinstance(kwargs["stdin"], io.FileIO):
-        cmd_str = f"{cmd_str} < {shlex.quote(str(kwargs['stdin']).strip())}"
-    ctx.log.info(f"Running command: '{cmd_str}'")
-    ctx.log.debug(f"Working directory: '{os.getcwd()}'")
+    # Local env is given env merged with CTX's running env, final env is merged with OS' env
+    loc_env = join_env_paths(ctx.runenv) | join_env_paths(env)
+    run_env = os.environ | loc_env
+    ctx.log.debug(f"Local environment (not merged with OS): {loc_env}")
 
-    # Running env is OS' overriden by runenv & passed env, log only runenv & passed env
-    local_env = join_env_paths(ctx.runenv) | join_env_paths(env)
-    run_env = os.environ | join_env_paths(local_env)
-    ctx.log.debug(f"Local command environment: '{local_env}'")
-
-    # Set "text=True" to read output as text, not binary
+    # Set "universal_newlines=True" to read output as text, not binary
     kwargs.setdefault("universal_newlines", True)
 
-    # If defer/silent are true, redirect & capture output (if not done by caller) & don't log it
-    if defer or silent:
+    # If the runlog file is not None, log the command & environment to be executed
+    if ctx.runlog_file is not None:
+        assert isinstance(ctx.runlog_file, io.TextIOWrapper)
+        ctx.runlog_file.write(f"{'-' * 100}\n")
+        ctx.runlog_file.write(f"Running command:   '{cmd_str}'\n")
+        ctx.runlog_file.write(f"Unquoted command:  '{' '.join(cmd_list)}'\n")
+        ctx.runlog_file.write(f"Working directory: '{os.getcwd()}'\n")
+        ctx.runlog_file.write("Local environment: ")
+        ctx.runlog_file.write("{\n" if len(loc_env) > 0 else "{")
+        ctx.runlog_file.write("\n".join([f"\t{key}={val}" for key, val in loc_env.items()]))
+        ctx.runlog_file.write("\n}" if len(loc_env) > 0 else "}")
+        ctx.runlog_file.write("\n\n===== START OF OUTPUT =====\n\n")
+        ctx.runlog_file.flush()
+
+    # Create tee to split output to runlog file & string buffer; also to stdout if teeout is true
+    if defer or silent or "stdout" in kwargs:
+        _tee = None
         kwargs.setdefault("stdout", subprocess.PIPE)
         kwargs.setdefault("stderr", subprocess.PIPE)
-    elif "stdout" not in kwargs and ctx.runlog_file is not None:
-        log_output = True
+    else:
+        # Create a list of writers, if runlog file is not none, add it; if teeout, also add stdout
+        writers: list[io.IOBase | typing.IO] = [io.StringIO()]
+        if ctx.runlog_file is not None and isinstance(ctx.runlog_file, io.TextIOWrapper):
+            writers.append(ctx.runlog_file)
+        if teeout:
+            writers.append(sys.stdout)
+        assert len(writers) >= 1
 
-        # If logging output, ensure the running tee is configured (create it if not)
-        if ctx.runtee is None:
-            ctx.runtee = _Tee(ctx.runlog_file, io.StringIO())
-        assert isinstance(ctx.runtee, _Tee)
-        assert len(ctx.runtee.writers) == 2
-        assert isinstance(ctx.runtee.writers[1], io.StringIO)
-
-        # Store the string I/O buffer to store the tee'd stdout as a string in Process
-        str_buf = ctx.runtee.writers[1]
-        assert isinstance(str_buf, io.StringIO)
-
-        # If teeing, split output to runtee & stdout, otherwise just use the runtee
-        local_tee = _Tee(ctx.runtee, sys.stdout) if teeout else ctx.runtee
-        kwargs["stdout"] = local_tee
-
-        # If not overwritten by the caller, redirect stderr to the process' stdout
-        kwargs.setdefault("stderr", subprocess.STDOUT)
-
-        # Write the command, the working directory, and the local environment to runlog file
-        ctx.runlog_file.write(f"{'-' * 80}\n")
-        ctx.runlog_file.write(f"Command: {cmd_str}\n")
-        ctx.runlog_file.write(f"Working directory: {os.getcwd()}\n")
-        ctx.runlog_file.write("Local environment:\n")
-        ctx.runlog_file.write("\n".join([f"\t{key}={val}" for key, val in local_env.items()]))
-
-    if local_tee is not None:
-        local_tee.flush_all()
-    for handler in ctx.log.handlers:
-        handler.flush()
+        _tee = _Tee(*writers)
+        assert isinstance(_tee, _Tee)
+        assert len(_tee.writers) > 0 and isinstance(_tee.writers[0], io.StringIO)
+        kwargs.setdefault("stdout", _tee)
+        kwargs.setdefault("stderr", _tee)
 
     # If deferring, return immediately; check if command exists by catching FileNotFoundError
     try:
@@ -377,14 +403,20 @@ def run(
             return Process(subprocess.Popen(cmd_list, env=run_env, **kwargs), cmd_str=cmd_str, teeout=False)
         proc = Process(subprocess.run(cmd_list, env=run_env, **kwargs), cmd_str=cmd_str, teeout=teeout)
     except FileNotFoundError:
-        logger = ctx.log.error if allow_error else ctx.log.critical
-        logger(f"Command not found: {cmd_str}")
-        logger(f"Working directory: {os.getcwd()}")
-        logger(f"Failure environment:")
-        logger("\n".join([f"\t{key}={val}" for key, val in local_env.items()]))
+        if ctx.runlog_file is not None:
+            assert isinstance(ctx.runlog_file, io.TextIOWrapper)
+            ctx.runlog_file.write("> ERROR: Command not found!")
+            ctx.runlog_file.write("\n\n===== END OF OUTPUT =====\n\n")
+            ctx.runlog_file.flush()
 
-        if local_tee is not None:
-            local_tee.flush_all()
+        log_stream = ctx.log.error if allow_error else ctx.log.critical
+        log_stream(f"Running command:   '{cmd_str}'\n")
+        log_stream(f"Unquoted command:  '{' '.join(cmd_list)}'\n")
+        log_stream(f"Working directory: '{os.getcwd()}'\n")
+        log_stream("Local environment: ")
+        log_stream("{\n" if len(loc_env) > 0 else "{")
+        log_stream("\n".join([f"\t{key}={val}" for key, val in loc_env.items()]))
+        log_stream("\n}\n\n" if len(loc_env) > 0 else "}\n\n")
         for handler in ctx.log.handlers:
             handler.flush()
 
@@ -392,45 +424,52 @@ def run(
             return Process(None, cmd_str=cmd_str, teeout=teeout)
         raise
 
-    if local_tee is not None:
-        local_tee.flush_all()
-    for handler in ctx.log.handlers:
-        handler.flush()
+    if ctx.runlog_file is not None:
+        assert isinstance(ctx.runlog_file, io.TextIOWrapper)
+        ctx.runlog_file.write("\n\n===== END OF OUTPUT =====\n\n")
+        ctx.runlog_file.flush()
 
-    if log_output:
-        assert ctx.runlog_file is not None
-        assert ctx.runtee is not None
-        assert local_tee is not None
-        assert isinstance(str_buf, io.StringIO)
-        assert isinstance(ctx.runtee, _Tee)
-        assert isinstance(local_tee, _Tee)
+    if _tee is not None:
+        assert isinstance(_tee, _Tee)
+        assert len(_tee.writers) > 0
+        assert isinstance(_tee.writers[0], io.StringIO)
 
-        # Store string buffer's contents & clear dangling buffer from ctx.runtee
-        proc.stdout_override = str_buf.getvalue()
-        ctx.runtee.writers[1] = io.StringIO()
+        # Store the stdout from the string buffer into the Process' stdout overwrite variable
+        proc.stdout_override = _tee.writers[0].getvalue()
 
-        # Write newline to logfile for readability & flush all buffers
-        ctx.runlog_file.write("\n")
-        local_tee.flush_all()
+        # Close the _tee object; stops the thread and prints all output still in the buffer
+        _tee.close()
 
     if proc.returncode != 0 and not allow_error:
         ctx.log.critical(f"Command return code: {proc.returncode}")
-        ctx.log.critical(f"Executed command: {cmd_str}")
-        ctx.log.critical(f"Working directory: {os.getcwd()}")
-        ctx.log.critical(f"Failure environment:")
-        ctx.log.critical("\n".join([f"\t{key}={val}" for key, val in local_env.items()]))
+        ctx.log.critical(f"Executed command:    {cmd_str}")
+        ctx.log.critical(f"Working directory:   {os.getcwd()}")
+        ctx.log.critical("Failure environment: ")
+        ctx.log.critical("{\n" if len(loc_env) > 0 else "{")
+        ctx.log.critical("\n".join([f"\t{key}={val}" for key, val in loc_env.items()]))
+        ctx.log.critical("\n}\n\n" if len(loc_env) > 0 else "}\n\n")
+        for handler in ctx.log.handlers:
+            handler.flush()
 
+        # If stdout/stderr were not piped/output, output them now anyway
         assert proc.proc is not None
-        if proc.proc.stdout is not None:
+        if proc.proc.stdout is not None and isinstance(proc.proc.stdout, (str, bytes)):
             if isinstance(proc.proc.stdout, bytes):
-                output = proc.proc.stdout.decode()
+                stdout_out = proc.proc.stdout.decode()
             else:
-                output = proc.proc.stdout
-            assert isinstance(output, str)
-            sys.stdout.write(output)
-            sys.stdout.write("\n")
+                stdout_out = proc.proc.stdout
+            assert isinstance(stdout_out, str)
+            sys.stdout.write(f"{stdout_out}\n\n")
             sys.stdout.flush()
-            sys.exit(proc.returncode)
+        if proc.proc.stderr is not None and isinstance(proc.proc.stderr, (str, bytes)):
+            if isinstance(proc.proc.stderr, bytes):
+                stderr_out = proc.proc.stderr.decode()
+            else:
+                stderr_out = proc.proc.stderr
+            assert isinstance(stderr_out, str)
+            sys.stderr.write(f"{stderr_out}\n\n")
+            sys.stderr.flush()
+        raise RuntimeError(f"Command failed but allow_errors was False; invalid return code: {proc.returncode}")
 
     return proc
 
@@ -480,89 +519,93 @@ class _Tee(io.IOBase):
 
     def __init__(self, *writers: Union[io.IOBase, typing.IO]):
         super().__init__()
-        assert len(writers) > 0
         self.writers = list(writers)
+        assert len(self.writers) > 0
+
         self.readfd, self.writefd = os.pipe()
-        self.running = False
-        self.do_sync = False
-        self.synced = threading.Event()
-        self.contin = threading.Event()
-        self.thread = threading.Thread(target=self._flusher)
-        self.thread.daemon = True
+
+        self.running = False  # True while flusher is still running
+        self.terminate = False  # Marks when the flusher thread should terminate
+        self.synchronise = False  # Marks when the flusher thread should synchronise & wait
+
+        self.synchronised = threading.Event()  # Set by flusher thread when fully synchronised & waiting
+        self.restart = threading.Event()  # Set by caller when flusher can continue after flushing
+
+        self.thread = threading.Thread(target=self._flusher, daemon=False)
         self.thread.start()
 
-    def _flusher(self) -> None:
-        self.running = True
-        poller = select.poll()
-        poller.register(self.readfd, select.POLLIN | select.POLLPRI)
-        buf = b""
-
-        while self.running:
-            # Check for output; periodically check for do_sync to allow for deep flushing
-            for fd, flag in poller.poll(100):
-                assert fd == self.readfd
-                if flag & (select.POLLIN | select.POLLPRI):
-                    buf += os.read(self.readfd, io.DEFAULT_BUFFER_SIZE)
-                    nl = buf.find(b"\n") + 1
-                    while nl > 0:
-                        self.write(buf[:nl].decode(errors="replace"))
-                        self.flush()
-                        buf = buf[nl:]
-                        nl = buf.find(b"\n") + 1
-            if self.do_sync:
-                if buf:
-                    self.write(buf.decode(errors="replace"))
-                    self.flush()
-                    buf = b""  # Clear old data
-                self.synced.set()
-                self.contin.wait()
-
-        # Write any remaining data if there is any
-        if buf:
-            self.write(buf.decode(errors="replace"))
-            self.flush()
-            buf = b""  # Clear old data
+    def __del__(self) -> None:
+        self.close()
 
     def flush(self) -> None:
         for writer in self.writers:
             writer.flush()
 
+    def flush_wait(self) -> None:
+        self.synchronise = True
+        self.synchronised.wait()
+        self.flush()
+        self.synchronise = False
+
     def flush_all(self) -> None:
-        self.do_sync = True
-        self.synced.wait()
-        for writer in self.writers:
-            if isinstance(writer, _Tee):
-                writer.flush_all()
-        self.do_sync = False
-        self.contin.set()
+        self.flush_wait()
+        self.restart.set()
 
     def write(self, data: str) -> int:
-        total = 0
+        written = 0
         for writer in self.writers:
-            total += writer.write(data if writer.isatty() else self.ansi_escape.sub("", data))
-            writer.flush()
-        return total
+            written += writer.write(data if writer.isatty() else self.ansi_escape.sub("", data))
+        return written
 
     emit = write
 
     def fileno(self) -> int:
         return self.writefd
 
-    def __del__(self) -> None:
-        self.close()
+    def read_fileno(self) -> int:
+        return self.readfd
 
     def close(self) -> None:
         if self.running:
-            self.do_sync = True
-            self.synced.wait()
-            for writer in self.writers:
-                if isinstance(writer, _Tee):
-                    writer.close()
+            self.flush_wait()
             self.running = False
-            self.contin.set()
+            self.restart.set()
             self.thread.join()
             os.close(self.readfd)
             os.close(self.writefd)
+
+    def _flusher(self) -> None:
+        self.running = True
+        poller = select.poll()
+        poller.register(self.readfd, select.POLLIN | select.POLLPRI)
+
+        buf: bytes = b""
+
+        def write_buf() -> None:
+            nonlocal buf
+            nl = buf.find(b"\n") + 1
+            while nl > 0:
+                self.write(buf[:nl].decode(errors="replace"))
+                self.flush()
+                buf = buf[nl:]
+                nl = buf.find(b"\n") + 1
+
+        while self.running:
+            if poller.poll(100):
+                for fd, flag in poller.poll(100):
+                    assert fd == self.readfd
+                    if flag & (select.POLLIN | select.POLLPRI):
+                        buf += os.read(self.readfd, io.DEFAULT_BUFFER_SIZE)
+                        write_buf()
+            elif self.synchronise:
+                if buf:
+                    write_buf()
+                self.synchronised.set()
+                self.restart.wait()
+
+        # Write any remaining data if there is any
+        if buf:
+            write_buf()
 
 
 def require_program(ctx: Context, name: str, error: Optional[str] = None) -> None:

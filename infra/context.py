@@ -159,9 +159,6 @@ class Context:
     #: File object used for writing all executed commands, if enabled.
     runlog_file: Optional[io.TextIOWrapper] = None
 
-    #: Object used to redirect the output of executed commands to a file and stdout.
-    runtee: Optional[io.IOBase] = None
-
     #: The amount of parallel jobs to use. Contains the value of the ``-j`` command-line
     #: option, defaulting to the number of CPU cores returned by
     #: :func:`multiprocessing.cpu_count`.

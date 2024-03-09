@@ -271,16 +271,13 @@ class Setup:
         self.ctx.log.addHandler(file_hndlr)
 
     def _finalize_logger(self) -> None:
-        if self.ctx.runtee is not None:
-            self.ctx.runtee.close()
+        for handler in self.ctx.log.handlers:
+            handler.flush()
+            handler.close()
 
         if self.ctx.runlog_file is not None:
             self.ctx.runlog_file.flush()
             self.ctx.runlog_file.close()
-
-        for handler in self.ctx.log.handlers:
-            handler.flush()
-            handler.close()
 
     def add_command(self, command: Command) -> None:
         """
