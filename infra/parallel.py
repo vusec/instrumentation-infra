@@ -41,8 +41,8 @@ class Job:
 
     nnodes: int = field(default=1, init=False)
     start_time: float = field(default_factory=time.time, init=False)
-    onsuccess: Optional[Callable[["Job"], None]] = field(default=None, init=False)
-    onerror: Optional[Callable[["Job"], None]] = field(default=None, init=False)
+    onsuccess: Optional[Callable[["Job"], Optional[bool]]] = field(default=None, init=False)
+    onerror: Optional[Callable[["Job"], Optional[bool]]] = field(default=None, init=False)
     output: str = field(default="", init=False)
 
     @property
@@ -130,9 +130,7 @@ class Pool(metaclass=ABCMeta):
     def _start_poller(self) -> None:
         if self.pollthread is None:
             self.poller = select.epoll()
-            self.pollthread = threading.Thread(
-                target=self._poller_thread, name="pool-poller"
-            )
+            self.pollthread = threading.Thread(target=self._poller_thread, name="pool-poller")
             self.pollthread.daemon = True
             self.done = False
             self.pollthread.start()
@@ -153,10 +151,7 @@ class Pool(metaclass=ABCMeta):
                 if flags & select.EPOLLHUP:
                     job = self.jobs[fd]
                     if job.proc.poll() is None:
-                        self.log.debug(
-                            f"job {job.jobid} hung up but does not yet have a "
-                            "return code, check later"
-                        )
+                        self.log.debug(f"job {job.jobid} hung up but does not yet have a " "return code, check later")
                         continue
 
                     self.poller.unregister(fd)
@@ -192,8 +187,8 @@ class Pool(metaclass=ABCMeta):
         jobid: str,
         outfile: str,
         nnodes: int,
-        onsuccess: Optional[Callable[[Job], None]] = None,
-        onerror: Optional[Callable[[Job], None]] = None,
+        onsuccess: Optional[Callable[[Job], Optional[bool]]] = None,
+        onerror: Optional[Callable[[Job], Optional[bool]]] = None,
         **kwargs: Any,
     ) -> Iterable[Job]:
         """
@@ -240,10 +235,7 @@ class Pool(metaclass=ABCMeta):
     def onerror(self, job: Job) -> None:
         # don't log if onerror() returns False
         if not job.onerror or job.onerror(job) is not False:
-            self.log.error(
-                f"job {job.jobid} returned status {job.proc.returncode} "
-                f"{self._get_elapsed(job)}"
-            )
+            self.log.error(f"job {job.jobid} returned status {job.proc.returncode} " f"{self._get_elapsed(job)}")
             self.log.error(f"command: {job.proc.cmd_str}")
             sys.stdout.write(job.output)
 
@@ -272,11 +264,12 @@ class ProcessPool(Pool):
             self._wait_for_queue_space(1)
             ctx.log.info("running " + jobid)
 
+            kwargs.setdefault("stderr", STDOUT)
+
             proc = run(
                 ctx,
                 cmd,
                 defer=True,
-                stderr=STDOUT,
                 bufsize=io.DEFAULT_BUFFER_SIZE,
                 universal_newlines=False,
                 **kwargs,
@@ -337,13 +330,9 @@ class SSHPool(Pool):
 
     _tempdir: Optional[str]
 
-    def __init__(
-        self, ctx: Context, logger: logging.Logger, parallelmax: int, nodes: List[str]
-    ):
+    def __init__(self, ctx: Context, logger: logging.Logger, parallelmax: int, nodes: List[str]):
         if parallelmax > len(nodes):
-            raise FatalError(
-                "parallelmax cannot be greater than number of available nodes"
-            )
+            raise FatalError("parallelmax cannot be greater than number of available nodes")
         super().__init__(logger, parallelmax)
         self._ctx = ctx
         self.nodes = nodes[:]
@@ -376,9 +365,7 @@ class SSHPool(Pool):
             cmd = ["ssh", *self.ssh_opts, node, "echo -n hi"]
             p = run(self._ctx, cmd, stderr=STDOUT, silent=True)
             if p.returncode or not str(p.stdout).endswith("hi"):
-                self._ctx.log.error(
-                    "Testing SSH node " + node + " failed:\n" + p.stdout
-                )
+                self._ctx.log.error("Testing SSH node " + node + " failed:\n" + p.stdout)
                 sys.exit(-1)
         self.has_tested_nodes = True
 
@@ -391,9 +378,7 @@ class SSHPool(Pool):
         starttime = self._ctx.starttime.strftime("%Y-%m-%d.%H-%M-%S")
         self._tempdir = os.path.join("/tmp", "infra-" + starttime)
 
-        self._ctx.log.debug(
-            f"creating SSHPool temp dir {self._tempdir} on nodes {self.nodes}"
-        )
+        self._ctx.log.debug(f"creating SSHPool temp dir {self._tempdir} on nodes {self.nodes}")
 
         for node in self.nodes:
             run(self._ctx, self._ssh_cmd(node, ["mkdir", "-p", self._tempdir]))
@@ -404,9 +389,7 @@ class SSHPool(Pool):
         if not self.has_created_tempdirs:
             return
         assert self._tempdir is not None
-        self._ctx.log.debug(
-            f"cleaning up SSHPool temp directory {self._tempdir} on nodes {self.nodes}"
-        )
+        self._ctx.log.debug(f"cleaning up SSHPool temp directory {self._tempdir} on nodes {self.nodes}")
         for node in self.nodes:
             run(self._ctx, self._ssh_cmd(node, ["rm", "-rf", self._tempdir]))
         self.has_created_tempdirs = False
@@ -423,10 +406,7 @@ class SSHPool(Pool):
         if isinstance(target_nodes, str):
             target_nodes = [target_nodes]
         nodes = target_nodes or self.nodes
-        self._ctx.log.debug(
-            f"syncing file to SSHPool nodes, sources={sources},"
-            f"destination={destination}, nodes={nodes}"
-        )
+        self._ctx.log.debug(f"syncing file to SSHPool nodes, sources={sources}," f"destination={destination}, nodes={nodes}")
         for node in nodes:
             dest = f"{node}:{os.path.join(self.tempdir, destination)}"
             cmd = ["scp", *self.scp_opts, *sources, dest]
@@ -442,10 +422,7 @@ class SSHPool(Pool):
             source_nodes = [source_nodes]
         nodes = source_nodes or self.nodes
 
-        self._ctx.log.debug(
-            f"syncing file from SSHPool nodes, source={source},"
-            f"destination={destination}, nodes={nodes}"
-        )
+        self._ctx.log.debug(f"syncing file from SSHPool nodes, source={source}," f"destination={destination}, nodes={nodes}")
 
         for i, node in enumerate(nodes):
             dest = destination or os.path.basename(source)
@@ -498,9 +475,7 @@ class SSHPool(Pool):
             tunnel_src = None
             if tunnel_to_nodes_dest:
                 tunnel_src = random.randint(10000, 30000)
-                ssh_node_opts += [
-                    f"-Llocalhost:{tunnel_src}:0.0.0.0:{tunnel_to_nodes_dest}"
-                ]
+                ssh_node_opts += [f"-Llocalhost:{tunnel_src}:0.0.0.0:{tunnel_to_nodes_dest}"]
 
             ssh_cmd = self._ssh_cmd(node, cmd, ssh_node_opts)
             proc = run(
@@ -546,9 +521,7 @@ class SSHPool(Pool):
 class PrunPool(Pool):
     default_job_time = 900  # if prun reserves this amount, it is not logged
 
-    def __init__(
-        self, logger: logging.Logger, parallelmax: int, prun_opts: Iterable[str]
-    ):
+    def __init__(self, logger: logging.Logger, parallelmax: int, prun_opts: Iterable[str]):
         super().__init__(logger, parallelmax)
         self.prun_opts = prun_opts
 
@@ -592,9 +565,7 @@ class PrunPool(Pool):
     def process_job_output(self, job: Job) -> None:
         assert isinstance(job, PrunJob)
 
-        def group_nodes(
-            nodes: Sequence[Tuple[int, int]]
-        ) -> List[Tuple[List[int], List[int]]]:
+        def group_nodes(nodes: Sequence[Tuple[int, int]]) -> List[Tuple[List[int], List[int]]]:
             groups = [([m], [c]) for m, c in sorted(nodes)]
             for i in range(len(groups) - 1, 0, -1):
                 lmachines, lcores = groups[i - 1]
@@ -602,11 +573,7 @@ class PrunPool(Pool):
                 if lmachines == rmachines and lcores[-1] + 1 == rcores[0]:
                     groups[i - 1] = lmachines, lcores + rcores
                     del groups[i]
-                elif (
-                    len(lcores) == 1
-                    and lmachines[-1] + 1 == rmachines[0]
-                    and lcores == rcores
-                ):
+                elif len(lcores) == 1 and lmachines[-1] + 1 == rmachines[0] and lcores == rcores:
                     groups[i - 1] = lmachines + rmachines, lcores
                     del groups[i]
             return groups
