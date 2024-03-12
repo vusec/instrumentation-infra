@@ -221,6 +221,7 @@ class Process:
     teeout: bool
 
     stdout_override: Optional[str] = None
+    stderr_override: Optional[str] = None
 
     @property
     def returncode(self) -> Optional[int]:
@@ -241,6 +242,18 @@ class Process:
         raise ValueError(f"Only bytes/str values for proc.stdout are supported, got {type(self.proc.stdout)}")
 
     @property
+    def stderr(self) -> str:
+        if self.proc is None:
+            raise Exception("invalid process has no stderr")
+        if self.stderr_override is not None:
+            return self.stderr_override
+        if isinstance(self.proc.stderr, str):
+            return self.proc.stderr
+        if isinstance(self.proc.stderr, bytes):
+            return self.proc.stderr.decode()
+        raise ValueError(f"Only bytes/str values for proc.stderr are supported, got {type(self.proc.stderr)}")
+
+    @property
     def stdout_io(self) -> IO[AnyStr]:
         if self.proc is None:
             raise Exception("invalid process has no stdout")
@@ -248,6 +261,15 @@ class Process:
         assert self.proc.stdout is not None
         assert not isinstance(self.proc.stdout, (str, bytes))
         return self.proc.stdout
+
+    @property
+    def stderr_io(self) -> IO[AnyStr]:
+        if self.proc is None:
+            raise Exception("invalid process has no stderr")
+        assert self.stderr_override is None
+        assert self.proc.stderr is not None
+        assert not isinstance(self.proc.stderr, (str, bytes))
+        return self.proc.stderr
 
     def poll(self) -> Optional[int]:
         assert isinstance(self.proc, subprocess.Popen)
@@ -379,23 +401,31 @@ def run(
 
     # Create tee to split output to runlog file & string buffer; also to stdout if teeout is true
     if defer or silent or "stdout" in kwargs:
-        _tee = None
+        _stdout_tee = None
+        _stderr_tee = None
         kwargs.setdefault("stdout", subprocess.PIPE)
         kwargs.setdefault("stderr", subprocess.PIPE)
     else:
         # Create a list of writers, if runlog file is not none, add it; if teeout, also add stdout
-        writers: list[io.IOBase | typing.IO] = [io.StringIO()]
+        stdout_writers: list[io.IOBase | typing.IO] = [io.StringIO()]
+        stderr_writers: list[io.IOBase | typing.IO] = [io.StringIO()]
         if ctx.runlog_file is not None and isinstance(ctx.runlog_file, io.TextIOWrapper):
-            writers.append(ctx.runlog_file)
+            stdout_writers.append(ctx.runlog_file)
+            stderr_writers.append(ctx.runlog_file)
         if teeout:
-            writers.append(sys.stdout)
-        assert len(writers) >= 1
+            stdout_writers.append(sys.stdout)
+            stderr_writers.append(sys.stderr)
+        assert len(stdout_writers) >= 1
+        assert len(stderr_writers) >= 1
 
-        _tee = _Tee(*writers)
-        assert isinstance(_tee, _Tee)
-        assert len(_tee.writers) > 0 and isinstance(_tee.writers[0], io.StringIO)
-        kwargs.setdefault("stdout", _tee)
-        kwargs.setdefault("stderr", _tee)
+        _stdout_tee = _Tee(*stdout_writers)
+        _stderr_tee = _Tee(*stderr_writers)
+        assert isinstance(_stdout_tee, _Tee)
+        assert isinstance(_stderr_tee, _Tee)
+        assert len(_stdout_tee.writers) > 0 and isinstance(_stdout_tee.writers[0], io.StringIO)
+        assert len(_stderr_tee.writers) > 0 and isinstance(_stderr_tee.writers[0], io.StringIO)
+        kwargs.setdefault("stdout", _stdout_tee)
+        kwargs.setdefault("stderr", _stderr_tee)
 
     # If deferring, return immediately; check if command exists by catching FileNotFoundError
     try:
@@ -429,16 +459,21 @@ def run(
         ctx.runlog_file.write("\n\n===== END OF OUTPUT =====\n\n")
         ctx.runlog_file.flush()
 
-    if _tee is not None:
-        assert isinstance(_tee, _Tee)
-        assert len(_tee.writers) > 0
-        assert isinstance(_tee.writers[0], io.StringIO)
+    if _stdout_tee is not None and _stderr_tee is not None:
+        assert isinstance(_stdout_tee, _Tee)
+        assert isinstance(_stderr_tee, _Tee)
+        assert len(_stdout_tee.writers) > 0
+        assert len(_stderr_tee.writers) > 0
+        assert isinstance(_stdout_tee.writers[0], io.StringIO)
+        assert isinstance(_stderr_tee.writers[0], io.StringIO)
 
-        # Store the stdout from the string buffer into the Process' stdout overwrite variable
-        proc.stdout_override = _tee.writers[0].getvalue()
+        # Store the stdout/stderr from the string buffer into the Process' overwrite variables
+        proc.stdout_override = _stdout_tee.writers[0].getvalue()
+        proc.stderr_override = _stderr_tee.writers[0].getvalue()
 
         # Close the _tee object; stops the thread and prints all output still in the buffer
-        _tee.close()
+        _stdout_tee.close()
+        _stderr_tee.close()
 
     if proc.returncode != 0 and not allow_error:
         ctx.log.critical(f"Command return code: {proc.returncode}")

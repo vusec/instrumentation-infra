@@ -44,15 +44,21 @@ class Job:
     onsuccess: Optional[Callable[["Job"], Optional[bool]]] = field(default=None, init=False)
     onerror: Optional[Callable[["Job"], Optional[bool]]] = field(default=None, init=False)
     output: str = field(default="", init=False)
+    err_output: str = field(default="", init=False)
 
     @property
     def stdout(self) -> IO:
         return self.proc.stdout_io
 
+    @property
+    def stderr(self) -> IO:
+        return self.proc.stderr_io
+
 
 @dataclass
 class ProcessJob(Job):
-    outfile_handle: IO
+    stdout_outfile_handle: IO
+    stderr_outfile_handle: IO
 
 
 @dataclass
@@ -109,7 +115,7 @@ class Pool(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def process_job_output(self, job: Job) -> None:
+    def process_job_output(self, job: Job, fd: int | None = None) -> None:
         pass
 
     def __init__(self, logger: logging.Logger, parallelmax: int):
@@ -140,16 +146,20 @@ class Pool(metaclass=ABCMeta):
         # and call success/error callbacks
         while not self.done:
             for fd, flags in self.poller.poll(timeout=self.poll_interval):
+                job = self.jobs[fd]
                 if flags & (select.EPOLLIN | select.EPOLLPRI):
-                    self.process_job_output(self.jobs[fd])
+                    self.process_job_output(job, fd)
 
                 if flags & select.EPOLLERR:
+                    self.log.error(f"Error in file descriptor: {fd}")
                     self.poller.unregister(fd)
-                    job = self.jobs.pop(fd)
+                    del self.jobs[fd]
+                    for alt_fd in (_fd for _fd, _job in self.jobs.items() if _job is job):
+                        self.log.error(f"Found alternative file descriptor (with same job): {alt_fd}")
+                        del self.jobs[alt_fd]
                     self.onerror(job)
 
                 if flags & select.EPOLLHUP:
-                    job = self.jobs[fd]
                     if job.proc.poll() is None:
                         self.log.debug(f"job {job.jobid} hung up but does not yet have a " "return code, check later")
                         continue
@@ -157,10 +167,12 @@ class Pool(metaclass=ABCMeta):
                     self.poller.unregister(fd)
                     del self.jobs[fd]
 
-                    if job.proc.poll() == 0:
-                        self.onsuccess(job)
-                    else:
-                        self.onerror(job)
+                    # Check if another file descriptor of this same process is still in the jobs dict
+                    if job not in self.jobs.values():
+                        if job.proc.poll() == 0:
+                            self.onsuccess(job)
+                        else:
+                            self.onerror(job)
 
     def _wait_for_queue_space(self, nodes_needed: int) -> None:
         if self.parallelmax is not None:
@@ -217,9 +229,15 @@ class Pool(metaclass=ABCMeta):
             job.onsuccess = onsuccess
             job.onerror = onerror
             job.output = ""
+            job.err_output = ""
             self.jobs[job.proc.stdout_io.fileno()] = job
+            self.jobs[job.proc.stderr_io.fileno()] = job
             self.poller.register(
                 job.proc.stdout_io,
+                select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP,
+            )
+            self.poller.register(
+                job.proc.stderr_io,
                 select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP,
             )
             jobs.append(job)
@@ -237,7 +255,9 @@ class Pool(metaclass=ABCMeta):
         if not job.onerror or job.onerror(job) is not False:
             self.log.error(f"job {job.jobid} returned status {job.proc.returncode} " f"{self._get_elapsed(job)}")
             self.log.error(f"command: {job.proc.cmd_str}")
-            sys.stdout.write(job.output)
+            sys.stdout.write(f"stdout:\n{job.output}\n")
+            sys.stdout.write(f"stderr:\n{job.err_output}\n")
+            sys.stdout.flush()
 
     def _get_elapsed(self, job: Job) -> str:
         elapsed = round(time.time() - job.start_time)
@@ -261,10 +281,13 @@ class ProcessPool(Pool):
                 jobid += f"-{i}"
                 outfile += f"-{i}"
 
+            stdout_outfile = f"{outfile}.stdout"
+            stderr_outfile = f"{outfile}.stderr"
+
             self._wait_for_queue_space(1)
             ctx.log.info("running " + jobid)
 
-            kwargs.setdefault("stderr", STDOUT)
+            # kwargs.setdefault("stderr", STDOUT)
 
             proc = run(
                 ctx,
@@ -275,26 +298,45 @@ class ProcessPool(Pool):
                 **kwargs,
             )
             _set_non_blocking(proc.stdout_io)
+            _set_non_blocking(proc.stderr_io)
             os.makedirs(os.path.dirname(outfile), exist_ok=True)
-            job = ProcessJob(proc, jobid, [outfile], open(outfile, "wb"))
+            job = ProcessJob(
+                proc,
+                jobid,
+                [stdout_outfile, stderr_outfile],
+                open(stdout_outfile, "wb"),
+                open(stderr_outfile, "wb"),
+            )
 
             yield job
 
-    def process_job_output(self, job: Job) -> None:
+    def process_job_output(self, job: Job, fd: int | None = None) -> None:
         assert isinstance(job, ProcessJob)
-        buf = job.stdout.read(io.DEFAULT_BUFFER_SIZE)
-        if buf is not None:
-            job.output += buf.decode("ascii", errors="replace")
-            job.outfile_handle.write(buf)
+        if fd is None or (fd is not None and fd == job.stdout.fileno()):
+            buf = job.stdout.read(io.DEFAULT_BUFFER_SIZE)
+            if buf is not None:
+                job.output += buf.decode("ascii", errors="replace")
+                job.stdout_outfile_handle.write(buf)
+                job.stdout_outfile_handle.flush()
+        elif fd is not None and fd == job.stderr.fileno():
+            buf = job.stderr.read(io.DEFAULT_BUFFER_SIZE)
+            if buf is not None:
+                job.err_output += buf.decode("ascii", errors="replace")
+                job.stderr_outfile_handle.write(buf)
+                job.stderr_outfile_handle.flush()
+        else:
+            self.log.error(f"Invalid file descriptor received, not stdout/stderr: {fd}")
 
     def onsuccess(self, job: Job) -> None:
         assert isinstance(job, ProcessJob)
-        job.outfile_handle.close()
+        job.stdout_outfile_handle.close()
+        job.stderr_outfile_handle.close()
         super().onsuccess(job)
 
     def onerror(self, job: Job) -> None:
         assert isinstance(job, ProcessJob)
-        job.outfile_handle.close()
+        job.stdout_outfile_handle.close()
+        job.stderr_outfile_handle.close()
         super().onerror(job)
 
 
@@ -498,7 +540,7 @@ class SSHPool(Pool):
 
             yield job
 
-    def process_job_output(self, job: Job) -> None:
+    def process_job_output(self, job: Job, fd: int | None = None) -> None:
         assert isinstance(job, SSHJob)
         buf = job.stdout.read(io.DEFAULT_BUFFER_SIZE)
         if buf is not None:
@@ -562,7 +604,7 @@ class PrunPool(Pool):
         job = PrunJob(proc, jobid_base, outfiles, nnodes)
         yield job
 
-    def process_job_output(self, job: Job) -> None:
+    def process_job_output(self, job: Job, fd: int | None = None) -> None:
         assert isinstance(job, PrunJob)
 
         def group_nodes(nodes: Sequence[Tuple[int, int]]) -> List[Tuple[List[int], List[int]]]:
