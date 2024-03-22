@@ -25,7 +25,9 @@ from .remote_runner import RemoteRunner, RemoteRunnerError
 
 
 class WebServer(Target, metaclass=ABCMeta):
-    aggregation_field = "connections"
+    @property
+    def aggregration_field(self) -> str:
+        return "connections"
 
     def reportable_fields(self) -> Mapping[str, str]:
         return {
@@ -73,10 +75,7 @@ class WebServer(Target, metaclass=ABCMeta):
             "--filesize",
             type=str,
             default="64",
-            help=(
-                "filesize for generated index.html in bytes "
-                "(supports suffixes compatible with dd, default 64)"
-            ),
+            help=("filesize for generated index.html in bytes " "(supports suffixes compatible with dd, default 64)"),
         )
 
         # bench options
@@ -97,10 +96,7 @@ class WebServer(Target, metaclass=ABCMeta):
             "--connections",
             nargs="+",
             type=int,
-            help=(
-                "a list of concurrent wrk connections; "
-                "start low and increment until the server is saturated"
-            ),
+            help=("a list of concurrent wrk connections; " "start low and increment until the server is saturated"),
         )
         parser.add_argument(
             "--cleanup-time",
@@ -190,20 +186,13 @@ class WebServer(Target, metaclass=ABCMeta):
             "--config",
             type=str,
             default="",
-            help=(
-                "Config file to be used instead of the default template\n"
-                "NOTE: use absolute path"
-            ),
+            help=("Config file to be used instead of the default template\n" "NOTE: use absolute path"),
         )
 
         # bench-client options
-        parser.add_argument(
-            "--server-ip", help="IP of machine running matching bench-server"
-        )
+        parser.add_argument("--server-ip", help="IP of machine running matching bench-server")
 
-    def run(
-        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
-    ) -> None:
+    def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
         runner = WebServerRunner(self, ctx, instance, pool)
 
         if ctx.args.run_type == "serve":
@@ -387,9 +376,7 @@ class WebServerRunner:
     instance: Instance
     pool: Optional[Pool]
 
-    def __init__(
-        self, server: WebServer, ctx: Context, instance: Instance, pool: Optional[Pool]
-    ):
+    def __init__(self, server: WebServer, ctx: Context, instance: Instance, pool: Optional[Pool]):
         self.server = server
         self.ctx = ctx
         self.instance = instance
@@ -399,9 +386,7 @@ class WebServerRunner:
 
         # Directory where we stage our run directory, which will then be copied
         # to the (node-local) rundir.
-        self.stagedir = os.path.join(
-            ctx.paths.buildroot, "run-staging", f"{server.name}-{instance.name}"
-        )
+        self.stagedir = os.path.join(ctx.paths.buildroot, "run-staging", f"{server.name}-{instance.name}")
 
         if self.pool:
             if isinstance(self.pool, SSHPool):
@@ -425,9 +410,7 @@ class WebServerRunner:
             server_command = self.bash_command(self.standalone_server_script())
             outfile = self.logfile("server.out")
             self.ctx.log.debug("server will log to " + outfile)
-            self.pool.run(
-                self.ctx, server_command, jobid="server", nnodes=1, outfile=outfile
-            )
+            self.pool.run(self.ctx, server_command, jobid="server", nnodes=1, outfile=outfile)
         else:
             self.create_logdir()
             self.populate_stagedir()
@@ -449,16 +432,12 @@ class WebServerRunner:
             server_command = self.bash_command(self.test_server_script())
             outfile = self.logfile("server.out")
             self.ctx.log.debug("server will log to " + outfile)
-            self.pool.run(
-                self.ctx, server_command, jobid="server", nnodes=1, outfile=outfile
-            )
+            self.pool.run(self.ctx, server_command, jobid="server", nnodes=1, outfile=outfile)
 
             client_command = self.bash_command(self.test_client_script())
             outfile = self.logfile("client.out")
             self.ctx.log.debug("client will log to " + outfile)
-            self.pool.run(
-                self.ctx, client_command, jobid="client", nnodes=1, outfile=outfile
-            )
+            self.pool.run(self.ctx, client_command, jobid="client", nnodes=1, outfile=outfile)
         else:
             self.create_logdir()
             self.populate_stagedir()
@@ -494,10 +473,7 @@ class WebServerRunner:
 
             # Do a warmup run
             if not self.ctx.args.disable_warmup:
-                client.run(
-                    f"{wrk_path} --duration 1s --threads {wrk_threads} "
-                    f'--connections 400 "{url}"'
-                )
+                client.run(f"{wrk_path} --duration 1s --threads {wrk_threads} " f'--connections 400 "{url}"')
 
             server.poll(expect_alive=True)
 
@@ -505,14 +481,10 @@ class WebServerRunner:
             """Run workload on client, and write back the results. Optionally
             monitor statistics of the server and write back those as well."""
 
-            self.ctx.log.info(
-                f"Benchmarking {self.server.name} with {cons} connections, #{it}"
-            )
+            self.ctx.log.info(f"Benchmarking {self.server.name} with {cons} connections, #{it}")
 
             if collect_stats:
-                server.start_monitoring(
-                    stats=collect_stats, interval=self.ctx.args.collect_stats_interval
-                )
+                server.start_monitoring(stats=collect_stats, interval=self.ctx.args.collect_stats_interval)
 
             # Allow wrk to return non-zero values, which it does when (some) of
             # the requests are errors. We just go on benchmarking, and let the
@@ -643,27 +615,17 @@ class WebServerRunner:
         # Client here means "connect to the remote runner server", not the
         # client/server of our webserver setup.
         self.ctx.log.info("Connecting to remote nodes")
-        client_port = (
-            client_job.tunnel_src if client_tunnel_dest else rrunner_port_client
-        )
-        server_port = (
-            server_job.tunnel_src if server_tunnel_dest else rrunner_port_server
-        )
-        client = RemoteRunner(
-            self.ctx.log, side="client", host=client_host, port=client_port, timeout=10
-        )
-        server = RemoteRunner(
-            self.ctx.log, side="client", host=server_host, port=server_port, timeout=10
-        )
+        client_port = client_job.tunnel_src if client_tunnel_dest else rrunner_port_client
+        server_port = server_job.tunnel_src if server_tunnel_dest else rrunner_port_server
+        client = RemoteRunner(self.ctx.log, side="client", host=client_host, port=client_port, timeout=10)
+        server = RemoteRunner(self.ctx.log, side="client", host=server_host, port=server_port, timeout=10)
 
         _err: Optional[BaseException] = None
         try:
             # Do some minor sanity checks on the remote file system of server
             server_bin = self.server.server_bin(self.ctx, self.instance)
             if not server.has_file(server_bin):
-                raise RemoteRunnerError(
-                    "server binary " + server_bin + " not present on server"
-                )
+                raise RemoteRunnerError("server binary " + server_bin + " not present on server")
 
             # Copy wrk binary only as needed
             if not client.has_file(wrk_path):
@@ -680,10 +642,7 @@ class WebServerRunner:
             # Start actual server and benchmarking!
             for cons in self.ctx.args.connections:
                 for it in range(self.ctx.args.iterations):
-                    if (
-                        not has_started_server
-                        or self.ctx.args.restart_server_between_runs
-                    ):
+                    if not has_started_server or self.ctx.args.restart_server_between_runs:
                         if has_started_server:
                             _kill_server()
                         _start_server()
@@ -712,12 +671,8 @@ class WebServerRunner:
         self.pool.wait_all()
 
         self.ctx.log.info("Done, syncing results to " + self.logdir)
-        self.pool.sync_from_nodes(
-            client_debug_file, self.logfile(client_debug_file), client_node
-        )
-        self.pool.sync_from_nodes(
-            server_debug_file, self.logfile(server_debug_file), server_node
-        )
+        self.pool.sync_from_nodes(client_debug_file, self.logfile(client_debug_file), client_node)
+        self.pool.sync_from_nodes(server_debug_file, self.logfile(server_debug_file), server_node)
 
         self.pool.cleanup_tempdirs()
 
@@ -733,10 +688,7 @@ class WebServerRunner:
             if not self.ctx.args.server_ip:
                 raise FatalError("need --server-ip")
         elif isinstance(self.pool, ProcessPool):
-            self.ctx.log.warn(
-                "the client should not run on the same machine "
-                "as the server, use prun for benchmarking"
-            )
+            self.ctx.log.warn("the client should not run on the same machine " "as the server, use prun for benchmarking")
 
         if not self.ctx.args.duration:
             raise FatalError("need --duration")
@@ -746,10 +698,7 @@ class WebServerRunner:
 
         for conn in self.ctx.args.connections:
             if conn < self.ctx.args.threads:
-                raise FatalError(
-                    "#connections must be >= #threads "
-                    f"({conn} < {self.ctx.args.threads})"
-                )
+                raise FatalError("#connections must be >= #threads " f"({conn} < {self.ctx.args.threads})")
 
         # Set up directory for results
         os.makedirs(self.logdir, exist_ok=True)
@@ -810,14 +759,9 @@ class WebServerRunner:
 
         for conn in self.ctx.args.connections:
             if conn < self.ctx.args.threads:
-                raise FatalError(
-                    "#connections must be >= #threads "
-                    f"({conn} < {self.ctx.args.threads})"
-                )
+                raise FatalError("#connections must be >= #threads " f"({conn} < {self.ctx.args.threads})")
 
-        self.ctx.log.warn(
-            f"matching bench-server should be running at {self.ctx.args.server_ip}"
-        )
+        self.ctx.log.warn(f"matching bench-server should be running at {self.ctx.args.server_ip}")
         self.ctx.log.info(f"will log to {self.logdir} (merge with server log)")
 
         self.ctx.log.debug("creating log directory")
@@ -964,21 +908,25 @@ class WebServerRunner:
         """
 
     def test_server_script(self) -> str:
-        return self.server_script(f"""
+        return self.server_script(
+            f"""
         echo "=== copying index.html to log directory for client"
         cp "{self.rundir}/www/index.html" .
 
         echo "=== waiting for stop signal from client"
         test "$(comm_recv)" = stop
-        """)
+        """
+        )
 
     def test_client_script(self) -> str:
         return (
-            self.client_script(f"""
+            self.client_script(
+                f"""
         url="http://$server_host:{self.ctx.args.port}/index.html"
         echo "=== requesting $url"
         wget -q -O requested_index.html "$url"
-        """)
+        """
+            )
             + """
         if diff -q index.html requested_index.html; then
             echo "=== contents of index.html are correct"
@@ -994,7 +942,8 @@ class WebServerRunner:
 
     def wrk_server_script(self) -> str:
         duration = self.ctx.args.duration
-        return self.server_script(f"""
+        return self.server_script(
+            f"""
         echo "=== waiting for first work rate"
         rate="$(comm_recv)"
         while [ "$rate" != stop ]; do
@@ -1008,12 +957,14 @@ class WebServerRunner:
             echo "=== waiting for next work rate"
             rate="$(comm_recv)"
         done
-        """)
+        """
+        )
 
     def wrk_client_script(self) -> str:
         conns = " ".join(str(c) for c in self.ctx.args.connections)
         a = self.ctx.args
-        return self.client_script(f"""
+        return self.client_script(
+            f"""
         url="http://$server_host:{a.port}/index.html"
         echo "=== will benchmark $url for {a.duration} seconds for each work rate"
 
@@ -1038,16 +989,19 @@ class WebServerRunner:
                 set +x
             done
         done
-        """)
+        """
+        )
 
     def standalone_server_script(self) -> str:
         duration = self.ctx.args.duration
-        return self.server_script(f"""
+        return self.server_script(
+            f"""
         echo "=== logging cpu usage to cpu for {duration} seconds"
         {{ timeout {duration} mpstat 1 {duration} || true; }} | \\
                 awk '/^[0-9].+all/ {{print 100-$13; fflush()}}' \\
                 > cpu
-        """)
+        """
+        )
 
 
 class Nginx(WebServer):
@@ -1074,11 +1028,14 @@ class Nginx(WebServer):
 
     version: str
 
+    @property
+    def name(self) -> str:
+        return f"nginx-{self.version}"
+
     def __init__(self, version: str, build_flags: List[str] = []):
         super().__init__()
         self.build_flags = build_flags
         self.version = version
-        self.name = "nginx-" + version
 
     def fetch(self, ctx: Context) -> None:
         download(ctx, "https://nginx.org/download/" + self.tar_name())
@@ -1089,9 +1046,7 @@ class Nginx(WebServer):
     def tar_name(self) -> str:
         return "nginx-" + self.version + ".tar.gz"
 
-    def build(
-        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
-    ) -> None:
+    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
         if not os.path.exists(instance.name):
             ctx.log.debug("unpacking nginx-" + self.version)
             shutil.rmtree("nginx-" + self.version, ignore_errors=True)
@@ -1247,6 +1202,10 @@ class ApacheHttpd(WebServer):
         )
     ]
 
+    @property
+    def name(self) -> str:
+        return f"apache-{self.version}"
+
     def __init__(
         self,
         version: str,
@@ -1259,7 +1218,6 @@ class ApacheHttpd(WebServer):
         self.apr_version = apr_version
         self.apr_util_version = apr_util_version
         self.modules = modules
-        self.name = "apache-" + version
         self.build_flags = build_flags
         self.modules = modules
         super().__init__()
@@ -1267,16 +1225,12 @@ class ApacheHttpd(WebServer):
     def fetch(self, ctx: Context) -> None:
         _fetch_apache(ctx, "httpd", "httpd-" + self.version, "src")
         _fetch_apache(ctx, "apr", "apr-" + self.apr_version, "src/srclib/apr")
-        _fetch_apache(
-            ctx, "apr", "apr-util-" + self.apr_util_version, "src/srclib/apr-util"
-        )
+        _fetch_apache(ctx, "apr", "apr-util-" + self.apr_util_version, "src/srclib/apr-util")
 
     def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists("src")
 
-    def build(
-        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
-    ) -> None:
+    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
         # create build directory
         objdir = os.path.join(instance.name, "obj")
         if os.path.exists(objdir):
@@ -1373,10 +1327,7 @@ class ApacheHttpd(WebServer):
             "--worker-threads",
             type=int,
             default=25,
-            help=(
-                "number of connection threads per worker process "
-                "(ThreadsPerChild, default 25)"
-            ),
+            help=("number of connection threads per worker process " "(ThreadsPerChild, default 25)"),
         )
 
     def populate_stagedir(self, runner: WebServerRunner) -> None:
@@ -1436,9 +1387,12 @@ class Lighttpd(WebServer):
     TODO: docs
     """
 
+    @property
+    def name(self) -> str:
+        return f"lighttpd-{self.version}"
+
     def __init__(self, version: str):
         self.version = version
-        self.name += "lighttpd-" + version
         super().__init__()
 
     def dependencies(self) -> Iterator[Package]:
@@ -1451,10 +1405,7 @@ class Lighttpd(WebServer):
         minor_version = m.group(1)
         download(
             ctx,
-            (
-                "https://download.lighttpd.net/lighttpd/"
-                f"releases-{minor_version}.x/{self.tar_name()}"
-            ),
+            ("https://download.lighttpd.net/lighttpd/" f"releases-{minor_version}.x/{self.tar_name()}"),
         )
 
     def is_fetched(self, ctx: Context) -> bool:
@@ -1463,9 +1414,7 @@ class Lighttpd(WebServer):
     def tar_name(self) -> str:
         return "lighttpd-" + self.version + ".tar.gz"
 
-    def build(
-        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
-    ) -> None:
+    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
         if not os.path.exists(instance.name):
             ctx.log.debug("unpacking lighttpd-" + self.version)
             shutil.rmtree("lighttpd-" + self.version, ignore_errors=True)
@@ -1501,9 +1450,7 @@ class Lighttpd(WebServer):
         )
 
     def server_bin(self, ctx: Context, instance: Instance) -> str:
-        return self.path(
-            ctx, instance.name, "sconsbuild", "static", "build", "lighttpd"
-        )
+        return self.path(ctx, instance.name, "sconsbuild", "static", "build", "lighttpd")
 
     def binary_paths(self, ctx: Context, instance: Instance) -> Iterator[str]:
         yield self.server_bin(ctx, instance)

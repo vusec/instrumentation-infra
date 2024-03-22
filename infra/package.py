@@ -51,12 +51,6 @@ class Package(metaclass=ABCMeta):
     options are configured by :func:`pkg_config_options`.
     """
 
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, self.__class__) and other.ident() == self.ident()
-
-    def __hash__(self) -> int:
-        return hash("package-" + self.ident())
-
     @abstractmethod
     def ident(self) -> str:
         """
@@ -70,6 +64,18 @@ class Package(metaclass=ABCMeta):
         instantiate the same class in order to share a dependency.
         """
         pass
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, self.__class__) and other.ident() == self.ident()
+
+    def __hash__(self) -> int:
+        return hash("package-" + self.ident())
+
+    def __repr__(self) -> str:
+        return f"<'{self.ident()}' package at {id(self):#x} (hash: {self.__hash__()})>"
+
+    def __str__(self) -> str:
+        return self.ident()
 
     def dependencies(self) -> Iterator["Package"]:
         """

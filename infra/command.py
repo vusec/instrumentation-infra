@@ -16,8 +16,17 @@ from .util import FatalError, Index
 
 
 class Command(metaclass=ABCMeta):
-    name: str
-    description: str
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Returns this command's name. Should be unique."""
+        pass
+
+    @property
+    @abstractmethod
+    def description(self) -> str:
+        """Returns a description of this command's behaviour."""
+        pass
 
     targets: Index[Target]
     instances: Index[Instance]
@@ -42,20 +51,14 @@ class Command(metaclass=ABCMeta):
             "--parallel",
             choices=("proc", "ssh", "prun"),
             default=None,
-            help=(
-                'build benchmarks in parallel ("proc" for local '
-                'processes, "prun" for DAS cluster)'
-            ),
+            help=('build benchmarks in parallel ("proc" for local ' 'processes, "prun" for DAS cluster)'),
         )
         parser.add_argument(
             "--parallelmax",
             metavar="PROCESSES_OR_NODES",
             type=int,
             default=None,
-            help=(
-                f"limit simultaneous node reservations (default: {cpu_count()} "
-                "for proc, 64 for prun)"
-            ),
+            help=(f"limit simultaneous node reservations (default: {cpu_count()} " "for proc, 64 for prun)"),
         )
         parser.add_argument(
             "--ssh-nodes",
@@ -85,11 +88,7 @@ class Command(metaclass=ABCMeta):
                 raise FatalError("--prun-opts not supported for --parallel=ssh")
             if not ctx.args.ssh_nodes:
                 raise FatalError("--ssh-nodes required for --parallel=ssh")
-            pmax = (
-                len(ctx.args.ssh_nodes)
-                if ctx.args.parallelmax is None
-                else ctx.args.parallelmax
-            )
+            pmax = len(ctx.args.ssh_nodes) if ctx.args.parallelmax is None else ctx.args.parallelmax
             return SSHPool(ctx, ctx.log, pmax, ctx.args.ssh_nodes)
 
         if ctx.args.parallel == "prun":
@@ -104,9 +103,7 @@ class Command(metaclass=ABCMeta):
             raise FatalError("--prun-opts not supported for --parallel=none")
         return None
 
-    def complete_package(
-        self, prefix: str, parsed_args: argparse.Namespace, **kwargs: Any
-    ) -> Iterator[str]:
+    def complete_package(self, prefix: str, parsed_args: argparse.Namespace, **kwargs: Any) -> Iterator[str]:
         for package in get_deps(*self.targets.all(), *self.instances.all()):
             name = package.ident()
             if name.startswith(prefix):

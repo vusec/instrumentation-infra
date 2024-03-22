@@ -1,3 +1,4 @@
+from abc import abstractmethod
 import argparse
 import os
 from multiprocessing import cpu_count
@@ -15,19 +16,24 @@ default_jobs = min(cpu_count(), 64)
 
 
 class BuildCommand(Command):
-    name = "build"
-    description = "build target programs and their dependencies"
+    @property
+    def name(self) -> str:
+        return "build"
+
+    @property
+    def description(self) -> str:
+        return "build target programs and their dependencies"
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         target_parsers = parser.add_subparsers(
             title="target",
             metavar="TARGET",
             dest="target",
-            help=" | ".join(self.targets),
+            help=" | ".join([target.name for target in self.targets.all()]),
         )
         target_parsers.required = True
 
-        for name, target in self.targets.items():
+        for target in self.targets.all():
             tparser = target_parsers.add_parser(
                 name=target.name,
                 help=f"{self.name} configuration options for {target.name}",
@@ -38,8 +44,8 @@ class BuildCommand(Command):
                 "instances",
                 nargs="+",
                 metavar="INSTANCE",
-                choices=self.instances,
-                help=" | ".join(self.instances),
+                choices=[instance.name for instance in self.instances.all()],
+                help=" | ".join([instance.name for instance in self.instances.all()]),
             )
             tparser.add_argument(
                 "-j",
@@ -149,8 +155,13 @@ class BuildCommand(Command):
 # This command does not appear in main --help usage because it is meant to be
 # used as a callback for build scripts
 class ExecHookCommand(Command):
-    name = "exec-hook"
-    description = ""
+    @property
+    def name(self) -> str:
+        return "exec-hook"
+
+    @property
+    def description(self) -> str:
+        return "intended to be used as a callback for build scripts"
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
@@ -161,8 +172,8 @@ class ExecHookCommand(Command):
         parser.add_argument(
             "instance",
             metavar="INSTANCE",
-            choices=self.instances,
-            help=" | ".join(self.instances),
+            choices=[instance.name for instance in self.instances.all()],
+            help=" | ".join([instance.name for instance in self.instances.all()]),
         )
         parser.add_argument(
             "targetfile",
@@ -196,15 +207,20 @@ class ExecHookCommand(Command):
 
 
 class PkgBuildCommand(Command):
-    name = "pkg-build"
-    description = "build a single package and its dependencies"
+    @property
+    def name(self) -> str:
+        return "pkg-build"
+
+    @property
+    def description(self) -> str:
+        return "build a single package and its dependencies"
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         packagearg = parser.add_argument(
             "package",
             metavar="PACKAGE",
-            choices=self.packages,
-            help=" | ".join(self.packages),
+            choices=[package.ident() for package in self.packages.all()],
+            help=" | ".join([package.ident() for package in self.packages.all()]),
         )
         setattr(packagearg, "completer", self.complete_package)
 

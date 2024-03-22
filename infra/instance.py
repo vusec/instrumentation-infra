@@ -37,6 +37,12 @@ class Instance(metaclass=ABCMeta):
     def __hash__(self) -> int:
         return hash("instance-" + self.name)
 
+    def __repr__(self) -> str:
+        return f"<'{self.name}' instance at {id(self):#x} (hash: {self.__hash__()})>"
+
+    def __str__(self) -> str:
+        return self.name
+
     def add_build_args(self, parser: ArgumentParser) -> None:
         """
         Extend the command-line arguments for the :ref:`build <usage-build>`

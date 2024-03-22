@@ -106,10 +106,13 @@ class SPEC2017(Target):
     :param force_cpu: bind runspec to this cpu core (-1 to disable)
     :param default_benchmarks: specify benchmarks run by default
     """
+    @property
+    def name(self) -> str:
+        return "spec2017"
 
-    name = "spec2017"
-
-    aggregation_field = "benchmark"
+    @property
+    def aggregation_field(self) -> str:
+        return "benchmark"
 
     def __init__(
         self,

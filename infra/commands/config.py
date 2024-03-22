@@ -6,8 +6,13 @@ from ..util import qjoin
 
 
 class ConfigCommand(Command):
-    name = "config"
-    description = "get configuration information"
+    @property
+    def name(self) -> str:
+        return "config"
+
+    @property
+    def description(self) -> str:
+        return "get configuration information"
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         group = parser.add_mutually_exclusive_group(required=True)
@@ -33,14 +38,20 @@ class ConfigCommand(Command):
 
 
 class PkgConfigCommand(Command):
-    name = "pkg-config"
-    description = "get package-specific information"
+    @property
+    def name(self) -> str:
+        return "pkg-config"
+
+    @property
+    def description(self) -> str:
+        return "get package-specific information"
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         packagearg = parser.add_argument(
             "package",
             metavar="PACKAGE",
-            help="package to configure",
+            choices=[package.ident() for package in self.packages.all()],
+            help=" | ".join([package.ident() for package in self.packages.all()]),
         )
         setattr(packagearg, "completer", self.complete_package)
 

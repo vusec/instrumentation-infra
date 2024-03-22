@@ -8,27 +8,32 @@ from ..util import FatalError
 
 
 class CleanCommand(Command):
-    name = "clean"
-    description = """remove all source/build/install files of the given
-                     packages and targets"""
+    @property
+    def name(self) -> str:
+        return "clean"
+
+    @property
+    def description(self) -> str:
+        return "remove all source/build/install files of the given packages and targets"
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
             "-t",
             "--targets",
             nargs="+",
-            metavar="TARGET",
             default=[],
-            choices=self.targets,
-            help=" | ".join(self.targets),
+            metavar="TARGET",
+            choices=[target.name for target in self.targets.all()],
+            help=" | ".join([target.name for target in self.targets.all()]),
         )
         packagearg = parser.add_argument(
             "-p",
             "--packages",
             nargs="+",
-            metavar="PACKAGE",
             default=[],
-            help="which packages to clean",
+            metavar="PACKAGE",
+            choices=[package.ident() for package in self.packages.all()],
+            help=" | ".join([package.ident() for package in self.packages.all()]),
         )
         setattr(packagearg, "completer", self.complete_package)
 

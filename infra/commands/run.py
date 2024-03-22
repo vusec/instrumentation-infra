@@ -6,15 +6,20 @@ from .build import BuildCommand, default_jobs, load_deps
 
 
 class RunCommand(Command):
-    name = "run"
-    description = "run a single target program"
+    @property
+    def name(self) -> str:
+        return "run"
+
+    @property
+    def description(self) -> str:
+        return "run a single target program"
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         target_parsers = parser.add_subparsers(
             title="target",
             metavar="TARGET",
             dest="target",
-            help=" | ".join(self.targets),
+            help=" | ".join([target.name for target in self.targets.all()]),
         )
         target_parsers.required = True
 
@@ -29,8 +34,8 @@ class RunCommand(Command):
                 "instances",
                 nargs="+",
                 metavar="INSTANCE",
-                choices=self.instances,
-                help=" | ".join(self.instances),
+                choices=[instance.name for instance in self.instances.all()],
+                help=" | ".join([instance.name for instance in self.instances.all()]),
             )
             tparser.add_argument(
                 "--build",

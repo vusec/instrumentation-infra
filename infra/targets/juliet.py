@@ -59,8 +59,13 @@ class Juliet(Target):
 
     """
 
-    name = "juliet"
-    aggregation_field = "cwe"
+    @property
+    def name(self) -> str:
+        return "juliet"
+
+    @property
+    def aggregration_field(self) -> str:
+        return "cwe"
 
     zip_name = "Juliet_Test_Suite_v1.3_for_C_Cpp.zip"
 
@@ -68,9 +73,7 @@ class Juliet(Target):
         self.mitigation_return_code = mitigation_return_code
 
     def add_build_args(self, parser: argparse.ArgumentParser) -> None:
-        parser.add_argument(
-            "--cwe", required=True, nargs="+", help="which CWE to build"
-        )
+        parser.add_argument("--cwe", required=True, nargs="+", help="which CWE to build")
         parser.add_argument(
             "--variants",
             nargs="+",
@@ -117,10 +120,7 @@ class Juliet(Target):
                 for c in aliases[cwe]:
                     ret.add(c)
             else:
-                raise ValueError(
-                    "CWE must be in format 'CWE<number>' or one of"
-                    f" {','.join(aliases)}, not {cwe}"
-                )
+                raise ValueError("CWE must be in format 'CWE<number>' or one of" f" {','.join(aliases)}, not {cwe}")
         return list(ret)
 
     def is_fetched(self, ctx: Context) -> bool:
@@ -130,15 +130,11 @@ class Juliet(Target):
         url = f"https://zenodo.org/record/4701387/files/{self.zip_name}?download=1"
         download(ctx, url)
 
-    def build(
-        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
-    ) -> None:
+    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
         for cwe in self.parse_cwe_list(ctx.args.cwe):
             self.build_cwe(ctx, instance, pool, cwe)
 
-    def build_cwe(
-        self, ctx: Context, instance: Instance, pool: Optional[Pool], cwe: str
-    ) -> None:
+    def build_cwe(self, ctx: Context, instance: Instance, pool: Optional[Pool], cwe: str) -> None:
         bdir = Path(self.path(ctx))
         srcrootdir = bdir / "src"
         os.makedirs(srcrootdir, exist_ok=True)
@@ -280,9 +276,7 @@ class Juliet(Target):
 
         return [str(p) for p in paths]
 
-    def run(
-        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
-    ) -> None:
+    def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
         for cwe in self.parse_cwe_list(ctx.args.cwe):
             self.run_cwe(ctx, instance, cwe)
 
@@ -326,10 +320,7 @@ class Juliet(Target):
                 input=stdin,
                 universal_newlines=False,
             )
-            if (
-                self.mitigation_return_code is not None
-                and self.mitigation_return_code != proc.returncode
-            ):
+            if self.mitigation_return_code is not None and self.mitigation_return_code != proc.returncode:
                 ctx.log.error(
                     f"BAD {testname} did not return correct error: "
                     f"returned {proc.returncode}, expected "

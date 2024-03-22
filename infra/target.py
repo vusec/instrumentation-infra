@@ -64,18 +64,28 @@ class Target(metaclass=ABCMeta):
     :func:`is_fetched`, :func:`fetch`, :func:`build` and :func:`run`.
     """
 
-    #: :class:`str` The target's name, must be unique.
-    name: str
-
-    #: :class:`str` The default reportable field to group by when
-    #               aggregating results.
-    aggregation_field: str = ""
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """The target's name, must be unique."""
+        pass
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, self.__class__) and other.name == self.name
 
     def __hash__(self) -> int:
         return hash("target-" + self.name)
+
+    def __repr__(self) -> str:
+        return f"<'{self.name}' target at {id(self):#x} (hash: {self.__hash__()})>"
+
+    def __str__(self) -> str:
+        return self.name
+
+    @property
+    def aggregation_field(self) -> str:
+        """The default reportable field to group by when aggregating results."""
+        return ""
 
     def reportable_fields(self) -> Mapping[str, str]:
         """

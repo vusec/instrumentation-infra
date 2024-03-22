@@ -92,15 +92,19 @@ result_prefix = "[setup-report]"
 
 
 class ReportCommand(Command):
-    name = "report"
-    description = "report results after a (parallel) run"
+    @property
+    def name(self) -> str:
+        return "report"
+
+    @property
+    def description(self) -> str:
+        return "report results after a (parallel) run"
 
     def add_args(self, parser: argparse.ArgumentParser) -> None:
         subparsers = parser.add_subparsers(
             title="target",
             metavar="TARGET",
-            dest="target",
-            help=" | ".join(self.targets),
+            help=" | ".join([target.name for target in self.targets.all()]),
         )
         subparsers.required = True
 
@@ -123,10 +127,10 @@ class ReportCommand(Command):
                 "-i",
                 "--instances",
                 nargs="+",
-                metavar="INSTANCE",
                 default=[],
-                choices=self.instances,
-                help=" | ".join(self.instances),
+                metavar="INSTANCE",
+                choices=[instance.name for instance in self.instances.all()],
+                help=" | ".join([instance.name for instance in self.instances.all()]),
             )
             tparser.add_argument(
                 "--no-cache",
