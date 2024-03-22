@@ -1,0 +1,73 @@
+--- a/benchspec/CPU2006/401.bzip2/src/bzip2.c.org	2024-03-15 12:46:49.582226035 +0000
++++ b/benchspec/CPU2006/401.bzip2/src/bzip2.c	2024-03-15 12:54:04.257408695 +0000
+@@ -484,7 +484,7 @@
+       outputHandleJustInCase = SPEC_NULLCAST NULL;
+       if (ret == EOF) goto errhandler_io;
+    }
+-   outputHandleJustInCase = NULL;
++   outputHandleJustInCase = SPEC_NULLCAST NULL;
+    if (ferror(stream)) goto errhandler_io;
+    ret = fclose ( stream );
+    if (ret == EOF) goto errhandler_io;
+@@ -611,7 +611,7 @@
+       outputHandleJustInCase = SPEC_NULLCAST NULL;
+       if (ret == EOF) goto errhandler_io;
+    }
+-   outputHandleJustInCase = NULL;
++   outputHandleJustInCase = SPEC_NULLCAST NULL;
+    if (verbosity >= 2) fprintf ( stderr, "\n    " );
+    return True;
+
+@@ -836,7 +836,7 @@
+             fprintf ( stderr,
+                       "%s: Deleting output file %s, if it exists.\n",
+                       progName, outName );
+-         if (outputHandleJustInCase != NULL)
++         if (outputHandleJustInCase != SPEC_NULLCAST NULL)
+             fclose ( outputHandleJustInCase );
+          retVal = remove ( outName );
+          if (retVal != 0)
+@@ -1423,10 +1423,10 @@
+    }
+
+    /*--- Now the input and output handles are sane.  Do the Biz. ---*/
+-   outputHandleJustInCase = outStr;
++   outputHandleJustInCase = SPEC_NULLCAST outStr;
+    deleteOutputOnInterrupt = True;
+    compressStream ( inStr, outStr );
+-   outputHandleJustInCase = NULL;
++   outputHandleJustInCase = SPEC_NULLCAST NULL;
+
+    /*--- If there was an I/O error, we won't get here. ---*/
+    if ( srcMode == SM_F2F ) {
+@@ -1600,10 +1600,10 @@
+    }
+
+    /*--- Now the input and output handles are sane.  Do the Biz. ---*/
+-   outputHandleJustInCase = outStr;
++   outputHandleJustInCase = SPEC_NULLCAST outStr;
+    deleteOutputOnInterrupt = True;
+    magicNumberOK = uncompressStream ( inStr, outStr );
+-   outputHandleJustInCase = NULL;
++   outputHandleJustInCase = SPEC_NULLCAST NULL;
+
+    /*--- If there was an I/O error, we won't get here. ---*/
+    if ( magicNumberOK ) {
+@@ -1721,7 +1721,7 @@
+    }
+
+    /*--- Now the input handle is sane.  Do the Biz. ---*/
+-   outputHandleJustInCase = NULL;
++   outputHandleJustInCase = SPEC_NULLCAST NULL;
+    allOK = testStream ( inStr );
+
+    if (allOK && verbosity >= 1) fprintf ( stderr, "ok\n" );
+@@ -1921,7 +1921,7 @@
+       configError();
+
+    /*-- Initialise --*/
+-   outputHandleJustInCase  = NULL;
++   outputHandleJustInCase  = SPEC_NULLCAST NULL;
+    smallMode               = False;
+    keepInputFiles          = False;
+    forceOverwrite          = False;

@@ -11,8 +11,13 @@ from ...util import FatalError, ResultDict, ResultVal
 
 
 class SpecFindBadPrunNodesCommand(Command):
-    name = "spec-find-bad-prun-nodes"
-    description = "identify DAS-5 nodes with consistently high runtimes"
+    @property
+    def name(self) -> str:
+        return "spec-find-bad-prun-nodes"
+
+    @property
+    def description(self) -> str:
+        return "identify DAS-5 nodes with consistently high runtimes"
 
     # highlight runtimes whose deviation from the mean exceeds 3 times the
     # variance, but only if the percentage deviation is at least 2%
@@ -49,9 +54,7 @@ class SpecFindBadPrunNodesCommand(Command):
             dest="cache",
             help="cached results in the bottom of log files",
         )
-        parser.add_argument(
-            "--refresh", action="store_true", help="refresh cached results in logs"
-        )
+        parser.add_argument("--refresh", action="store_true", help="refresh cached results in logs")
 
         add_table_report_args(parser)
 
@@ -92,9 +95,7 @@ class SpecFindBadPrunNodesCommand(Command):
         # compute aggregates
         benchdata: Dict[str, Dict] = defaultdict(lambda: defaultdict(dict))
         node_zscores: Dict[str, Dict] = defaultdict(lambda: defaultdict(list))
-        node_runtimes: Dict[Tuple[str, str, str], List[Tuple[float, float, str]]] = (
-            defaultdict(list)
-        )
+        node_runtimes: Dict[Tuple[str, str, str], List[Tuple[float, float, str]]] = defaultdict(list)
         workload = None
 
         for iname, iresults in results.items():
@@ -120,9 +121,7 @@ class SpecFindBadPrunNodesCommand(Command):
 
                 # z-score per node
                 entry: Dict[str, float] = benchdata[bench][iname]
-                runtimes = cast(
-                    List[Union[int, float]], [r["runtime"] for r in bresults]
-                )
+                runtimes = cast(List[Union[int, float]], [r["runtime"] for r in bresults])
                 entry["rt_mean"] = rt_mean = statistics.mean(runtimes)
                 entry["rt_stdev"] = rt_stdev = statistics.pstdev(runtimes)
                 entry["rt_variance"] = statistics.pvariance(runtimes)
@@ -171,8 +170,7 @@ class SpecFindBadPrunNodesCommand(Command):
                         deviation_ratio = abs(deviation) / entry["rt_mean"]
 
                         if (
-                            deviation**2
-                            > entry["rt_variance"] * self.highlight_variance_deviation
+                            deviation**2 > entry["rt_variance"] * self.highlight_variance_deviation
                             and deviation_ratio > self.highlight_percent_threshold
                         ):
                             rt = colored(rt, "red")
