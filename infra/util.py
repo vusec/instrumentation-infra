@@ -220,11 +220,11 @@ class Process:
     cmd_str: str
     teeout: bool
 
-    stdout_override: Optional[str] = None
-    stderr_override: Optional[str] = None
+    stdout_override: str | None = None
+    stderr_override: str | None = None
 
     @property
-    def returncode(self) -> Optional[int]:
+    def returncode(self) -> int | None:
         if self.proc is None:
             return -1
         return self.proc.returncode
@@ -271,7 +271,7 @@ class Process:
         assert not isinstance(self.proc.stderr, (str, bytes))
         return self.proc.stderr
 
-    def poll(self) -> Optional[int]:
+    def poll(self) -> int | None:
         assert isinstance(self.proc, subprocess.Popen)
         return self.proc.poll()
 
@@ -454,11 +454,6 @@ def run(
             return Process(None, cmd_str=cmd_str, teeout=teeout)
         raise
 
-    if ctx.runlog_file is not None:
-        assert isinstance(ctx.runlog_file, io.TextIOWrapper)
-        ctx.runlog_file.write("\n\n===== END OF OUTPUT =====\n\n")
-        ctx.runlog_file.flush()
-
     if _stdout_tee is not None and _stderr_tee is not None:
         assert isinstance(_stdout_tee, _Tee)
         assert isinstance(_stderr_tee, _Tee)
@@ -475,35 +470,33 @@ def run(
         _stdout_tee.close()
         _stderr_tee.close()
 
+    if ctx.runlog_file is not None:
+        assert isinstance(ctx.runlog_file, io.TextIOWrapper)
+        ctx.runlog_file.write("\n\n===== END OF OUTPUT =====\n\n")
+        ctx.runlog_file.flush()
+
     if proc.returncode != 0 and not allow_error:
-        ctx.log.critical(f"Command return code: {proc.returncode}")
-        ctx.log.critical(f"Executed command:    {cmd_str}")
-        ctx.log.critical(f"Working directory:   {os.getcwd()}")
-        ctx.log.critical("Failure environment: ")
-        ctx.log.critical("{\n" if len(loc_env) > 0 else "{")
-        ctx.log.critical("\n".join([f"\t{key}={val}" for key, val in loc_env.items()]))
-        ctx.log.critical("\n}\n\n" if len(loc_env) > 0 else "}\n\n")
-        for handler in ctx.log.handlers:
-            handler.flush()
+        ctx.log.critical(f"Return code:             {proc.returncode}")
+        ctx.log.critical(f"Executed command:        {cmd_str}")
+        ctx.log.critical(f"Working directory:       {os.getcwd()}")
+        if len(loc_env) > 0:
+            ctx.log.critical(
+                "Failure environment:     {\n" + "\n".join([f"\t{key}={val}" for key, val in loc_env.items()]) + "\n}"
+            )
 
         # If stdout/stderr were not piped/output, output them now anyway
         assert proc.proc is not None
-        if proc.proc.stdout is not None and isinstance(proc.proc.stdout, (str, bytes)):
-            if isinstance(proc.proc.stdout, bytes):
-                stdout_out = proc.proc.stdout.decode()
-            else:
-                stdout_out = proc.proc.stdout
-            assert isinstance(stdout_out, str)
-            sys.stdout.write(f"{stdout_out}\n\n")
-            sys.stdout.flush()
-        if proc.proc.stderr is not None and isinstance(proc.proc.stderr, (str, bytes)):
-            if isinstance(proc.proc.stderr, bytes):
-                stderr_out = proc.proc.stderr.decode()
-            else:
-                stderr_out = proc.proc.stderr
-            assert isinstance(stderr_out, str)
-            sys.stderr.write(f"{stderr_out}\n\n")
-            sys.stderr.flush()
+        if not teeout:
+            if len(proc.stdout.strip()) > 0:
+                ctx.log.critical(
+                    "Failing command STDOUT:\n"
+                    + ("\n".join([f"\t> {line.strip()}" for line in proc.stdout.strip().splitlines()]))
+                )
+            if len(proc.stderr.strip()) > 0:
+                ctx.log.critical(
+                    "Failing command STDERR:\n"
+                    + ("\n".join([f"\t> {line.strip()}" for line in proc.stderr.strip().splitlines()]))
+                )
         raise RuntimeError(f"Command failed but allow_errors was False; invalid return code: {proc.returncode}")
 
     return proc
@@ -520,7 +513,7 @@ def qjoin(args: Iterable[Any]) -> str:
     return " ".join(shlex.quote(str(arg).strip()) for arg in args if str(arg).strip())
 
 
-def download(ctx: Context, url: str, outfile: Optional[str] = None) -> str:
+def download(ctx: Context, url: str, outfile: str | None = None) -> str:
     """
     Download a file (logs to the debug log).
 
@@ -643,7 +636,7 @@ class _Tee(io.IOBase):
             write_buf()
 
 
-def require_program(ctx: Context, name: str, error: Optional[str] = None) -> None:
+def require_program(ctx: Context, name: str, error: str | None = None) -> None:
     """
     Require a program to be available in ``PATH`` or ``ctx.runenv.PATH``.
 
