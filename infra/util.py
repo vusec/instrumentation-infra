@@ -1,6 +1,8 @@
+from datetime import datetime
 import io
 import logging
 import os
+from pathlib import Path
 import re
 import select
 import shlex
@@ -9,41 +11,35 @@ import subprocess
 import sys
 import textwrap
 import threading
-from time import sleep
 import typing
-from collections import OrderedDict
-from contextlib import redirect_stdout
+
 from dataclasses import dataclass
+from urllib.parse import urlparse
+from urllib.request import urlretrieve
+from collections import OrderedDict
 from typing import (
     IO,
     Any,
     AnyStr,
+    Union,
+    Literal,
+    Mapping,
+    TypeVar,
     Callable,
-    Dict,
-    ItemsView,
     Iterable,
     Iterator,
     KeysView,
-    List,
-    Literal,
-    Mapping,
-    MutableMapping,
-    Optional,
-    TypeVar,
-    Union,
+    ItemsView,
     ValuesView,
+    MutableMapping,
 )
-from urllib.parse import urlparse
-from urllib.request import urlretrieve
 
 from .context import Context
 
-EnvDict = Mapping[str, Union[str, List[str]]]
-
+EnvDict = Mapping[str, Union[str, list[str]]]
 ResultVal = Union[bool, int, float, str]
 ResultDict = MutableMapping[str, ResultVal]
-ResultsByInstance = MutableMapping[str, List[ResultDict]]
-
+ResultsByInstance = MutableMapping[str, list[ResultDict]]
 T = TypeVar("T")
 
 
@@ -84,10 +80,10 @@ class Index(MutableMapping[str, T]):
     def items(self) -> ItemsView[str, T]:
         return self.mem.items()
 
-    def all(self) -> List[T]:
+    def all(self) -> list[T]:
         return list(self.mem.values())
 
-    def select(self, keys: Iterable[str]) -> List[T]:
+    def select(self, keys: Iterable[str]) -> list[T]:
         return [self[key] for key in keys]
 
 
@@ -116,41 +112,50 @@ class FatalError(Exception):
     pass
 
 
-def apply_patch(ctx: Context, path: str, strip_count: int) -> bool:
+def apply_patch(ctx: Context, patch_path: str | Path, strip_count: int) -> bool:
     """
-    Applies a patch in the current directory by calling ``patch -p<strip_count>
-    < <path>``.
+    Applies a patch in the current directory by calling ``patch -p<strip_count> < <path>``.
 
-    Afterwards, a stamp file called ``.patched-<basename>`` is created to
-    indicate that the patch has been applied. If the stamp file is already
-    present, the patch is not applied at all. ``<basename>`` is generated from
-    the patch file name: ``path/to/my-patch.patch`` becomes ``my-patch``.
+    Afterwards, a stamp file called ``.patched-<basename>`` is created to indicate that the patch has
+    been applied. If the stamp file is already present, the patch is not applied at all, unless the
+    patch file from :param:`path` was modified after the creation date of the stamp file.
+    ``<basename`` is the final path component of the patch file with the .patch suffix removed:
+    ``path/to/my-patch.patch`` becomes `my-patch`.
 
     :param ctx: the configuration context
     :param path: path to the patch file
     :param strip_count: number of leading elements to strip from patch paths
-    :returns: ``True`` if the patch was applied, ``False`` if it was already
-              applied before
+    :returns: ``True`` if the patch was applied, ``False`` if it was already applied before
     """
-    path = os.path.abspath(path)
-    name = os.path.basename(path).replace(".patch", "")
-    stamp = ".patched-" + name
+    if isinstance(patch_path, str):
+        patch_path = Path(patch_path)
+    if not patch_path.exists():
+        raise FileNotFoundError(f"Cannot apply patch; patch file not found: {patch_path}")
 
-    if os.path.exists(stamp):
-        # TODO: check modification time
-        return False
+    # Stamp file is the final name component of the patch without the suffix
+    stamp_path = patch_path.with_name(f".patched-{patch_path.stem}")
 
-    ctx.log.debug(f"applying patch {name}")
-    require_program(ctx, "patch", "required to apply source patches")
+    # Check if the stamp exists
+    if stamp_path.exists():
+        # Only exit now if the patch was applied after the patch file was modified last
+        patch_date = datetime.fromtimestamp(patch_path.stat().st_mtime)
+        stamp_date = datetime.fromtimestamp(stamp_path.stat().st_mtime)
+        if stamp_date > patch_date:
+            ctx.log.info(f"Not applying patch; already applied {patch_path.stem}")
+            ctx.log.debug(f"Applied patch on {stamp_date}; patch last modified on {patch_date}")
+            return False
 
-    with open(path) as f:
+    ctx.log.debug(f"Applying patch {patch_path.stem}")
+    require_program(ctx, "patch", "Required to apply source patches")
+
+    with open(patch_path) as f:
         run(ctx, f"patch -p{strip_count}", stdin=f)
+    open(stamp_path, "w").close()
 
-    open(stamp, "w").close()
     return True
 
 
-def join_env_paths(env: EnvDict) -> Dict[str, str]:
+def join_env_paths(env: EnvDict) -> dict[str, str]:
     """
     Convert an environment dictionary to a dictionary mapping variable names to their values, all as
     strings. Lists in the given dictionary are converted to ":"-delimited lists (e.g. like $PATH).
@@ -159,7 +164,7 @@ def join_env_paths(env: EnvDict) -> Dict[str, str]:
     also attempt to convert them to string if possible.
 
     :param EnvDict env: the environment dicitonary to convert (should contain str or list[str])
-    :return Dict[str, str]: a str-to-str mapping that can be used to pass to e.g. subprocess.run()
+    :return dict[str, str]: a str-to-str mapping that can be used to pass to e.g. subprocess.run()
     """
     ret = {}
     for k, v in env.items():
@@ -224,39 +229,39 @@ class Process:
     stderr_override: str | None = None
 
     @property
-    def returncode(self) -> int | None:
+    def returncode(self) -> int:
         if self.proc is None:
-            return -1
-        return self.proc.returncode
+            raise ProcessLookupError("Invalid (None) process has no return code!")
+        return self.proc.returncode if self.proc is not None else -1
 
     @property
     def stdout(self) -> str:
         if self.proc is None:
-            raise Exception("invalid process has no stdout")
+            raise ProcessLookupError("Invalid (None) process has no stdout!")
         if self.stdout_override is not None:
             return self.stdout_override
         if isinstance(self.proc.stdout, str):
             return self.proc.stdout
         if isinstance(self.proc.stdout, bytes):
-            return self.proc.stdout.decode()
+            return self.proc.stdout.decode(encoding="ascii", errors="replace")
         raise ValueError(f"Only bytes/str values for proc.stdout are supported, got {type(self.proc.stdout)}")
 
     @property
     def stderr(self) -> str:
         if self.proc is None:
-            raise Exception("invalid process has no stderr")
+            raise ProcessLookupError("Invalid (None) process has no stderr!")
         if self.stderr_override is not None:
             return self.stderr_override
         if isinstance(self.proc.stderr, str):
             return self.proc.stderr
         if isinstance(self.proc.stderr, bytes):
-            return self.proc.stderr.decode()
+            return self.proc.stderr.decode(encoding="ascii", errors="replace")
         raise ValueError(f"Only bytes/str values for proc.stderr are supported, got {type(self.proc.stderr)}")
 
     @property
     def stdout_io(self) -> IO[AnyStr]:
         if self.proc is None:
-            raise Exception("invalid process has no stdout")
+            raise ProcessLookupError("Invalid (None) process has no stdout!")
         assert self.stdout_override is None
         assert self.proc.stdout is not None
         assert not isinstance(self.proc.stdout, (str, bytes))
@@ -265,15 +270,25 @@ class Process:
     @property
     def stderr_io(self) -> IO[AnyStr]:
         if self.proc is None:
-            raise Exception("invalid process has no stderr")
+            raise ProcessLookupError("Invalid (None) process has no stderr!")
         assert self.stderr_override is None
         assert self.proc.stderr is not None
         assert not isinstance(self.proc.stderr, (str, bytes))
         return self.proc.stderr
 
     def poll(self) -> int | None:
-        assert isinstance(self.proc, subprocess.Popen)
+        if self.proc is None:
+            raise ProcessLookupError("Cannot poll invalid (None) process!")
+        if isinstance(self.proc, subprocess.CompletedProcess):
+            return self.returncode
         return self.proc.poll()
+
+    def wait(self) -> int:
+        if self.proc is None:
+            raise ProcessLookupError("Cannot wait on invalid (None) process!")
+        if isinstance(self.proc, subprocess.CompletedProcess):
+            return self.proc.returncode
+        return self.proc.wait()
 
 
 def get_cmd_list(raw_cmd: str | Iterable[Any]) -> list[str] | None:
@@ -396,7 +411,8 @@ def run(
         ctx.runlog_file.write("{\n" if len(loc_env) > 0 else "{")
         ctx.runlog_file.write("\n".join([f"\t{key}={val}" for key, val in loc_env.items()]))
         ctx.runlog_file.write("\n}" if len(loc_env) > 0 else "}")
-        ctx.runlog_file.write("\n\n===== START OF OUTPUT =====\n\n")
+        if not defer or silent or "stdout" in kwargs:
+            ctx.runlog_file.write("\n\n===== START OF OUTPUT =====\n\n")
         ctx.runlog_file.flush()
 
     # Create tee to split output to runlog file & string buffer; also to stdout if teeout is true
@@ -553,12 +569,9 @@ class _Tee(io.IOBase):
         self.readfd, self.writefd = os.pipe()
 
         self.running = False  # True while flusher is still running
-        self.terminate = False  # Marks when the flusher thread should terminate
         self.synchronise = False  # Marks when the flusher thread should synchronise & wait
-
         self.synchronised = threading.Event()  # Set by flusher thread when fully synchronised & waiting
         self.restart = threading.Event()  # Set by caller when flusher can continue after flushing
-
         self.thread = threading.Thread(target=self._flusher, daemon=False)
         self.thread.start()
 
@@ -613,7 +626,7 @@ class _Tee(io.IOBase):
             nonlocal buf
             nl = buf.find(b"\n") + 1
             while nl > 0:
-                self.write(buf[:nl].decode(errors="replace"))
+                self.write(buf[:nl].decode(encoding="ascii", errors="replace"))
                 self.flush()
                 buf = buf[nl:]
                 nl = buf.find(b"\n") + 1

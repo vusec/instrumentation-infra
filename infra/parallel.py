@@ -15,15 +15,12 @@ from subprocess import STDOUT
 from typing import (
     IO,
     Any,
+    Union,
     Callable,
-    Dict,
     Iterable,
     Iterator,
-    List,
     Optional,
     Sequence,
-    Tuple,
-    Union,
 )
 
 from .context import Context
@@ -37,14 +34,13 @@ from .util import FatalError, Process, require_program, run
 class Job:
     proc: Process
     jobid: str
-    outfiles: List[str]
-
+    outfiles: list[str]
     nnodes: int = field(default=1, init=False)
     start_time: float = field(default_factory=time.time, init=False)
     onsuccess: Optional[Callable[["Job"], Optional[bool]]] = field(default=None, init=False)
     onerror: Optional[Callable[["Job"], Optional[bool]]] = field(default=None, init=False)
     output: str = field(default="", init=False)
-    err_output: str = field(default="", init=False)
+    errput: str = field(default="", init=False)
 
     @property
     def stdout(self) -> IO:
@@ -97,16 +93,18 @@ class Pool(metaclass=ABCMeta):
     simultaneous jobs in the job queue (pending or running).
     """
 
-    poll_interval: float = 0.050  # seconds to wait for blocking actions
+    # Wait time between checking for output and such
+    poll_interval: float = 0.050
 
-    jobs: Dict[int, Job]
-    pollthread: Optional[threading.Thread]
+    running: bool
+    jobs: dict[int, Job]
+    pollthread: threading.Thread | None
 
     @abstractmethod
     def make_jobs(
         self,
         ctx: Context,
-        cmd: Union[str, Iterable[str]],
+        cmd: str | Iterable[str],
         jobid_base: str,
         outfile_base: str,
         nnodes: int,
@@ -126,42 +124,58 @@ class Pool(metaclass=ABCMeta):
         self.log = logger
         self.parallelmax = parallelmax
         self.jobs = {}
+        self.running = True
         self.pollthread = None
+        self._start_poller()
 
     def __del__(self) -> None:
+        self.wait_all()
         if self.pollthread is not None:
-            self.done = True
-            self.pollthread.join(self.poll_interval)
+            self.running = False
+            self.pollthread.join()  # Don't timeout on this join; has to finish
 
     def _start_poller(self) -> None:
         if self.pollthread is None:
             self.poller = select.epoll()
             self.pollthread = threading.Thread(target=self._poller_thread, name="pool-poller")
             self.pollthread.daemon = True
-            self.done = False
+            self.running = True
             self.pollthread.start()
 
     def _poller_thread(self) -> None:
-        # monitor the job queue for finished jobs, remove them from the queue
-        # and call success/error callbacks
-        while not self.done:
+        # Monitor all jobs for finished jobs/output; call output/success/error handler callbacks
+        while self.running:
             for fd, flags in self.poller.poll(timeout=self.poll_interval):
+
                 job = self.jobs[fd]
+
+                # Regular data is available for read; handle it
                 if flags & (select.EPOLLIN | select.EPOLLPRI):
                     self.process_job_output(job, fd)
 
+                # There was an error in the pipe
                 if flags & select.EPOLLERR:
                     self.log.error(f"Error in file descriptor: {fd}")
                     self.poller.unregister(fd)
                     del self.jobs[fd]
-                    for alt_fd in (_fd for _fd, _job in self.jobs.items() if _job is job):
+
+                    # Wait for the process itself to complete to ensure all output is captured
+                    job.proc.wait()
+
+                    # Check if another file descriptor in the list still refers to this job; remove it
+                    for alt_fd in {_fd for _fd, _job in self.jobs.items() if _job is job}:
                         self.log.error(f"Found alternative file descriptor (with same job): {alt_fd}")
+                        self.process_job_output(job, alt_fd)
+                        self.poller.unregister(alt_fd)
                         del self.jobs[alt_fd]
+
+                    # Call the error callback
                     self.onerror(job)
 
+                # The process finished & closed the connection
                 if flags & select.EPOLLHUP:
                     if job.proc.poll() is None:
-                        self.log.debug(f"job {job.jobid} hung up but does not yet have a " "return code, check later")
+                        self.log.debug(f"Job {job.jobid} hung up but no return code yet; check later")
                         continue
 
                     self.poller.unregister(fd)
@@ -195,12 +209,12 @@ class Pool(metaclass=ABCMeta):
     def run(
         self,
         ctx: Context,
-        cmd: Union[str, Iterable[str]],
+        cmd: str | Iterable[str],
         jobid: str,
-        outfile: str,
-        nnodes: int,
-        onsuccess: Optional[Callable[[Job], Optional[bool]]] = None,
-        onerror: Optional[Callable[[Job], Optional[bool]]] = None,
+        outfile: str | None = None,
+        nnodes: int = 1,
+        onsuccess: Callable[[Job], bool | None] | None = None,
+        onerror: Callable[[Job], bool | None] | None = None,
         **kwargs: Any,
     ) -> Iterable[Job]:
         """
@@ -217,31 +231,23 @@ class Pool(metaclass=ABCMeta):
         :param kwargs: passed directly to :func:`util.run`
         :returns: handles to created job processes
         """
-        # TODO: generate outfile from jobid
         self._start_poller()
 
-        if isinstance(cmd, str):
-            cmd = shlex.split(cmd)
+        if outfile is None:
+            outfile = f"{jobid}.out"
 
         jobs = []
-
         for job in self.make_jobs(ctx, cmd, jobid, outfile, nnodes, **kwargs):
             job.onsuccess = onsuccess
             job.onerror = onerror
             job.output = ""
-            job.err_output = ""
+            job.errput = ""
+            event_mask = select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP
             self.jobs[job.proc.stdout_io.fileno()] = job
             self.jobs[job.proc.stderr_io.fileno()] = job
-            self.poller.register(
-                job.proc.stdout_io,
-                select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP,
-            )
-            self.poller.register(
-                job.proc.stderr_io,
-                select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP,
-            )
+            self.poller.register(job.proc.stdout_io, event_mask)
+            self.poller.register(job.proc.stderr_io, event_mask)
             jobs.append(job)
-
         return jobs
 
     def onsuccess(self, job: Job) -> None:
@@ -256,7 +262,7 @@ class Pool(metaclass=ABCMeta):
             self.log.error(f"job {job.jobid} returned status {job.proc.returncode} " f"{self._get_elapsed(job)}")
             self.log.error(f"command: {job.proc.cmd_str}")
             sys.stdout.write(f"stdout:\n{job.output}\n")
-            sys.stdout.write(f"stderr:\n{job.err_output}\n")
+            sys.stdout.write(f"stderr:\n{job.errput}\n")
             sys.stdout.flush()
 
     def _get_elapsed(self, job: Job) -> str:
@@ -265,6 +271,9 @@ class Pool(metaclass=ABCMeta):
 
 
 class ProcessPool(Pool):
+    # 7-bit C1 ANSI sequences
+    ansi_escape = re.compile(r"(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]")
+
     def make_jobs(
         self,
         ctx: Context,
@@ -275,66 +284,79 @@ class ProcessPool(Pool):
         **kwargs: Any,
     ) -> Iterator[Job]:
         for i in range(nnodes):
-            jobid = jobid_base
-            outfile = outfile_base
-            if nnodes > 1:
-                jobid += f"-{i}"
-                outfile += f"-{i}"
+            jobid = jobid_base if nnodes == 1 else f"{jobid_base}-{i}"
+            outfile = outfile_base if nnodes == 1 else f"{outfile_base}-{i}"
 
-            stdout_outfile = f"{outfile}.stdout"
-            stderr_outfile = f"{outfile}.stderr"
+            stdout_file = f"{outfile}.stdout.log"
+            stderr_file = f"{outfile}.stderr.log"
 
             self._wait_for_queue_space(1)
             ctx.log.info("running " + jobid)
 
-            # kwargs.setdefault("stderr", STDOUT)
-
-            proc = run(
-                ctx,
-                cmd,
-                defer=True,
-                bufsize=io.DEFAULT_BUFFER_SIZE,
-                universal_newlines=False,
-                **kwargs,
-            )
+            proc = run(ctx, cmd, defer=True, bufsize=io.DEFAULT_BUFFER_SIZE, **kwargs)
             _set_non_blocking(proc.stdout_io)
             _set_non_blocking(proc.stderr_io)
             os.makedirs(os.path.dirname(outfile), exist_ok=True)
             job = ProcessJob(
                 proc,
                 jobid,
-                [stdout_outfile, stderr_outfile],
-                open(stdout_outfile, "wb"),
-                open(stderr_outfile, "wb"),
+                [stdout_file, stderr_file],
+                open(stdout_file, "w"),
+                open(stderr_file, "w"),
             )
 
             yield job
 
     def process_job_output(self, job: Job, fd: int | None = None) -> None:
         assert isinstance(job, ProcessJob)
-        if fd is None or (fd is not None and fd == job.stdout.fileno()):
-            buf = job.stdout.read(io.DEFAULT_BUFFER_SIZE)
-            if buf is not None:
-                job.output += buf.decode("ascii", errors="replace")
+        assert fd is None or fd == job.stdout.fileno() or fd == job.stderr.fileno()
+
+        # If no file descriptor is specified, read from the process' stdout
+        if fd is None:
+            fd = job.stdout.fileno()
+
+        # Read from the file descriptor & write to the stdout/stderr file correspondingly
+        if fd == job.stdout.fileno():
+            # Read into buffer while there is data to read; stop on EOF reached
+            while True:
+                buf = job.stdout.read(io.DEFAULT_BUFFER_SIZE)
+                if not buf:
+                    break
+                if isinstance(buf, bytes):
+                    buf = buf.decode(encoding="ascii", errors="replace")
+                assert isinstance(buf, str)
+                buf = self.ansi_escape.sub("", buf)
+                job.output += buf
                 job.stdout_outfile_handle.write(buf)
                 job.stdout_outfile_handle.flush()
-        elif fd is not None and fd == job.stderr.fileno():
-            buf = job.stderr.read(io.DEFAULT_BUFFER_SIZE)
-            if buf is not None:
-                job.err_output += buf.decode("ascii", errors="replace")
+        if fd == job.stderr.fileno():
+            # Read into buffer while there is data to read; stop on EOF reached
+            while True:
+                buf = job.stderr.read(io.DEFAULT_BUFFER_SIZE)
+                if not buf:
+                    break
+                if isinstance(buf, bytes):
+                    buf = buf.decode(encoding="ascii", errors="replace")
+                assert isinstance(buf, str)
+                buf = self.ansi_escape.sub("", buf)
+                job.errput += buf
                 job.stderr_outfile_handle.write(buf)
                 job.stderr_outfile_handle.flush()
-        else:
-            self.log.error(f"Invalid file descriptor received, not stdout/stderr: {fd}")
 
     def onsuccess(self, job: Job) -> None:
         assert isinstance(job, ProcessJob)
+        job.proc.wait()
+        self.process_job_output(job, job.proc.stdout_io.fileno())
+        self.process_job_output(job, job.proc.stderr_io.fileno())
         job.stdout_outfile_handle.close()
         job.stderr_outfile_handle.close()
         super().onsuccess(job)
 
     def onerror(self, job: Job) -> None:
         assert isinstance(job, ProcessJob)
+        job.proc.wait()
+        self.process_job_output(job, job.proc.stdout_io.fileno())
+        self.process_job_output(job, job.proc.stderr_io.fileno())
         job.stdout_outfile_handle.close()
         job.stderr_outfile_handle.close()
         super().onerror(job)
@@ -372,7 +394,7 @@ class SSHPool(Pool):
 
     _tempdir: Optional[str]
 
-    def __init__(self, ctx: Context, logger: logging.Logger, parallelmax: int, nodes: List[str]):
+    def __init__(self, ctx: Context, logger: logging.Logger, parallelmax: int, nodes: list[str]):
         if parallelmax > len(nodes):
             raise FatalError("parallelmax cannot be greater than number of available nodes")
         super().__init__(logger, parallelmax)
@@ -394,7 +416,7 @@ class SSHPool(Pool):
         node: str,
         cmd: Union[str, Iterable[str]],
         extra_opts: Optional[Sequence[Any]] = None,
-    ) -> List[str]:
+    ) -> list[str]:
         if not isinstance(cmd, str):
             cmd = " ".join(shlex.quote(str(c)) for c in cmd)
         extra_opts = extra_opts or []
@@ -492,7 +514,7 @@ class SSHPool(Pool):
         jobid_base: str,
         outfile_base: str,
         nnodes: int,
-        nodes: Optional[Union[str, List[str]]] = None,
+        nodes: Optional[Union[str, list[str]]] = None,
         tunnel_to_nodes_dest: Optional[int] = None,
         **kwargs: Any,
     ) -> Iterator[Job]:
@@ -607,7 +629,7 @@ class PrunPool(Pool):
     def process_job_output(self, job: Job, fd: int | None = None) -> None:
         assert isinstance(job, PrunJob)
 
-        def group_nodes(nodes: Sequence[Tuple[int, int]]) -> List[Tuple[List[int], List[int]]]:
+        def group_nodes(nodes: Sequence[tuple[int, int]]) -> list[tuple[list[int], list[int]]]:
             groups = [([m], [c]) for m, c in sorted(nodes)]
             for i in range(len(groups) - 1, 0, -1):
                 lmachines, lcores = groups[i - 1]
@@ -620,7 +642,7 @@ class PrunPool(Pool):
                     del groups[i]
             return groups
 
-        def stringify_groups(groups: List[Tuple[List[int], List[int]]]) -> str:
+        def stringify_groups(groups: list[tuple[list[int], list[int]]]) -> str:
             samecore = set(c for m, cores in groups for c in cores) == set([0])
 
             def join(n: Sequence[Any], fmt: str) -> str:
@@ -653,7 +675,7 @@ class PrunPool(Pool):
             return
 
         numseconds = None
-        nodes: List[Tuple[int, int]] = []
+        nodes: list[tuple[int, int]] = []
 
         for line in job.output.splitlines():
             if line.startswith(":"):
