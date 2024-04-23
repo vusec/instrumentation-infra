@@ -133,7 +133,7 @@ def apply_patch(ctx: Context, patch_path: str | Path, strip_count: int) -> bool:
         raise FileNotFoundError(f"Cannot apply patch; patch file not found: {patch_path}")
 
     # Stamp file is the final name component of the patch without the suffix
-    stamp_path = patch_path.with_name(f".patched-{patch_path.stem}")
+    stamp_path = Path(f".patched-{patch_path.stem}")
 
     # Check if the stamp exists
     if stamp_path.exists():
@@ -149,7 +149,7 @@ def apply_patch(ctx: Context, patch_path: str | Path, strip_count: int) -> bool:
     require_program(ctx, "patch", "Required to apply source patches")
 
     with open(patch_path) as f:
-        run(ctx, f"patch -p{strip_count}", stdin=f)
+        run(ctx, f"patch -N -p{strip_count}", stdin=f, allow_error=True)
     open(stamp_path, "w").close()
 
     return True
