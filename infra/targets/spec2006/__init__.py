@@ -151,7 +151,7 @@ class SPEC2006(Target):
         bind_cpu: int = -1,
     ) -> None:
         self.source_type = source_type
-        self.source_path = source_path
+        self.source_path = Path(source_path)
         self.patches = patches
         self.toolsets = toolsets
         self.default_benchmarks = default_benchmarks
@@ -210,32 +210,33 @@ class SPEC2006(Target):
         if self.no_thp:
             yield Nothp()
 
-    def path(self, ctx: Context, *args: str) -> str:
-        return super().path(ctx, *args)
+    def root_dir(self, ctx: Context, *args: str | Path) -> Path:
+        return Path(self.path(ctx)).joinpath(*args)
 
-    def install_path(self, ctx: Context, *args: str) -> str:
-        if self.source_type == "installed":
-            return os.path.join(self.source_path, *args)
-        return self.path(ctx, "install", *args)
+    def mount_dir(self, ctx: Context, *args: str | Path) -> Path:
+        return self.root_dir(ctx, "mount").joinpath(*args)
 
-    def goto_rootdir(self, ctx: Context, *args: str) -> None:
-        target = self.path(ctx, *args)
-        if os.path.isfile(target):
-            ctx.log.warning(f"Cannot goto file {target}; going to {os.path.dirname(target)}")
-            target = os.path.dirname(target)
-        os.makedirs(target, exist_ok=True)
-        os.chdir(target)
+    def source_dir(self, ctx: Context, *args: str | Path) -> Path:
+        return self.root_dir(ctx, "src").joinpath(*args)
 
-    def goto_installdir(self, ctx: Context, *args: str) -> None:
-        target = self.install_path(ctx, *args)
-        if os.path.isfile(target):
-            ctx.log.warning(f"Cannot goto file {target}; going to {os.path.dirname(target)}")
-            target = os.path.dirname(target)
-        os.makedirs(target, exist_ok=True)
-        os.chdir(target)
+    def install_dir(self, ctx: Context, *args: str | Path) -> Path:
+        return (
+            self.root_dir(ctx, "install").joinpath(*args)
+            if self.source_type != "installed"
+            else self.source_path.joinpath(*args)
+        )
+
+    def config_dir(self, ctx: Context, *args: str | Path) -> Path:
+        return self.install_dir(ctx, "config").joinpath(*args)
+
+    def benchspec_dir(self, ctx: Context, *args: str | Path) -> Path:
+        return self.install_dir(ctx, "benchspec").joinpath(*args)
+
+    def benches_dir(self, ctx: Context, *args: str | Path) -> Path:
+        return self.benchspec_dir(ctx, "CPU2006").joinpath(*args)
 
     def is_clean(self, ctx: Context) -> bool:
-        return False
+        return any(Path(self.path(ctx)).iterdir()) if self.source_type != "installed" else True
 
     def clean(self, ctx: Context) -> None:
         match self.source_type:
@@ -259,7 +260,7 @@ class SPEC2006(Target):
                 raise ValueError(f"Invalid {self.name} source type: {self.source_type}!")
 
     def is_fetched(self, ctx: Context) -> bool:
-        return Path(self.install_path(ctx, "shrc")).exists()
+        return self.install_dir(ctx, "shrc").exists()
 
     def install_spec(self, ctx: Context, source_dir: Path, target_dir: Path) -> None:
         for toolset in self.toolsets:
@@ -283,74 +284,62 @@ class SPEC2006(Target):
             case "git" | "remote":
                 require_program(ctx, "git", "Cannot get SPEC2006 sources without git!")
 
-                src_dir = Path(self.path(ctx, "src"))
-
                 ls_remote = run(ctx, ["git", "ls-remote", self.source_path], allow_error=True)
                 if ls_remote.returncode != 0:
                     raise RuntimeError(f"Could not read from git remote: {self.source_path}!")
 
-                ctx.log.info(f"Cloning SPEC2006 sources into {src_dir}")
-                run(ctx, ["git", "clone", "--depth", 1, self.source_path, src_dir])
+                ctx.log.info(f"Cloning SPEC2006 sources into {self.source_dir(ctx)}")
+                run(ctx, ["git", "clone", "--depth", 1, self.source_path, self.source_dir(ctx)])
 
-                self.install_spec(ctx, src_dir, Path(self.install_path(ctx)))
+                self.install_spec(ctx, self.source_dir(ctx), self.install_dir(ctx))
 
-                ctx.log.info(f"Erasing SPEC2006 source files from {src_dir} to save disk space")
-                shutil.rmtree(src_dir, ignore_errors=True)
+                ctx.log.info(f"Erasing SPEC2006 source files from {self.source_dir(ctx)} to save disk space")
+                shutil.rmtree(self.source_dir(ctx), ignore_errors=True)
 
             case "mounted" | "extracted":
-                src_dir = Path(self.source_path)
+                if not self.source_path.exists() or not self.source_path.is_dir():
+                    raise FileNotFoundError(f"Failed to find valid SPEC2006 mount/sources at {self.source_path}!")
+                if not (self.source_path / "install.sh").exists():
+                    raise FileNotFoundError(f"Failed to find install script in source/mount: {self.source_path}!")
 
-                if not src_dir.exists() or not src_dir.is_dir():
-                    raise FileNotFoundError(f"Failed to find valid existing SPEC2006 mount/sources at {src_dir}!")
-                if not (src_dir / "install.sh").exists():
-                    raise FileNotFoundError(f"Failed to find install script in existing source/mount: {src_dir}!")
-
-                self.install_spec(ctx, src_dir, Path(self.install_path(ctx)))
+                self.install_spec(ctx, self.source_path, self.install_dir(ctx))
 
             case "tar" | "tarfile" | "archive":
-                src_tar = Path(self.source_path)
-                src_dir = Path(self.path(ctx, "src"))
-                if not src_tar.exists():
-                    raise FileNotFoundError(f"Failed to find SPEC2006 source archive {src_tar}!")
+                untar(ctx, tarname=str(self.source_path), dest=str(self.source_dir(ctx)), remove=False)
 
-                untar(ctx, tarname=str(src_tar), dest=str(src_dir), remove=False)
+                self.install_spec(ctx, self.source_dir(ctx), Path(self.install_dir(ctx)))
 
-                self.install_spec(ctx, src_dir, Path(self.install_path(ctx)))
-
-                ctx.log.info(f"Removing extract SPEC2006 source files at {src_dir} to save disk space")
-                shutil.rmtree(src_dir, ignore_errors=True)
+                ctx.log.info(f"Removing extract SPEC2006 source files at {self.source_dir(ctx)} to save disk space")
+                shutil.rmtree(self.source_dir(ctx), ignore_errors=True)
 
             case "iso" | "isofile" | "image":
                 require_program(ctx, "fuseiso", "'fuseiso' not found; cannot mount image without fuseiso!")
                 require_program(ctx, "fusermount", "'fusermount' not found; cannot unmount image without fusermount!")
 
-                iso_image = Path(self.source_path)
-                mount_dir = Path(self.path(ctx, "mount"))
+                if not self.source_path.exists():
+                    raise FileNotFoundError(f"Can't find {self.source_path}; cannot mount to {self.mount_dir(ctx)}!")
+                if not self.source_path.is_file():
+                    raise RuntimeError(f"Cannot mount ISO file {self.source_path}; invalid file type!")
 
-                if not iso_image.exists():
-                    raise FileNotFoundError(f"Failed to find iso image {iso_image}; cannot mount to {mount_dir}!")
-                if not iso_image.is_file():
-                    raise RuntimeError(f"Cannot mount ISO file {iso_image}; invalid file type!")
+                if self.mount_dir(ctx).exists():
+                    if self.mount_dir(ctx).is_mount():
+                        ctx.log.info(f"Existing mount found at {self.mount_dir(ctx)}; unmounting...")
+                        run(ctx, ["fusermount", "-u", self.mount_dir(ctx)])
 
-                if mount_dir.exists():
-                    if mount_dir.is_mount():
-                        ctx.log.info(f"Existing mount found at {mount_dir}; unmounting...")
-                        run(ctx, ["fusermount", "-u", mount_dir])
-
-                    ctx.log.info(f"Clearing existing objects at mount point: {mount_dir}")
-                    shutil.rmtree(mount_dir)
+                    ctx.log.info(f"Clearing existing objects at mount point: {self.mount_dir(ctx)}")
+                    shutil.rmtree(self.mount_dir(ctx))
 
                 # Ensure the mount point actually exists (requirement)
-                os.makedirs(mount_dir)
+                os.makedirs(self.mount_dir(ctx))
 
-                ctx.log.info(f"Mounting ISO image ({iso_image}) to {mount_dir}")
-                run(ctx, ["fuseiso", iso_image, mount_dir])
+                ctx.log.info(f"Mounting ISO image ({self.source_path}) to {self.mount_dir(ctx)}")
+                run(ctx, ["fuseiso", self.source_path, self.mount_dir(ctx)])
 
-                self.install_spec(ctx, mount_dir, Path(self.install_path(ctx)))
+                self.install_spec(ctx, self.mount_dir(ctx), Path(self.install_dir(ctx)))
 
-                ctx.log.debug(f"Unmounting mount point: {mount_dir}")
-                run(ctx, ["fusermount", "-u", mount_dir])
-                shutil.rmtree(mount_dir)
+                ctx.log.debug(f"Unmounting mount point: {self.mount_dir(ctx)}")
+                run(ctx, ["fusermount", "-u", self.mount_dir(ctx)])
+                shutil.rmtree(self.mount_dir(ctx))
 
             case _:
                 raise ValueError(f"Invalid {self.name} source type: {self.source_type}!")
@@ -360,8 +349,8 @@ class SPEC2006(Target):
         Applies any pending patches; done at build-time to allow patching SPEC without having to
         reinstall SPEC entirely (also allows for patching pre-installed SPEC instances).
         """
-        ctx.log.debug(f"Patching SPEC installation at {self.install_path(ctx)}")
-        self.goto_installdir(ctx)
+        ctx.log.debug(f"Patching SPEC installation at {self.install_dir(ctx)}")
+        os.chdir(self.install_dir(ctx))
 
         for patch in self.patches:
             patch_path = Path(patch)
@@ -384,12 +373,14 @@ class SPEC2006(Target):
 
         # add flags to compile with runtime support for benchmark utils
         RusageCounters().configure(ctx)
-        os.chdir(self.path(ctx))
+
+        # Create the SPEC configuration for this instance & return it
         return self._make_spec_config(ctx, instance)
 
     def build(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
         config = self.init_build(ctx, instance)
 
+        os.chdir(self.install_dir(ctx))
         for bench in self._get_benchmarks(ctx, instance):
             cmd = f"killwrap_tree runspec --config={config} --action=build {bench}"
             if pool:
@@ -403,10 +394,10 @@ class SPEC2006(Target):
                 self._run_bash(ctx, cmd, teeout=ctx.loglevel == logging.DEBUG)
 
     def run(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
-        config = f"infra-{instance.name}"
-
-        if not os.path.exists(self.install_path(ctx, "config", config + ".cfg")):
-            raise RuntimeError(f"{self.name}-{instance.name} has not been built yet!")
+        config_name = f"infra-{instance.name}"
+        config_file = self.config_dir(ctx, f"{config_name}.cfg")
+        if not config_file.exists():
+            raise FileNotFoundError(f"Config {config_file} not found; {self.name}-{instance.name} not built!")
 
         runargs = []
 
@@ -419,7 +410,7 @@ class SPEC2006(Target):
 
         # set output root to local disk when using prun to avoid noise due to
         # network lag when writing output files
-        specdir = self.install_path(ctx)
+        specdir = str(self.install_dir(ctx))
         if isinstance(pool, PrunPool):
             output_root = f"/local/{getpass.getuser()}/cpu2006-output-root"
             runargs += ["--define", "output_root=" + output_root]
@@ -442,7 +433,7 @@ class SPEC2006(Target):
         if self.bind_cpu >= 0:
             wrapper += f" taskset -c {self.bind_cpu}"
 
-        cmd = f"{wrapper} runspec --config={config} --nobuild {qjoin(runargs)} {{bench}}"
+        cmd = f"{wrapper} runspec --config={config_name} --nobuild {qjoin(runargs)} {{bench}}"
 
         benchmarks = self._get_benchmarks(ctx, instance)
 
@@ -547,7 +538,7 @@ class SPEC2006(Target):
             "\n"
             + _unindent(
                 f"""
-            cd {self.install_path(ctx)}
+            cd {self.install_dir(ctx)}
             source shrc
             source "{config_root}/scripts/kill-tree-on-interrupt.inc"
             {command}
@@ -561,8 +552,8 @@ class SPEC2006(Target):
 
     def _make_spec_config(self, ctx: Context, instance: Instance) -> str:
         config_name = f"infra-{instance.name}"
-        config_path = self.install_path(ctx, f"config/{config_name}.cfg")
-        ctx.log.debug("writing SPEC2006 config to " + config_path)
+        config_path = self.config_dir(ctx, f"{config_name}.cfg")
+        ctx.log.debug(f"Writing SPEC2006 config to {config_path}")
 
         with open(config_path, "w") as f:
             with redirect_stdout(f):
@@ -654,7 +645,7 @@ class SPEC2006(Target):
     def run_hooks_pre_build(self, ctx: Context, instance: Instance) -> None:
         if ctx.hooks.pre_build:
             for bench in self._get_benchmarks(ctx, instance):
-                path = self.install_path(ctx, "benchspec", "CPU2006", bench)
+                path = self.benches_dir(ctx, bench)
                 os.chdir(path)
                 for hook in ctx.hooks.pre_build:
                     ctx.log.info(f"Running hook {hook} on {bench} in {path}")
@@ -682,7 +673,7 @@ class SPEC2006(Target):
     def parse_outfile(self, ctx: Context, outfile: str) -> Iterator[ResultDict]:
         def fix_specpath(path: str) -> str:
             if not os.path.exists(path):
-                benchspec_dir = self.install_path(ctx, "benchspec")
+                benchspec_dir = str(self.benchspec_dir(ctx))
                 path = re.sub(r".*/benchspec", benchspec_dir, path)
             assert os.path.exists(path), "invalid path " + path
             return path
