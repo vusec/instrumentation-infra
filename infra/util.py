@@ -395,7 +395,6 @@ def run(
     # Local env is given env merged with CTX's running env, final env is merged with OS' env
     loc_env = join_env_paths(ctx.runenv) | join_env_paths(env)
     run_env = os.environ | loc_env
-    ctx.log.debug(f"Local environment (not merged with OS): {loc_env}")
 
     # Set "universal_newlines=True" to read output as text, not binary
     kwargs.setdefault("universal_newlines", True)
@@ -572,7 +571,7 @@ class _Tee(io.IOBase):
         self.synchronise = False  # Marks when the flusher thread should synchronise & wait
         self.synchronised = threading.Event()  # Set by flusher thread when fully synchronised & waiting
         self.restart = threading.Event()  # Set by caller when flusher can continue after flushing
-        self.thread = threading.Thread(target=self._flusher, daemon=False)
+        self.thread = threading.Thread(target=self._flusher, daemon=True)
         self.thread.start()
 
     def __del__(self) -> None:
