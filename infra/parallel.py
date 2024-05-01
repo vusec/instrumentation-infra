@@ -243,10 +243,12 @@ class Pool(metaclass=ABCMeta):
             job.output = ""
             job.errput = ""
             event_mask = select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP
-            self.jobs[job.proc.stdout_io.fileno()] = job
-            self.jobs[job.proc.stderr_io.fileno()] = job
-            self.poller.register(job.proc.stdout_io, event_mask)
-            self.poller.register(job.proc.stderr_io, event_mask)
+            if job.proc.proc.stdout is not None:
+                self.jobs[job.proc.stdout_io.fileno()] = job
+                self.poller.register(job.proc.stdout_io, event_mask)
+            if job.proc.proc.stderr is not None:
+                self.jobs[job.proc.stderr_io.fileno()] = job
+                self.poller.register(job.proc.stderr_io, event_mask)
             jobs.append(job)
         return jobs
 
