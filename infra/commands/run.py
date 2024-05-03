@@ -62,6 +62,8 @@ class RunCommand(Command):
             target.add_run_args(tparser)
 
             for instance in self.instances.values():
+                # Run can be called with --build/from a hook so also add build args
+                instance.add_build_args(tparser)
                 instance.add_run_args(tparser)
 
     def run(self, ctx: Context) -> None:

@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from ..command import Command, load_deps
-from ..context import Context
+from ..context import Context, HookFunc
 
 
 # This command does not appear in main --help usage because it is meant to be
@@ -39,17 +39,10 @@ class ExecHookCommand(Command):
             help="File to run hook on -- usually the specific binary",
         )
 
-    def run(self, ctx: Context) -> None:
-
-        # Handle different hook types appropriately
-        match ctx.args.hooktype:
-            # Pre-build hooks cannot load dependencies yet and are expected to be
-            # run in a directory (not a file); don't load deps & switch to dir
-            case "pre-build":
-                target_dir = Path(ctx.args.targetfile).resolve()
-                target_dir = target_dir if target_dir.is_dir() else target_dir.parent
-                assert target_dir.is_dir()
-                os.chdir(target_dir)
+        for instance in self.instances.values():
+            # Hook should be called in context with build/run args available
+            instance.add_build_args(parser)
+            instance.add_run_args(parser)
 
                 for pre_build_hook in ctx.hooks.pre_build:
                     pre_build_hook(ctx, str(target_dir))

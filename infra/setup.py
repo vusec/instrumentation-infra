@@ -99,16 +99,16 @@ class Setup:
             "-j",
             "--jobs",
             default=min(cpu_count(), 64),
-            help="Set the number of parallel jobs; not the same as --parallelmax"
+            help="Set the number of parallel jobs; not the same as --parallelmax",
         )
 
         subparsers = parser.add_subparsers(
             title="subcommands",
             metavar="COMMAND",
             dest="command",
-            description=('Run with "<command> --help" to see options for individual commands'),
+            description='Run with "<command> --help" to see options for individual commands',
+            required=True,
         )
-        subparsers.required = True
 
         for name, command in self.commands.items():
             subparser = subparsers.add_parser(
