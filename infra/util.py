@@ -1,17 +1,19 @@
-from datetime import datetime
 import io
-import logging
 import os
-from pathlib import Path
 import re
-import select
+import sys
 import shlex
 import shutil
-import subprocess
-import sys
+import select
+import logging
 import textwrap
 import threading
-import typing
+import subprocess
+
+from datetime import datetime
+from pathlib import Path
+
+from .context import Context
 
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -29,16 +31,15 @@ from typing import (
     Iterator,
     KeysView,
     ItemsView,
+    TypeAlias,
     ValuesView,
     MutableMapping,
 )
 
-from .context import Context
-
-EnvDict = Mapping[str, str | list[str]]
-ResultVal = bool | int | float | str
-ResultDict = MutableMapping[str, ResultVal]
-ResultsByInstance = MutableMapping[str, list[ResultDict]]
+EnvDict: TypeAlias = Mapping[str, str | list[str]]
+ResultVal: TypeAlias = bool | int | float | str
+ResultDict: TypeAlias = MutableMapping[str, ResultVal]
+ResultsByInstance: TypeAlias = MutableMapping[str, list[ResultDict]]
 T = TypeVar("T")
 
 
@@ -421,8 +422,8 @@ def run(
         kwargs.setdefault("stderr", subprocess.PIPE)
     else:
         # Create a list of writers, if runlog file is not none, add it; if teeout, also add stdout
-        stdout_writers: list[io.IOBase | typing.IO] = [io.StringIO()]
-        stderr_writers: list[io.IOBase | typing.IO] = [io.StringIO()]
+        stdout_writers: list[io.IOBase | IO] = [io.StringIO()]
+        stderr_writers: list[io.IOBase | IO] = [io.StringIO()]
         if ctx.runlog_file is not None and isinstance(ctx.runlog_file, io.TextIOWrapper):
             stdout_writers.append(ctx.runlog_file)
             stderr_writers.append(ctx.runlog_file)
@@ -559,7 +560,7 @@ class _Tee(io.IOBase):
 
     ansi_escape = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]")  # 7-bit C1 ANSI sequences
 
-    def __init__(self, *writers: io.IOBase | typing.IO):
+    def __init__(self, *writers: io.IOBase | IO):
         super().__init__()
         self.writers = list(writers)
         assert len(self.writers) > 0
