@@ -1,45 +1,14 @@
-import argparse
-import dataclasses
 import io
-import logging
 import os
-from dataclasses import dataclass, field, fields
+import logging
+import argparse
+import platform
+import dataclasses
+
+from typing import Any, Callable, Iterable
 from datetime import datetime
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Type,
-    TypeVar,
-    Union,
-)
-
-T = TypeVar("T")
-
-
-def slotted(cls: Type[T]) -> Type[T]:
-    """
-    Decorator to create a dataclass where only defined fields can be
-    assigned to.
-
-    This is purely for backwards compatibility; Once support for Python
-    version below 3.10 is dropped, replace uses of this decorator with
-    @dataclass(slots=True).
-    """
-
-    if TYPE_CHECKING:
-        from _typeshed import DataclassInstance
-
-    def slotted_setattr(self: "DataclassInstance", key: str, value: Any) -> None:
-        if key not in (f.name for f in fields(self)):
-            raise Exception(f"cannot set '{key}' in ctx: dynamically adding extra " "fields to ctx is deprecated")
-        super(type(self), self).__setattr__(key, value)
-
-    setattr(cls, "__setattr__", slotted_setattr)
-    return cls
+from dataclasses import dataclass, field
+from multiprocessing import cpu_count
 
 
 @dataclass(frozen=True)
@@ -101,8 +70,7 @@ class ContextPaths:
         return os.path.join(self.root, "results")
 
 
-@slotted
-@dataclass
+@dataclass(slots=True)
 class ContextHooks:
     """Hooks (i.e., functions) that are executed at various stages during the
     building and running of targets."""
@@ -116,8 +84,7 @@ class ContextHooks:
     post_build: List[Callable] = field(default_factory=list)
 
 
-@slotted
-@dataclass
+@dataclass(slots=True)
 class Context:
     """
     The global configuration context, used by all targets, instances, etc.
