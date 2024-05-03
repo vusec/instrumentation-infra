@@ -1,7 +1,7 @@
 import os
 from abc import ABCMeta, abstractmethod
 from os.path import exists, join
-from typing import Iterator, List, Mapping
+from typing import Iterator, Mapping
 
 from ..commands.report import parse_results
 from ..context import Context
@@ -11,8 +11,8 @@ from ..util import FatalError, ResultDict, run
 
 class Tool(Package, metaclass=ABCMeta):
     name: str
-    built: List[str]
-    installed: List[str]
+    built: list[str]
+    installed: list[str]
 
     def ident(self) -> str:
         return self.name
@@ -70,9 +70,7 @@ class ReportableTool(Tool):
         pass
 
     @classmethod
-    def parse_results(
-        cls, ctx: Context, path: str, allow_missing: bool = True
-    ) -> ResultDict:
+    def parse_results(cls, ctx: Context, path: str, allow_missing: bool = True) -> ResultDict:
         """
         Parse any results containing counters by this package.
 
@@ -86,9 +84,7 @@ class ReportableTool(Tool):
                 return {}
             else:
                 raise FatalError(
-                    "Failure while parsing results: required "
-                    f"reporter {cls.name} is missing from logs "
-                    f"at {path}."
+                    "Failure while parsing results: required " f"reporter {cls.name} is missing from logs " f"at {path}."
                 )
 
         aggregated_results: ResultDict = {}
@@ -141,16 +137,11 @@ class RusageCounters(ReportableTool):
             "page_faults": "number of page faults",
             "io_operations": "number of I/O operations",
             "context_switches": "number of context switches",
-            "estimated_runtime": (
-                "benchmark runtime in seconds estimated by "
-                "rusage-counters constructor/destructor"
-            ),
+            "estimated_runtime": ("benchmark runtime in seconds estimated by " "rusage-counters constructor/destructor"),
         }
 
     @classmethod
-    def parse_results(
-        cls, ctx: Context, path: str, allow_missing: bool = False
-    ) -> ResultDict:
+    def parse_results(cls, ctx: Context, path: str, allow_missing: bool = False) -> ResultDict:
         return super().parse_results(ctx, path, allow_missing)
 
     def configure(self, ctx: Context) -> None:

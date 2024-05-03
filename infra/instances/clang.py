@@ -1,4 +1,4 @@
-from typing import Iterator, Union
+from typing import Iterator
 
 from ..context import Context
 from ..instance import Instance
@@ -25,14 +25,7 @@ class Clang(Instance):
     :param alloc: which allocator to use (default: system)
     """
 
-    def __init__(
-        self,
-        llvm: LLVM,
-        *,
-        optlevel: Union[int, str] = 2,
-        lto: bool = False,
-        alloc: str = "system"
-    ):
+    def __init__(self, llvm: LLVM, *, optlevel: int | str = 2, lto: bool = False, alloc: str = "system"):
         assert optlevel in (0, 1, 2, 3, "s"), "invalid optimization level"
         assert not (lto and optlevel == 0), "LTO needs compile-time opts"
         assert alloc in ("system", "tcmalloc"), "unsupported allocator"

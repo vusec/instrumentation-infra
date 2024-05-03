@@ -117,7 +117,7 @@ class BuildCommand(Command):
                 install_package(ctx, package, force)
                 built_packages.add(package)
 
-        def build_deps_once(obj: Union[Instance, Target]) -> None:
+        def build_deps_once(obj: Instance | Target) -> None:
             for package in cached_deps[obj]:
                 force = ctx.args.force_rebuild_deps
                 build_package_once(package, force)

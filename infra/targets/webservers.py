@@ -10,7 +10,7 @@ from contextlib import redirect_stdout
 from hashlib import md5
 from multiprocessing import cpu_count
 from statistics import mean, median, pstdev
-from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Union
+from typing import Iterable, Iterator, Mapping, Sequence
 from urllib.request import urlretrieve
 
 from ..commands.report import outfile_path
@@ -192,7 +192,7 @@ class WebServer(Target, metaclass=ABCMeta):
         # bench-client options
         parser.add_argument("--server-ip", help="IP of machine running matching bench-server")
 
-    def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
+    def run(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
         runner = WebServerRunner(self, ctx, instance, pool)
 
         if ctx.args.run_type == "serve":
@@ -374,9 +374,9 @@ class WebServerRunner:
     server: WebServer
     ctx: Context
     instance: Instance
-    pool: Optional[Pool]
+    pool: Pool | None
 
-    def __init__(self, server: WebServer, ctx: Context, instance: Instance, pool: Optional[Pool]):
+    def __init__(self, server: WebServer, ctx: Context, instance: Instance, pool: Pool | None):
         self.server = server
         self.ctx = ctx
         self.instance = instance
@@ -501,7 +501,7 @@ class WebServerRunner:
                 allow_error=True,
             )
 
-            stats: Dict[str, List[Union[int, float]]] = {}
+            stats: dict[str, list[int | float]] = {}
             if collect_stats:
                 stats = server.stop_monitoring()
 
@@ -620,7 +620,7 @@ class WebServerRunner:
         client = RemoteRunner(self.ctx.log, side="client", host=client_host, port=client_port, timeout=10)
         server = RemoteRunner(self.ctx.log, side="client", host=server_host, port=server_port, timeout=10)
 
-        _err: Optional[BaseException] = None
+        _err: BaseException | None = None
         try:
             # Do some minor sanity checks on the remote file system of server
             server_bin = self.server.server_bin(self.ctx, self.instance)
@@ -1032,7 +1032,7 @@ class Nginx(WebServer):
     def name(self) -> str:
         return f"nginx-{self.version}"
 
-    def __init__(self, version: str, build_flags: List[str] = []):
+    def __init__(self, version: str, build_flags: list[str] = []):
         super().__init__()
         self.build_flags = build_flags
         self.version = version
@@ -1046,7 +1046,7 @@ class Nginx(WebServer):
     def tar_name(self) -> str:
         return "nginx-" + self.version + ".tar.gz"
 
-    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
+    def build(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
         if not os.path.exists(instance.name):
             ctx.log.debug("unpacking nginx-" + self.version)
             shutil.rmtree("nginx-" + self.version, ignore_errors=True)
@@ -1212,7 +1212,7 @@ class ApacheHttpd(WebServer):
         apr_version: str,
         apr_util_version: str,
         modules: Iterable[str] = ["few"],
-        build_flags: List[str] = [],
+        build_flags: list[str] = [],
     ):
         self.version = version
         self.apr_version = apr_version
@@ -1230,7 +1230,7 @@ class ApacheHttpd(WebServer):
     def is_fetched(self, ctx: Context) -> bool:
         return os.path.exists("src")
 
-    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
+    def build(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
         # create build directory
         objdir = os.path.join(instance.name, "obj")
         if os.path.exists(objdir):
@@ -1414,7 +1414,7 @@ class Lighttpd(WebServer):
     def tar_name(self) -> str:
         return "lighttpd-" + self.version + ".tar.gz"
 
-    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
+    def build(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
         if not os.path.exists(instance.name):
             ctx.log.debug("unpacking lighttpd-" + self.version)
             shutil.rmtree("lighttpd-" + self.version, ignore_errors=True)
@@ -1430,7 +1430,7 @@ class Lighttpd(WebServer):
         path = join_env_paths(ctx.runenv).get("PATH", "")
         cc = shutil.which(ctx.cc, path=path)
         assert cc
-        env: Dict[str, Union[str, List[str]]] = {
+        env: dict[str, str | list[str]] = {
             "CFLAGS": qjoin(ctx.cflags),
             "LDFLAGS": qjoin(ctx.ldflags),
             "ASAN_OPTIONS": "detect_leaks=0",  # Lighttphd suffers from memory leaks

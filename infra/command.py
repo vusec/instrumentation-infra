@@ -1,11 +1,12 @@
-import argparse
 import os
 import shlex
+import argparse
+
 from abc import ABCMeta, abstractmethod
+from typing import Any, Iterator, MutableMapping
 from argparse import ArgumentParser
 from collections import OrderedDict
 from multiprocessing import cpu_count
-from typing import Any, Iterator, List, MutableMapping, Optional, Set, Union
 
 from .context import Context
 from .instance import Instance
@@ -72,7 +73,7 @@ class Command(metaclass=ABCMeta):
             help="additional options for prun (for --parallel=prun)",
         )
 
-    def make_pool(self, ctx: Context) -> Optional[Pool]:
+    def make_pool(self, ctx: Context) -> Pool | None:
         prun_opts = shlex.split(ctx.args.prun_opts)
 
         if ctx.args.parallel == "proc":
@@ -110,10 +111,10 @@ class Command(metaclass=ABCMeta):
                 yield name
 
 
-def get_deps(*objs: Union[Instance, Package, Target]) -> List[Package]:
+def get_deps(*objs: Instance | Package | Target) -> list[Package]:
     deps: MutableMapping[Package, bool] = OrderedDict()
 
-    def add_dep(dep: Package, visited: Set[Package]) -> None:
+    def add_dep(dep: Package, visited: set[Package]) -> None:
         if dep in visited:
             raise FatalError(f"recursive dependency {dep}")
         visited.add(dep)

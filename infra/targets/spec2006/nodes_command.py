@@ -2,7 +2,7 @@ import argparse
 import re
 import statistics
 from collections import defaultdict
-from typing import Dict, Iterable, List, Optional, Tuple, Union, cast
+from typing import Iterable, cast
 
 from ...command import Command
 from ...commands.report import add_table_report_args, parse_logs, report_table
@@ -75,17 +75,17 @@ class SpecFindBadPrunNodesCommand(Command):
         try:
             if not fancy:
                 raise ImportError
-            from termcolor import colored
+            from termcolor import colored  # type: ignore
         except ImportError:
 
             def colored(
                 text: str,
-                color: Optional[str] = None,
-                on_color: Optional[str] = None,
-                attrs: Optional[Iterable[str]] = None,
+                color: str | None = None,
+                on_color: str | None = None,
+                attrs: Iterable[str] | None = None,
                 *,
-                no_color: Optional[bool] = None,
-                force_color: Optional[bool] = None,
+                no_color: bool | None = None,
+                force_color: bool | None = None,
             ) -> str:
                 return text
 
@@ -93,13 +93,13 @@ class SpecFindBadPrunNodesCommand(Command):
         results = parse_logs(ctx, target, instances, ctx.args.rundirs)
 
         # compute aggregates
-        benchdata: Dict[str, Dict] = defaultdict(lambda: defaultdict(dict))
-        node_zscores: Dict[str, Dict] = defaultdict(lambda: defaultdict(list))
-        node_runtimes: Dict[Tuple[str, str, str], List[Tuple[float, float, str]]] = defaultdict(list)
+        benchdata: dict[str, dict] = defaultdict(lambda: defaultdict(dict))
+        node_zscores: dict[str, dict] = defaultdict(lambda: defaultdict(list))
+        node_runtimes: dict[tuple[str, str, str], list[tuple[float, float, str]]] = defaultdict(list)
         workload = None
 
         for iname, iresults in results.items():
-            grouped: Dict[str, List[ResultDict]] = defaultdict(list)
+            grouped: dict[str, list[ResultDict]] = defaultdict(list)
 
             for result in iresults:
                 grouped[cast(str, result["benchmark"])].append(result)
@@ -120,8 +120,8 @@ class SpecFindBadPrunNodesCommand(Command):
                     continue
 
                 # z-score per node
-                entry: Dict[str, float] = benchdata[bench][iname]
-                runtimes = cast(List[Union[int, float]], [r["runtime"] for r in bresults])
+                entry: dict[str, float] = benchdata[bench][iname]
+                runtimes = cast(list[int | float], [r["runtime"] for r in bresults])
                 entry["rt_mean"] = rt_mean = statistics.mean(runtimes)
                 entry["rt_stdev"] = rt_stdev = statistics.pstdev(runtimes)
                 entry["rt_variance"] = statistics.pvariance(runtimes)
@@ -136,7 +136,7 @@ class SpecFindBadPrunNodesCommand(Command):
 
         # order nodes such that the one with the highest z-scores (the most
         # deviating) come first
-        zmeans: Dict[str, float] = {}
+        zmeans: dict[str, float] = {}
         for hostname, benchscores in node_zscores.items():
             allscores = []
             for bscores in benchscores.values():
@@ -152,12 +152,12 @@ class SpecFindBadPrunNodesCommand(Command):
             zscore_str: str = ("%.1f" % zmeans[node]).replace("0.", ".")
             header.append(nodename + "\n" + zscore_str)
 
-        data: List[List[ResultVal]] = []
-        high_devs: List[Tuple[str, str, str, float, str]] = []
+        data: list[list[ResultVal]] = []
+        high_devs: list[tuple[str, str, str, float, str]] = []
 
         for bench, index in sorted(benchdata.items()):
             for iname, entry in index.items():
-                row: List[ResultVal] = [" " + bench, iname]
+                row: list[ResultVal] = [" " + bench, iname]
                 for node in nodes:
                     nruntimes = node_runtimes[(node, bench, iname)]
                     nruntimes.sort(reverse=True)
@@ -193,7 +193,7 @@ class SpecFindBadPrunNodesCommand(Command):
         # paths for easy access
         if high_devs:
             header = ["benchmark", "node", "instance", "runtime", "log file"]
-            hd_data: List[List[ResultVal]] = []
+            hd_data: list[list[ResultVal]] = []
             for bench, node, iname, runtime, ofile in high_devs:
                 nodename = node.replace("node", "")
                 opath = re.sub(f"^{ctx.paths.workdir}/", "", ofile)

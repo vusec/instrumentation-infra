@@ -9,15 +9,10 @@ from contextlib import redirect_stdout
 from typing import (
     Any,
     Callable,
-    Dict,
     Iterable,
     Iterator,
-    List,
     Mapping,
-    Optional,
     Sequence,
-    Type,
-    Union,
 )
 
 from ...commands.report import outfile_path, process_log
@@ -106,6 +101,7 @@ class SPEC2017(Target):
     :param force_cpu: bind runspec to this cpu core (-1 to disable)
     :param default_benchmarks: specify benchmarks run by default
     """
+
     @property
     def name(self) -> str:
         return "spec2017"
@@ -118,15 +114,15 @@ class SPEC2017(Target):
         self,
         source_type: str,
         source: str,
-        patches: List[str] = [],
+        patches: list[str] = [],
         nothp: bool = True,
         force_cpu: int = 0,
-        default_benchmarks: List[str] = [
+        default_benchmarks: list[str] = [
             "intspeed_pure_c",
             "intspeed_pure_cpp",
             "fpspeed_pure_c",
         ],
-        reporters: List[Union[ReportableTool, Type[ReportableTool]]] = [RusageCounters],
+        reporters: list[ReportableTool | type[ReportableTool]] = [RusageCounters],
     ):
         if source_type not in ("isofile", "mounted", "installed", "tarfile", "git"):
             raise FatalError(f"invalid source type '{source_type}'")
@@ -231,10 +227,7 @@ class SPEC2017(Target):
             run(ctx, ["tar", "xf", self.source])
             srcdir = re.sub(r"(\.tar\.gz|\.tgz)$", "", os.path.basename(self.source))
             if not os.path.exists(srcdir):
-                raise FatalError(
-                    f"extracted SPEC tarfile in {os.getcwd()}, could not "
-                    f"find {srcdir}/ afterwards"
-                )
+                raise FatalError(f"extracted SPEC tarfile in {os.getcwd()}, could not " f"find {srcdir}/ afterwards")
             shutil.move(srcdir, "src")
             do_install("src")
             ctx.log.debug("removing SPEC-CPU2017 source files to save disk space")
@@ -261,13 +254,9 @@ class SPEC2017(Target):
             if "/" not in path:
                 path = f"{config_root}/{path}.patch"
             if apply_patch(ctx, path, 1) and self.source_type == "installed":
-                ctx.log.warning(
-                    f"applied patch {path} to external SPEC-CPU2017 directory"
-                )
+                ctx.log.warning(f"applied patch {path} to external SPEC-CPU2017 directory")
 
-    def build(
-        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
-    ) -> None:
+    def build(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
         # apply any pending patches (doing this at build time allows adding
         # patches during instance development, and is needed to apply patches
         # when self.source_type == 'installed')
@@ -284,9 +273,7 @@ class SPEC2017(Target):
             cmd = f"killwrap_tree runcpu --config={config} --action=build {bench}"
             if pool:
                 jobid = f"build-{instance.name}-{bench}"
-                outdir = os.path.join(
-                    ctx.paths.pool_results, "build", self.name, instance.name
-                )
+                outdir = os.path.join(ctx.paths.pool_results, "build", self.name, instance.name)
                 os.makedirs(outdir, exist_ok=True)
                 outfile = os.path.join(outdir, bench)
                 self._run_bash(ctx, cmd, pool, jobid=jobid, outfile=outfile, nnodes=1)
@@ -294,9 +281,7 @@ class SPEC2017(Target):
                 ctx.log.info(f"building {self.name}-{instance.name} {bench}")
                 self._run_bash(ctx, cmd, teeout=print_output)
 
-    def run(
-        self, ctx: Context, instance: Instance, pool: Optional[Pool] = None
-    ) -> None:
+    def run(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
         config = "infra-" + instance.name
 
         if not os.path.exists(self._install_path(ctx, "config", config + ".cfg")):
@@ -336,9 +321,7 @@ class SPEC2017(Target):
         if self.force_cpu >= 0:
             if isinstance(pool, ProcessPool) and pool.parallelmax > 1:
                 ctx.log.warning(
-                    f"Ignoring force_cpu={self.force_cpu} for "
-                    "SPEC2017 because using parallel=proc with "
-                    "parallelmax > 1"
+                    f"Ignoring force_cpu={self.force_cpu} for " "SPEC2017 because using parallel=proc with " "parallelmax > 1"
                 )
             else:
                 wrapper += f" taskset -c {self.force_cpu}"
@@ -351,7 +334,8 @@ class SPEC2017(Target):
             if isinstance(pool, PrunPool):
                 # prepare output dir on local disk before running,
                 # and move output files to network disk after completion
-                cmd = _unindent(f"""
+                cmd = _unindent(
+                    f"""
                 set -ex
 
                 benchdir="benchspec/CPU2017/{{bench}}"
@@ -417,7 +401,8 @@ class SPEC2017(Target):
 
                 # clean up
                 rm -rf "{output_root}"
-                """)
+                """
+                )
 
                 # the script is passed like this: prun ... bash -c '<script>'
                 # this means that some escaping is necessary: use \$ instead of
@@ -448,20 +433,23 @@ class SPEC2017(Target):
         self,
         ctx: Context,
         command: str,
-        pool: Optional[Pool] = None,
-        onsuccess: Optional[Callable] = None,
+        pool: Pool | None = None,
+        onsuccess: Callable | None = None,
         **kwargs: Any,
     ) -> None:
         config_root = os.path.dirname(os.path.abspath(__file__))
         cmd = [
             "bash",
             "-c",
-            "\n" + _unindent(f"""
+            "\n"
+            + _unindent(
+                f"""
             cd {self._install_path(ctx)}
             source shrc
             source "{config_root}/scripts/kill-tree-on-interrupt.inc"
             {command}
-            """),
+            """
+            ),
         ]
         if pool:
             pool.run(ctx, cmd, onsuccess=onsuccess, **kwargs)
@@ -582,9 +570,9 @@ class SPEC2017(Target):
         benchmarks = set()
         for bset in ctx.args.benchmarks:
             for bench in self.benchmarks[bset]:
-                if not hasattr(instance, "exclude_spec2017_benchmark") or not getattr(
-                    instance, "exclude_spec2017_benchmark"
-                )(bench):
+                if not hasattr(instance, "exclude_spec2017_benchmark") or not getattr(instance, "exclude_spec2017_benchmark")(
+                    bench
+                ):
                     benchmarks.add(bench)
         return sorted(benchmarks)
 
@@ -605,7 +593,7 @@ class SPEC2017(Target):
                 logpath = match.replace("The log for this run is in ", "")
                 yield logpath
 
-        def parse_logfile(logpath: str) -> Iterator[Dict[str, Any]]:
+        def parse_logfile(logpath: str) -> Iterator[dict[str, Any]]:
             ctx.log.debug("parsing log file " + logpath)
 
             with open(logpath) as f:
@@ -620,14 +608,13 @@ class SPEC2017(Target):
             error_benchmarks = set(m.group(1).split(", "))
 
             pat = re.compile(
-                r"([^ ]+) ([^ ]+) base (\w+) ratio=(-?[0-9.]+), "
-                r"runtime=([0-9.]+).*",
+                r"([^ ]+) ([^ ]+) base (\w+) ratio=(-?[0-9.]+), " r"runtime=([0-9.]+).*",
                 re.M,
             )
             m = pat.search(logcontents)
             while m:
                 status, benchmark, workload, ratio, runtime = m.groups()
-                runtime_results: Dict[str, Union[int, float]] = defaultdict(int)
+                runtime_results: dict[str, int | float] = defaultdict(int)
 
                 # find per-input logs by benchutils staticlib
                 rpat = r"Running %s.+?-C (.+?$)(.+?)^Specinvoke:" % benchmark
@@ -639,9 +626,7 @@ class SPEC2017(Target):
                 for errfile in errfiles:
                     path = os.path.join(fix_specpath(rundir), errfile)
                     if not os.path.exists(path):
-                        ctx.log.error(
-                            f"missing errfile {path}, there was probably an error"
-                        )
+                        ctx.log.error(f"missing errfile {path}, there was probably an error")
                         benchmark_error = True
                         continue
 
@@ -651,10 +636,7 @@ class SPEC2017(Target):
                             runtime_results[counter] += value
 
                 if benchmark_error:
-                    ctx.log.warning(
-                        f"cancel processing benchmark {benchmark} in log "
-                        f"file {logpath} because of errors"
-                    )
+                    ctx.log.warning(f"cancel processing benchmark {benchmark} in log " f"file {logpath} because of errors")
                 else:
                     yield {
                         "benchmark": benchmark,

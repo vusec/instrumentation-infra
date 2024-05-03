@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
-from argparse import ArgumentParser
 from typing import Iterator
+from argparse import ArgumentParser
 
 from .context import Context
 from .package import Package

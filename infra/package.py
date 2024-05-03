@@ -1,11 +1,12 @@
 import os
 import shutil
+
 from abc import ABCMeta, abstractmethod
-from typing import Any, Iterable, Iterator, Tuple, Union
+from typing import Any, Iterable, Iterator
 
 from .context import Context
 
-PkgConfigOption = Tuple[str, str, Union[str, Iterable[str]]]
+PkgConfigOption = tuple[str, str, str | Iterable[str]]
 
 
 class Package(metaclass=ABCMeta):

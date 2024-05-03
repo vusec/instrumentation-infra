@@ -4,7 +4,6 @@ import re
 import shutil
 from itertools import chain
 from pathlib import Path
-from typing import List, Optional
 
 from ..context import Context
 from ..instance import Instance
@@ -69,7 +68,7 @@ class Juliet(Target):
 
     zip_name = "Juliet_Test_Suite_v1.3_for_C_Cpp.zip"
 
-    def __init__(self, mitigation_return_code: Optional[int] = None):
+    def __init__(self, mitigation_return_code: int | None = None):
         self.mitigation_return_code = mitigation_return_code
 
     def add_build_args(self, parser: argparse.ArgumentParser) -> None:
@@ -93,7 +92,7 @@ class Juliet(Target):
         )
 
     @staticmethod
-    def parse_cwe_list(cwe_list: List[str]) -> List[str]:
+    def parse_cwe_list(cwe_list: list[str]) -> list[str]:
         aliases = {}
         aliases["buffer-overflow"] = [
             "CWE121",
@@ -130,11 +129,11 @@ class Juliet(Target):
         url = f"https://zenodo.org/record/4701387/files/{self.zip_name}?download=1"
         download(ctx, url)
 
-    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
+    def build(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
         for cwe in self.parse_cwe_list(ctx.args.cwe):
             self.build_cwe(ctx, instance, pool, cwe)
 
-    def build_cwe(self, ctx: Context, instance: Instance, pool: Optional[Pool], cwe: str) -> None:
+    def build_cwe(self, ctx: Context, instance: Instance, pool: Pool | None, cwe: str) -> None:
         bdir = Path(self.path(ctx))
         srcrootdir = bdir / "src"
         os.makedirs(srcrootdir, exist_ok=True)
@@ -259,7 +258,7 @@ class Juliet(Target):
                     else:
                         run(ctx, cmd_bad)
 
-    def binary_paths(self, ctx: Context, instance: Instance) -> List[str]:
+    def binary_paths(self, ctx: Context, instance: Instance) -> list[str]:
         paths = []
 
         for cwe in self.parse_cwe_list(ctx.args.cwe):
@@ -276,7 +275,7 @@ class Juliet(Target):
 
         return [str(p) for p in paths]
 
-    def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
+    def run(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
         for cwe in self.parse_cwe_list(ctx.args.cwe):
             self.run_cwe(ctx, instance, cwe)
 

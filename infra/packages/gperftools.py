@@ -1,6 +1,6 @@
 import os
 import shutil
-from typing import Iterator, List
+from typing import Iterator
 
 from ..context import Context
 from ..package import Package
@@ -14,7 +14,7 @@ class LibUnwind(Package):
     :param version: version to download
     """
 
-    def __init__(self, version: str, patches: List[str] = []):
+    def __init__(self, version: str, patches: list[str] = []):
         self.version = version
         self.patches = patches
 
@@ -74,9 +74,7 @@ class Gperftools(Package):
     :param patches: optional patches to apply before building
     """
 
-    def __init__(
-        self, commit: str, libunwind_version: str = "1.4-rc1", patches: List[str] = []
-    ):
+    def __init__(self, commit: str, libunwind_version: str = "1.4-rc1", patches: list[str] = []):
         self.commit = commit
         self.libunwind = LibUnwind(libunwind_version)
         self.patches = patches
@@ -150,9 +148,7 @@ class Gperftools(Package):
         :param ctx: the configuration context
         """
         self.libunwind.configure(ctx)
-        cflags = [
-            "-fno-builtin-" + fn for fn in ("malloc", "calloc", "realloc", "free")
-        ]
+        cflags = ["-fno-builtin-" + fn for fn in ("malloc", "calloc", "realloc", "free")]
         cflags += ["-I", self.path(ctx, "install/include/gperftools")]
         ctx.cflags += cflags
         ctx.cxxflags += cflags

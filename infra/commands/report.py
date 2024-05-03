@@ -1,27 +1,16 @@
-import argparse
-import csv
 import io
 import os
 import re
+import csv
 import sys
-from contextlib import redirect_stdout
+import argparse
+
 from decimal import Decimal
 from functools import reduce
 from itertools import chain, zip_longest
+from contextlib import redirect_stdout
 from statistics import mean, median, pstdev, pvariance
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
-    Mapping,
-    Optional,
-    Sequence,
-    Tuple,
-    TypeVar,
-)
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence, TypeVar
 
 from ..command import Command
 from ..context import Context
@@ -67,7 +56,7 @@ def geomean(values: Sequence[float]) -> float:
     return reduce(lambda x, y: x * y, values) ** (1.0 / len(values))
 
 
-_aggregate_fns: Dict[str, Callable[[Sequence[Any]], Any]] = {
+_aggregate_fns: dict[str, Callable[[Sequence[Any]], Any]] = {
     "mean": mean,
     "median": median,
     "stdev": pstdev,
@@ -87,7 +76,7 @@ _aggregate_fns: Dict[str, Callable[[Sequence[Any]], Any]] = {
 }
 
 
-FieldAggregators = Iterable[Tuple[str, Tuple[str, ...]]]
+FieldAggregators = Iterable[tuple[str, tuple[str, ...]]]
 result_prefix = "[setup-report]"
 
 
@@ -247,8 +236,8 @@ class ReportCommand(Command):
         fields = [f for f, aggr in field_aggrs]
         instances = sorted(results)
 
-        header: List[str] = []
-        human_header: List[str] = []
+        header: list[str] = []
+        human_header: list[str] = []
         for instance in instances:
             prefix = instance + "\n"
             for f in fields:
@@ -256,12 +245,12 @@ class ReportCommand(Command):
                 human_header.append(prefix + f)
                 prefix = "\n"
 
-        rows: Dict[str, List[Tuple[ResultVal, ...]]] = {}
+        rows: dict[str, list[tuple[ResultVal, ...]]] = {}
         for instance in instances:
             rows[instance] = sorted(tuple(r[f] for f in fields) for r in results[instance])
 
         instance_rows = [rows[i] for i in instances]
-        joined_rows: List[List[ResultVal]] = []
+        joined_rows: list[list[ResultVal]] = []
         for parts in zip_longest(*instance_rows, fillvalue=["", ""]):
             joined_rows.append(list(chain.from_iterable(parts)))
 
@@ -286,7 +275,7 @@ class ReportCommand(Command):
                 result[ctx.args.groupby] for instance_results in results.values() for result in instance_results if keep(result)
             )
         )
-        grouped: Dict[Tuple[Tuple[ResultVal, str], str], List[ResultVal]] = {}
+        grouped: dict[tuple[tuple[ResultVal, str], str], list[ResultVal]] = {}
         for instance, instance_results in results.items():
             for result in instance_results:
                 if not keep(result):
@@ -309,7 +298,7 @@ class ReportCommand(Command):
                     human_header.append(prefix + ag)
                     prefix = "\n\n"
 
-        data: List[List[Optional[ResultVal]]] = []
+        data: list[list[ResultVal | None]] = []
         for groupby_value in groupby_values:
             baseline_results = {}
             if baseline_instance:
@@ -320,7 +309,7 @@ class ReportCommand(Command):
                         value = _aggregate_fns[ag](series)
                         baseline_results[(groupby_value, f)] = value
 
-            row: List[Optional[ResultVal]] = [groupby_value]
+            row: list[ResultVal | None] = [groupby_value]
             for instance in instances:
                 if instance == baseline_instance:
                     continue
@@ -343,7 +332,7 @@ class ReportCommand(Command):
         else:
             title = f"{target.name} aggregated data"
 
-        table_options: Dict[str, bool] = {}
+        table_options: dict[str, bool] = {}
 
         if ctx.args.aggregate:
             aggrfn = _aggregate_fns[ctx.args.aggregate]
@@ -437,9 +426,9 @@ def add_table_report_args(parser: argparse.ArgumentParser) -> None:
 
 def report_table(
     ctx: Context,
-    nonhuman_header: List[str],
-    human_header: List[str],
-    data_rows: Iterable[Iterable[Optional[ResultVal]]],
+    nonhuman_header: list[str],
+    human_header: list[str],
+    data_rows: Iterable[Iterable[ResultVal | None]],
     title: str,
     **table_options: bool,
 ) -> None:
@@ -456,7 +445,7 @@ def report_table(
         return
 
     # align numbers on the decimal point
-    def get_whole_digits(n: Optional[ResultVal]) -> int:
+    def get_whole_digits(n: ResultVal | None) -> int:
         if isinstance(n, int):
             return len(str(n))
         if isinstance(n, float):
@@ -465,7 +454,7 @@ def report_table(
 
     whole_digits = [max(map(get_whole_digits, values)) for values in zip(*data_rows)]
 
-    def pad(n_string: str, n: Optional[ResultVal], col: int) -> str:
+    def pad(n_string: str, n: ResultVal | None, col: int) -> str:
         if isinstance(n, int):
             return " " * (whole_digits[col] - len(n_string)) + n_string
         if isinstance(n, float):
@@ -581,10 +570,10 @@ def parse_logs(
     ctx: Context,
     target: Target,
     instances: Iterable[Instance],
-    rundirs: List[str],
+    rundirs: list[str],
     write_cache: bool = True,
     read_cache: bool = True,
-) -> Dict[str, List[ResultDict]]:
+) -> dict[str, list[ResultDict]]:
     """
     Parse logs from specified run directories.
 
@@ -621,7 +610,7 @@ def parse_logs(
 
     instance_names = [instance.name for instance in instances]
     instance_dirs = []
-    results: Dict[str, List[ResultDict]] = dict((iname, []) for iname in instance_names)
+    results: dict[str, list[ResultDict]] = dict((iname, []) for iname in instance_names)
 
     for rundir in abs_rundirs:
         targetdir = os.path.join(rundir, target.name)
@@ -635,7 +624,7 @@ def parse_logs(
             ctx.log.warning(f"rundir {rundir} contains no results for target {target.name}")
 
     for iname, idir in instance_dirs:
-        instance_results: List[ResultDict] = results.setdefault(iname, [])
+        instance_results: list[ResultDict] = results.setdefault(iname, [])
 
         for filename in sorted(os.listdir(idir)):
             path = os.path.join(idir, filename)
@@ -735,7 +724,7 @@ def parse_results(ctx: Context, path: str, name: str) -> Iterator[ResultDict]:
             yield result
 
 
-def parse_all_results(ctx: Context, path: str) -> Iterator[Tuple[str, ResultDict]]:
+def parse_all_results(ctx: Context, path: str) -> Iterator[tuple[str, ResultDict]]:
     """
     Parse all results in a file.
 
@@ -744,7 +733,7 @@ def parse_all_results(ctx: Context, path: str) -> Iterator[Tuple[str, ResultDict
     :returns: (name, result) tuples
     """
     with open(path) as f:
-        result: Optional[ResultDict] = None
+        result: ResultDict | None = None
         bname = None
 
         for lineno, line in enumerate(f):

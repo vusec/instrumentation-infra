@@ -6,7 +6,7 @@ import platform
 import sys
 import textwrap
 import traceback
-from typing import List
+
 from shutil import get_terminal_size
 
 from . import commands
@@ -101,7 +101,7 @@ class Setup:
             title="subcommands",
             metavar="COMMAND",
             dest="command",
-            description=('run with "<command> --help" to see options for individual commands'),
+            description=('Run with "<command> --help" to see options for individual commands'),
         )
         subparsers.required = True
 
@@ -120,7 +120,7 @@ class Setup:
             # use a custom completer that moves non-positional options to the
             # end of the completion list, and excludes --help
             class MyCompleter(argcomplete.CompletionFinder):
-                def filter_completions(self, completions: List[str]) -> List[str]:
+                def filter_completions(self, completions: list[str]) -> list[str]:
                     completions = super().filter_completions(completions)
                     if completions:
                         for i, value in enumerate(completions):

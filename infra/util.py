@@ -21,7 +21,6 @@ from typing import (
     IO,
     Any,
     AnyStr,
-    Union,
     Literal,
     Mapping,
     TypeVar,
@@ -36,8 +35,8 @@ from typing import (
 
 from .context import Context
 
-EnvDict = Mapping[str, Union[str, list[str]]]
-ResultVal = Union[bool, int, float, str]
+EnvDict = Mapping[str, str | list[str]]
+ResultVal = bool | int | float | str
 ResultDict = MutableMapping[str, ResultVal]
 ResultsByInstance = MutableMapping[str, list[ResultDict]]
 T = TypeVar("T")
@@ -112,7 +111,7 @@ class FatalError(Exception):
     pass
 
 
-def apply_patch(ctx: Context, patch_path: str | Path, strip_count: int) -> bool:
+def apply_patch(ctx: Context, patch_path: Path | str, strip_count: int) -> bool:
     """
     Applies a patch in the current directory by calling ``patch -p<strip_count> < <path>``.
 
@@ -221,7 +220,7 @@ class MultiFormatter(logging.Formatter):
 
 @dataclass
 class Process:
-    proc: Union[None, subprocess.CompletedProcess, subprocess.Popen]
+    proc: subprocess.CompletedProcess | subprocess.Popen | None
     cmd_str: str
     teeout: bool
 
@@ -291,7 +290,7 @@ class Process:
         return self.proc.wait()
 
 
-def get_cmd_list(raw_cmd: str | Iterable[Any]) -> list[str] | None:
+def get_cmd_list(raw_cmd: Iterable[Any] | str) -> list[str] | None:
     """Converts the given raw command string/iterable to a list of strings to pass to something
     like :func:`subprocess.run`. The given object :param:`raw_cmd` can be a string, in which case
     :func:`shlex.split()` is used to split it into components. If the given object :param:`raw_cmd`
@@ -328,7 +327,7 @@ def get_safe_cmd_str(cmd_list: Iterable[str], stdin: Any | None = None) -> str:
 
 def run(
     ctx: Context,
-    cmd: Union[str, Iterable[Any]],
+    cmd: Iterable[Any] | str,
     allow_error: bool = False,
     silent: bool = False,
     teeout: bool = False,
@@ -560,7 +559,7 @@ class _Tee(io.IOBase):
 
     ansi_escape = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]")  # 7-bit C1 ANSI sequences
 
-    def __init__(self, *writers: Union[io.IOBase, typing.IO]):
+    def __init__(self, *writers: io.IOBase | typing.IO):
         super().__init__()
         self.writers = list(writers)
         assert len(self.writers) > 0

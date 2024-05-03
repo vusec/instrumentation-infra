@@ -146,7 +146,7 @@ class Context:
     hooks: ContextHooks = field(default_factory=ContextHooks)
 
     #: Environment variables that are used when running a target.
-    runenv: Dict[str, Union[str, List[str]]] = field(default_factory=dict)
+    runenv: dict[str, str | list[str]] = field(default_factory=dict)
 
     #: When the current run of the infra was started.
     starttime: datetime = field(default_factory=datetime.now)
@@ -157,7 +157,7 @@ class Context:
     target_run_wrapper: str = ""  # TODO: merge this with Tools?
 
     #: File object used for writing all executed commands, if enabled.
-    runlog_file: Optional[io.TextIOWrapper] = None
+    runlog_file: io.TextIOWrapper | None = None
 
     #: The amount of parallel jobs to use. Contains the value of the ``-j`` command-line
     #: option, defaulting to the number of CPU cores returned by
@@ -188,29 +188,60 @@ class Context:
     ranlib: str = "ranlib"
 
     #: C compilation flags to use when building targets.
-    cflags: List[str] = field(default_factory=list)
+    cflags: list[str] = field(default_factory=list)
 
     #: C++ compilation flags to use when building targets.
-    cxxflags: List[str] = field(default_factory=list)
+    cxxflags: list[str] = field(default_factory=list)
 
     #: Fortran compilation flags to use when building targets.
-    fcflags: List[str] = field(default_factory=list)
+    fcflags: list[str] = field(default_factory=list)
 
     #: Linker flags to use when building targets.
-    ldflags: List[str] = field(default_factory=list)
+    ldflags: list[str] = field(default_factory=list)
 
     #: Special set of linker flags set by some packages, and is passed when linking
     #: target libraries that will later be (statically) linked into the binary.
     #:
     #: In practice it is either empty or ``['-flto']`` when compiling with LLVM.
-    lib_ldflags: List[str] = field(default_factory=list)
+    lib_ldflags: list[str] = field(default_factory=list)
+
+    def add_flags(
+        self,
+        flags: Iterable[str] | str,
+        cc: bool = False,
+        cxx: bool = False,
+        ld: bool = False,
+        lib_ld: bool = False,
+        dups: bool = True,
+    ) -> None:
+        """Helper function to add one or more flags to the context's cflags/cxxflags/ldflags/lib_ldflags
+        lists conveniently with a single call. By default, allows insertion of duplicate flags. Can
+        be disabled by setting :param:`dups` to `False`.
+
+        :param Iterable[str] | str flags: a single flag or an iterable containing flags
+        :param bool cc: add the flag(s) to the C compiler flags, defaults to False
+        :param bool cxx: add the flag(s) to the C++ compiler flags, defaults to False
+        :param bool ld: add the flag(s) to the linker flags, defaults to False
+        :param bool lib_ld: add the flag(s) to the lib_linker flags, defaults to False
+        :param bool dups: always add flag(s) even if they are already added, defaults to True
+        """
+        flags = [flags] if isinstance(flags, str) else list(flags)
+        for flag in flags:
+            if cc and (flag not in self.cflags or dups):
+                self.cflags.append(flag)
+            if cxx and (flag not in self.cxxflags or dups):
+                self.cxxflags.append(flag)
+            if ld and (flag not in self.ldflags or dups):
+                self.ldflags.append(flag)
+            if lib_ld and (flag not in self.lib_ldflags or dups):
+                self.lib_ldflags.append(flag)
 
     def copy(self) -> "Context":
         """
         Make a partial deepcopy of this Context, copying only fields of type
         ``ContextPaths|list|dict``.
         """
-        changes: Dict[str, Any] = {"paths": dataclasses.replace(self.paths)}
+        changes: dict[str, Any] = {"paths": dataclasses.replace(self.paths)}
         for attr in dir(self):
             if attr.startswith("_"):
                 continue

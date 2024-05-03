@@ -5,10 +5,9 @@ import os.path
 import re
 import sys
 from pprint import pprint
-from typing import List, Tuple
 
 
-def parse_setfile(path: str) -> Tuple[str, List[str]]:
+def parse_setfile(path: str) -> tuple[str, list[str]]:
     with open(path) as f:
         contents = f.read()
     pat = r"^\$name\s*=\s*'([^']*)'.*^@benchmarks\s*=\s*qw\((.*)\)"
@@ -30,10 +29,7 @@ if __name__ == "__main__":
         "--exclude",
         nargs="+",
         default=["998.specrand", "999.specrand"],
-        help=(
-            "names of benchmarks to exclude from all sets "
-            "(default 998.specrand,999.specrand)"
-        ),
+        help=("names of benchmarks to exclude from all sets " "(default 998.specrand,999.specrand)"),
     )
     parser.add_argument("specdir", help="location of SPEC directory")
     args = parser.parse_args()

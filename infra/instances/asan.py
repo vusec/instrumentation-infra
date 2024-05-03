@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional, Union
 
 from ..context import Context
 from ..packages import LLVM
@@ -36,16 +35,14 @@ class ASan(Clang):
     glob: bool = True
     check_writes: bool = True
     check_reads: bool = True
-    redzone: Optional[int] = None
-    optlevel: Union[int, str] = 2
+    redzone: int | None = None
+    optlevel: int | str = 2
     lto: bool = False
 
     def __post_init__(self) -> None:
         assert self.llvm.compiler_rt, "ASan needs LLVM with runtime support"
         super().__init__(self.llvm, lto=self.lto, optlevel=self.optlevel)
-        assert (
-            not self.check_reads or self.check_writes
-        ), "will not check reads without writes"
+        assert not self.check_reads or self.check_writes, "will not check reads without writes"
         if self.redzone is not None:
             assert isinstance(self.redzone, int), "redzone size must be a number"
 
@@ -110,6 +107,4 @@ class ASan(Clang):
         if not self.check_writes:
             opts["replace_intrin"] = 0
 
-        ctx.runenv["ASAN_OPTIONS"] = ":".join(
-            f"{opt[0]}={opt[1]}" for opt in opts.items()
-        )
+        ctx.runenv["ASAN_OPTIONS"] = ":".join(f"{opt[0]}={opt[1]}" for opt in opts.items())

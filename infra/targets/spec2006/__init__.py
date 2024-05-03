@@ -236,7 +236,9 @@ class SPEC2006(Target):
         return self.benchspec_dir(ctx, "CPU2006").joinpath(*args)
 
     def is_clean(self, ctx: Context) -> bool:
-        return any(Path(self.path(ctx)).iterdir()) if self.source_type != "installed" else True
+        if self.source_type == "installed":
+            return True
+        return Path(self.path(ctx)).is_dir() and any(Path(self.path(ctx)).iterdir())
 
     def clean(self, ctx: Context) -> None:
         match self.source_type:
@@ -649,7 +651,7 @@ class SPEC2006(Target):
                 os.chdir(path)
                 for hook in ctx.hooks.pre_build:
                     ctx.log.info(f"Running hook {hook} on {bench} in {path}")
-                    hook(ctx, path)
+                    hook(ctx, str(path))
 
     # override post-build hook runner rather than defining `binary_paths` since
     # we add hooks to the generated SPEC config file and call them through the

@@ -30,18 +30,13 @@ import threading
 import time
 import traceback
 from typing import (
-    IO,
     Any,
+    IO,
     Callable,
-    Dict,
     Iterable,
-    List,
     Mapping,
     NoReturn,
-    Optional,
     Sequence,
-    Tuple,
-    Union,
 )
 
 try:
@@ -68,14 +63,14 @@ class MonitorThread(threading.Thread):
     # Statistics that require looping over all monitored processes
     aggregated_stats = ("cpu-proc", "rss", "vms")
 
-    data: Dict[str, List[Union[int, float]]]
-    _exception: Optional[Exception]
+    data: dict[str, list[int | float]]
+    _exception: Exception | None
 
     def __init__(
         self,
         interval: float,
         pids: Iterable[int] = [],
-        stats: Tuple[str, ...] = ("cpu", "rss"),
+        stats: tuple[str, ...] = ("cpu", "rss"),
     ):
         assert psutil is not None
         threading.Thread.__init__(self)
@@ -110,7 +105,7 @@ class MonitorThread(threading.Thread):
 
         aggr_stats = tuple(set(self.stats) & set(self.aggregated_stats))
         if aggr_stats:
-            aggr: Dict[str, Union[int, float]] = {s: 0 for s in aggr_stats}
+            aggr: dict[str, int | float] = {s: 0 for s in aggr_stats}
             for proc in self.procs:
                 with proc.oneshot():
                     if "cpu-proc" in aggr:
@@ -146,9 +141,9 @@ class RemoteRunnerComms:
     received. Data is json encoded, with the payload simply being the `args` and
     `kwargs` arguments."""
 
-    sock: Optional[socket.socket]
-    rsock: Optional[IO]
-    wsock: Optional[IO]
+    sock: socket.socket | None
+    rsock: IO | None
+    wsock: IO | None
 
     def __init__(self, log: logging.Logger, sock: socket.socket):
         assert isinstance(sock, socket.socket), sock
@@ -168,14 +163,12 @@ class RemoteRunnerComms:
     def send(self, func: str, *args: Any, **kwargs: Any) -> None:
         self.log.debug(f" > {func} {args} {kwargs}")
         if self.sock is None:
-            self.log.warning(
-                f"Could not send message {func} because there is no connection"
-            )
+            self.log.warning(f"Could not send message {func} because there is no connection")
             return
         pkg = json.dumps((func, args, kwargs))
         self.sock.sendall(pkg.encode("utf-8") + b"\n")
 
-    def recv(self) -> Tuple[str, Sequence[Any], Mapping[str, Any]]:
+    def recv(self) -> tuple[str, Sequence[Any], Mapping[str, Any]]:
         if self.sock is None:
             self.log.warning("Could not receive data because there is no connection")
             return "", [], {}
@@ -249,16 +242,16 @@ class RemoteRunner:
     value back to the client. Calling such a function directly on the server
     will execute it directly."""
 
-    comms: Optional[RemoteRunnerComms]
-    proc: Optional[subprocess.Popen]
+    comms: RemoteRunnerComms | None
+    proc: subprocess.Popen | None
 
     def __init__(
         self,
         log: logging.Logger,
-        side: Optional[str] = None,
-        host: Optional[str] = None,
-        port: Optional[int] = None,
-        timeout: Optional[float] = None,
+        side: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
+        timeout: float | None = None,
     ):
         assert side in (None, "client", "server"), side
         self.log = log
@@ -279,9 +272,7 @@ class RemoteRunner:
             self.comms.send("error", msg, **kwargs)
         raise RemoteRunnerError(msg)
 
-    def runner_connect(
-        self, host: str, port: int, timeout: Optional[float] = None
-    ) -> None:
+    def runner_connect(self, host: str, port: int, timeout: float | None = None) -> None:
         self.side = "client"
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -341,7 +332,7 @@ class RemoteRunner:
         self.side = None
 
     @remotecall
-    def get_pids(self) -> List[int]:
+    def get_pids(self) -> list[int]:
         assert psutil is not None
         if self.proc is None:
             return []
@@ -361,19 +352,19 @@ class RemoteRunner:
     @remotecall
     def run(
         self,
-        cmd: Union[str, List[Any]],
+        cmd: str | list,
         wait: bool = True,
         env: Mapping[str, str] = {},
         allow_error: bool = False,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         assert psutil is not None
         if self.proc is not None and self.proc.poll() is None:
             self._error("already running a process")
 
         cmd = shlex.split(cmd) if isinstance(cmd, str) else [str(c) for c in cmd]
 
-        def join(v: Union[str, Tuple, List]) -> str:
-            return ":".join(v) if isinstance(v, (tuple, list)) else v
+        def join(v: Iterable | str) -> str:
+            return v if isinstance(v, str) else ":".join(v)
 
         renv = os.environ.copy()
         renv.update({k: join(v) for k, v in env.items()})
@@ -394,24 +385,18 @@ class RemoteRunner:
         return None
 
     @remotecall
-    def poll(self, expect_alive: bool = False) -> Optional[int]:
+    def poll(self, expect_alive: bool = False) -> int | None:
         if self.proc is None:
             self._error("no process was running")
         rv = self.proc.poll()
         if expect_alive:
             if rv is not None:
                 stdout, stderr = self.proc_communicate()
-                self._error(
-                    f"process has exited already ({rv})\n"
-                    f"stdout: {stdout}\n"
-                    f"stderr: {stderr}"
-                )
+                self._error(f"process has exited already ({rv})\n" f"stdout: {stdout}\n" f"stderr: {stderr}")
         return self.proc.poll()
 
     @remotecall
-    def proc_communicate(
-        self, timeout: Optional[float] = None
-    ) -> Tuple[Optional[str], Optional[str]]:
+    def proc_communicate(self, timeout: float | None = None) -> tuple[str | None, str | None]:
         if self.proc is None:
             self._error("no process was running")
 
@@ -433,16 +418,16 @@ class RemoteRunner:
     @remotecall
     def wait(
         self,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         output: bool = True,
         stats: bool = True,
         allow_error: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         assert psutil is not None
         if self.proc is None:
             self._error("no process was running")
 
-        ret: Dict[str, Any] = {}
+        ret: dict[str, Any] = {}
         try:
             ret["rv"] = self.proc.wait(timeout)
         except subprocess.TimeoutExpired:
@@ -488,15 +473,13 @@ class RemoteRunner:
         return psutil.cpu_percent()
 
     @remotecall
-    def start_monitoring(
-        self, interval: float = 1.0, stats: Tuple[str, ...] = ("cpu", "rss")
-    ) -> None:
+    def start_monitoring(self, interval: float = 1.0, stats: tuple[str, ...] = ("cpu", "rss")) -> None:
         pids = self.get_pids()
         self.monitor_thread = MonitorThread(interval, pids, stats)
         self.monitor_thread.start()
 
     @remotecall
-    def stop_monitoring(self) -> Dict[str, List[Union[int, float]]]:
+    def stop_monitoring(self) -> dict[str, list[int | float]]:
         if self.monitor_thread is None:
             self._error("no monitoring thread")
         self.monitor_thread.stop()
@@ -508,13 +491,9 @@ class RemoteRunner:
 
 
 def server_main() -> NoReturn:
-    parser = argparse.ArgumentParser(
-        description="Remote runner script for benchmarking."
-    )
+    parser = argparse.ArgumentParser(description="Remote runner script for benchmarking.")
     parser.add_argument("--host", default="", help="host to bind socket on")
-    parser.add_argument(
-        "-p", "--port", default=20010, type=int, help="port to bind socket on"
-    )
+    parser.add_argument("-p", "--port", default=20010, type=int, help="port to bind socket on")
     parser.add_argument(
         "-v",
         "--verbosity",

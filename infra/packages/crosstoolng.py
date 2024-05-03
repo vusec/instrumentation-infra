@@ -1,6 +1,6 @@
 import os
 import shutil
-from typing import Iterator, Optional
+from typing import Iterator
 
 from ..context import Context
 from ..package import Package
@@ -71,9 +71,9 @@ class CustomToolchain(Package):
     def __init__(
         self,
         arch: str = "x86_64",
-        glibc_version: Optional[str] = None,
-        min_kernel_version: Optional[str] = None,
-        glibc_path: Optional[str] = None,
+        glibc_version: str | None = None,
+        min_kernel_version: str | None = None,
+        glibc_path: str | None = None,
     ):
         self.arch = arch
         self.glibc_version = glibc_version
@@ -119,8 +119,7 @@ class CustomToolchain(Package):
                 [
                     "sed",
                     "-i",
-                    's/CT_LINUX_VERSION=.*/CT_LINUX_VERSION="%s"/'
-                    % self.min_kernel_version,
+                    's/CT_LINUX_VERSION=.*/CT_LINUX_VERSION="%s"/' % self.min_kernel_version,
                     ".config",
                 ],
             )
@@ -129,8 +128,7 @@ class CustomToolchain(Package):
                 [
                     "sed",
                     "-i",
-                    's/CT_GLIBC_MIN_KERNEL=.*/CT_GLIBC_MIN_KERNEL="%s"/'
-                    % self.min_kernel_version,
+                    's/CT_GLIBC_MIN_KERNEL=.*/CT_GLIBC_MIN_KERNEL="%s"/' % self.min_kernel_version,
                     ".config",
                 ],
             )
@@ -151,8 +149,7 @@ class CustomToolchain(Package):
                 [
                     "sed",
                     "-i",
-                    '$ s/$/\\\nCT_GLIBC_CUSTOM_LOCATION="%s"/'
-                    % self.glibc_path.replace("/", "\\/"),
+                    '$ s/$/\\\nCT_GLIBC_CUSTOM_LOCATION="%s"/' % self.glibc_path.replace("/", "\\/"),
                     ".config",
                 ],
             )
@@ -164,10 +161,7 @@ class CustomToolchain(Package):
                 [
                     "sed",
                     "-i",
-                    (
-                        "s/CT_GLIBC_EXTRA_CFLAGS=.*"
-                        '/CT_GLIBC_EXTRA_CFLAGS="-Wno-error=missing-attributes"/'
-                    ),
+                    ("s/CT_GLIBC_EXTRA_CFLAGS=.*" '/CT_GLIBC_EXTRA_CFLAGS="-Wno-error=missing-attributes"/'),
                     ".config",
                 ],
             )
@@ -185,10 +179,7 @@ class CustomToolchain(Package):
                 [
                     "sed",
                     "-i",
-                    (
-                        "s/CT_GLIBC_EXTRA_CONFIG_ARRAY=.*"
-                        '/CT_GLIBC_EXTRA_CONFIG_ARRAY=("--without-selinux")/'
-                    ),
+                    ("s/CT_GLIBC_EXTRA_CONFIG_ARRAY=.*" '/CT_GLIBC_EXTRA_CONFIG_ARRAY=("--without-selinux")/'),
                     ".config",
                 ],
             )
@@ -197,9 +188,7 @@ class CustomToolchain(Package):
         run(ctx, ["bash", "-c", "echo CT_DEBUG_CT_SAVE_STEPS=y >> .config"])
         run(ctx, ["bash", "-c", "echo CT_DEBUG_CT_SAVE_STEPS_GZIP=n >> .config"])
 
-        run(
-            ctx, ["sed", "-i", "s/CT_DEBUG_GDB=y/# CT_DEBUG_GDB is not set/", ".config"]
-        )
+        run(ctx, ["sed", "-i", "s/CT_DEBUG_GDB=y/# CT_DEBUG_GDB is not set/", ".config"])
         run(
             ctx,
             [
@@ -246,17 +235,12 @@ class CustomToolchain(Package):
         )
         cxx_include_dir = self.path(
             ctx,
-            (
-                f"obj/{self.arch}-unknown-linux-gnu/"
-                f"{self.arch}-unknown-linux-gnu/include/c++"
-            ),
+            (f"obj/{self.arch}-unknown-linux-gnu/" f"{self.arch}-unknown-linux-gnu/include/c++"),
         )
         gcc_lib_dir = self.path(ctx, f"obj/{self.arch}-unknown-linux-gnu/lib/gcc")
 
         shutil.copytree(sysroot_dir, self.path(ctx, "install/sysroot"))
-        shutil.copytree(
-            cxx_include_dir, self.path(ctx, "install/sysroot/usr/include/c++")
-        )
+        shutil.copytree(cxx_include_dir, self.path(ctx, "install/sysroot/usr/include/c++"))
         shutil.copytree(gcc_lib_dir, self.path(ctx, "install/sysroot/lib/gcc"))
 
     def configure_flags(self, ctx: Context) -> None:

@@ -2,7 +2,7 @@ import argparse
 import os
 import shutil
 from abc import ABCMeta, abstractmethod
-from typing import Iterable, Iterator, Mapping, Optional
+from typing import Iterable, Iterator, Mapping
 
 from .context import Context
 from .instance import Instance
@@ -184,7 +184,7 @@ class Target(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def build(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
+    def build(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
         """
         Build the target object files. Called some time after :func:`fetch` (see
         :class:`above <Target>`).
@@ -217,7 +217,7 @@ class Target(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
+    def run(self, ctx: Context, instance: Instance, pool: Pool | None = None) -> None:
         """
         Run the target binaries. This should be done using :func:`util.run` so
         that ``ctx.runenv`` is used (which can be set by an instance or

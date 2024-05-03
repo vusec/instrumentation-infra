@@ -2,7 +2,7 @@ import os
 import shutil
 from abc import ABCMeta
 from glob import glob
-from typing import Iterator, Optional, Type
+from typing import Iterator
 
 from ..context import Context
 from ..package import Package
@@ -77,9 +77,7 @@ class Bash(GNUTarPackage):
         # environment and expect build scripts to source files instead.
         funcvars = [var for var in os.environ if var.startswith("BASH_FUNC_")]
         for funcvar in funcvars:
-            ctx.log.debug(
-                f"removing {funcvar} from environment to avoid potential syntax errors"
-            )
+            ctx.log.debug(f"removing {funcvar} from environment to avoid potential syntax errors")
             del os.environ[funcvar]
 
 
@@ -177,7 +175,7 @@ class AutoMake(GNUTarPackage):
     installed_path = "bin/automake"
     tar_compression = "gz"
 
-    def __init__(self, version: str, autoconf: AutoConf, libtool: Optional[LibTool]):
+    def __init__(self, version: str, autoconf: AutoConf, libtool: LibTool | None):
         self.version = version
         self.autoconf = autoconf
         self.libtool = libtool
@@ -203,11 +201,11 @@ class AutoMake(GNUTarPackage):
 
     @classmethod
     def default(
-        cls: Type["AutoMake"],
+        cls: type["AutoMake"],
         automake_version: str = "1.16.5",
         autoconf_version: str = "2.71",
         m4_version: str = "1.4.19",
-        libtool_version: Optional[str] = "2.4.6",
+        libtool_version: str | None = "2.4.6",
     ) -> "AutoMake":
         """
         Create a package with default versions for all autotools.
@@ -313,10 +311,7 @@ class Netcat(GNUTarPackage):
 
     def fetch(self, ctx: Context) -> None:
         tarname = f"netcat-{self.version}.tar.bz2"
-        url = (
-            "http://sourceforge.net"
-            f"/projects/netcat/files/netcat/{self.version}/{tarname}"
-        )
+        url = "http://sourceforge.net" f"/projects/netcat/files/netcat/{self.version}/{tarname}"
         download(ctx, url)
         run(ctx, ["tar", "-xf", tarname])
         shutil.move("netcat-" + self.version, "src")

@@ -15,11 +15,9 @@ from subprocess import STDOUT
 from typing import (
     IO,
     Any,
-    Union,
     Callable,
     Iterable,
     Iterator,
-    Optional,
     Sequence,
 )
 
@@ -37,8 +35,8 @@ class Job:
     outfiles: list[str]
     nnodes: int = field(default=1, init=False)
     start_time: float = field(default_factory=time.time, init=False)
-    onsuccess: Optional[Callable[["Job"], Optional[bool]]] = field(default=None, init=False)
-    onerror: Optional[Callable[["Job"], Optional[bool]]] = field(default=None, init=False)
+    onsuccess: Callable[["Job"], bool | None] | None = field(default=None, init=False)
+    onerror: Callable[["Job"], bool | None] | None = field(default=None, init=False)
     output: str = field(default="", init=False)
     errput: str = field(default="", init=False)
 
@@ -62,8 +60,8 @@ class SSHJob(Job):
     outfile_handle: IO
     node: str
 
-    tunnel_src: Optional[int] = None
-    tunnel_dest: Optional[int] = None
+    tunnel_src: int | None = None
+    tunnel_dest: int | None = None
 
 
 @dataclass
@@ -279,7 +277,7 @@ class ProcessPool(Pool):
     def make_jobs(
         self,
         ctx: Context,
-        cmd: Union[str, Iterable[str]],
+        cmd: str | Iterable[str],
         jobid_base: str,
         outfile_base: str,
         nnodes: int,
@@ -394,7 +392,7 @@ class SSHPool(Pool):
         "-r",
     ]
 
-    _tempdir: Optional[str]
+    _tempdir: str | None
 
     def __init__(self, ctx: Context, logger: logging.Logger, parallelmax: int, nodes: list[str]):
         if parallelmax > len(nodes):
@@ -416,8 +414,8 @@ class SSHPool(Pool):
     def _ssh_cmd(
         self,
         node: str,
-        cmd: Union[str, Iterable[str]],
-        extra_opts: Optional[Sequence[Any]] = None,
+        cmd: str | Iterable[str],
+        extra_opts: Sequence[Any] | None = None,
     ) -> list[str]:
         if not isinstance(cmd, str):
             cmd = " ".join(shlex.quote(str(c)) for c in cmd)
@@ -463,9 +461,9 @@ class SSHPool(Pool):
 
     def sync_to_nodes(
         self,
-        sources: Union[str, Iterable[str]],
+        sources: str | Iterable[str],
         destination: str = "",
-        target_nodes: Optional[Union[str, Iterable[str]]] = None,
+        target_nodes: str | Iterable[str] | None = None,
     ) -> None:
         if isinstance(sources, str):
             sources = [sources]
@@ -482,7 +480,7 @@ class SSHPool(Pool):
         self,
         source: str,
         destination: str = "",
-        source_nodes: Optional[Sequence[str]] = None,
+        source_nodes: Sequence[str] | None = None,
     ) -> None:
         if isinstance(source_nodes, str):
             source_nodes = [source_nodes]
@@ -500,7 +498,7 @@ class SSHPool(Pool):
             cmd = ["scp", *self.scp_opts, src, dest]
             run(self._ctx, cmd)
 
-    def get_free_node(self, override_node: Optional[str] = None) -> str:
+    def get_free_node(self, override_node: str | None = None) -> str:
         if override_node:
             assert override_node in self.nodes
             assert override_node in self.available_nodes
@@ -512,12 +510,12 @@ class SSHPool(Pool):
     def make_jobs(
         self,
         ctx: Context,
-        cmd: Union[str, Iterable[str]],
+        cmd: str | Iterable[str],
         jobid_base: str,
         outfile_base: str,
         nnodes: int,
-        nodes: Optional[Union[str, list[str]]] = None,
-        tunnel_to_nodes_dest: Optional[int] = None,
+        nodes: str | list[str] | None = None,
+        tunnel_to_nodes_dest: int | None = None,
         **kwargs: Any,
     ) -> Iterator[Job]:
         if isinstance(nodes, str):
@@ -594,7 +592,7 @@ class PrunPool(Pool):
     def make_jobs(
         self,
         ctx: Context,
-        cmd: Union[str, Iterable[str]],
+        cmd: Iterable[str] | str,
         jobid_base: str,
         outfile_base: str,
         nnodes: int,

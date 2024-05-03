@@ -5,10 +5,9 @@ import os.path
 import re
 import sys
 from pprint import pprint
-from typing import List, Tuple
 
 
-def parse_setfile(path: str) -> Tuple[str, List[str]]:
+def parse_setfile(path: str) -> tuple[str, list[str]]:
     with open(path) as f:
         contents = f.read()
     pat = r"^\$name\s*=\s*'([^']*)'.*^@benchmarks\s*=\s*qw\((.*)\)"
