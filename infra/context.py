@@ -5,10 +5,12 @@ import argparse
 import platform
 import dataclasses
 
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, TypeAlias
 from datetime import datetime
 from dataclasses import dataclass, field
 from multiprocessing import cpu_count
+
+HookFunc: TypeAlias = Callable[["Context", str], None]
 
 
 @dataclass(frozen=True)
@@ -75,13 +77,21 @@ class ContextHooks:
     """Hooks (i.e., functions) that are executed at various stages during the
     building and running of targets."""
 
-    #: Hooks to execute before building a target.
-    pre_build: List[Callable] = field(default_factory=list)
+    #: Hooks to execute before building a target
+    pre_build: list[HookFunc] = field(default_factory=list)
 
-    #: Hooks to execute after a target is built.
-    #:
-    #: This can be used to do additional post-processing on the generated binaries.
-    post_build: List[Callable] = field(default_factory=list)
+    #: Hooks to execute after a target is built (e.g. for additional post-processing)
+    post_build: list[HookFunc] = field(default_factory=list)
+
+    #: Hooks to execute before running a target (called for each binary-to-run)
+    pre_run: list[HookFunc] = field(default_factory=list)
+
+    #: Hooks to execute after running a target (called for each binary that was ran)
+    post_run: list[HookFunc] = field(default_factory=list)
+
+    @staticmethod
+    def hook_name(hook: Callable[["Context", str], None]) -> str:
+        return getattr(hook, "__name__", repr(hook))
 
 
 @dataclass(slots=True)

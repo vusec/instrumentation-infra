@@ -40,22 +40,45 @@ class ExecHookCommand(Command):
         )
 
     def run(self, ctx: Context) -> None:
-        instance = self.instances[ctx.args.instance]
-        ctx.args.dry_run = False
 
-        hook_type = str(ctx.args.hooktype).replace("-", "_")
-        target_file = Path(ctx.args.targetfile).resolve()
-        assert hasattr(ctx.hooks, hook_type)
-        assert target_file.is_file()
+        # Handle different hook types appropriately
+        match ctx.args.hooktype:
+            # Pre-build hooks cannot load dependencies yet and are expected to be
+            # run in a directory (not a file); don't load deps & switch to dir
+            case "pre-build":
+                target_dir = Path(ctx.args.targetfile).resolve()
+                target_dir = target_dir if target_dir.is_dir() else target_dir.parent
+                assert target_dir.is_dir()
+                os.chdir(target_dir)
 
-        # don't build packages (should have been done already since this
-        # command should only be called recursively), just load them
-        load_deps(ctx, instance)
+                for pre_build_hook in ctx.hooks.pre_build:
+                    pre_build_hook(ctx, str(target_dir))
 
-        # populate ctx.hooks[hooktype]
-        instance.configure(ctx)
+            case "post-build" | "pre-run" | "post-run":
+                target_file = Path(ctx.args.targetfile).resolve()
+                target_dir = target_file.parent
+                assert target_file.is_file() and target_dir.is_dir()
+                os.chdir(target_dir)
 
-        # run hooks in the directory of the given target file
-        for hook in getattr(ctx.hooks, hook_type):
-            os.chdir(target_file.parent)
-            hook(ctx, str(target_file))
+                # Since things should already be built, don't re-build but just load
+                # Also ensure ctx.hooks is populated (done by instance.configure())
+                instance = self.instances[ctx.args.instance]
+                ctx.args.dry_run = False
+                load_deps(ctx, instance)
+                instance.configure(ctx)
+
+                match ctx.args.hooktype:
+                    case "post-build":
+                        for post_build_hook in ctx.hooks.post_build:
+                            post_build_hook(ctx, str(target_file))
+                    case "pre-run":
+                        for pre_run_hook in ctx.hooks.pre_run:
+                            pre_run_hook(ctx, str(target_file))
+                    case "post-run":
+                        for post_run_hook in ctx.hooks.post_run:
+                            post_run_hook(ctx, str(target_file))
+                    case _:
+                        raise RuntimeError(f"Unknown error; bad hook type: {ctx.args.hooktype}!")
+
+            case _:
+                raise RuntimeError(f"Bad hook type: {ctx.args.hooktype}; expected one of: {self.hook_types}")

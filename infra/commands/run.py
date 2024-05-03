@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from ..command import Command, load_deps
 from ..context import Context
@@ -64,15 +65,14 @@ class RunCommand(Command):
                 instance.add_run_args(tparser)
 
     def run(self, ctx: Context) -> None:
-        target = self.targets[ctx.args.target]
+        ctx.args.dry_run = False
         instances = self.instances.select(ctx.args.instances)
+        target = self.targets[ctx.args.target]
         pool = self.make_pool(ctx)
-
         self.enable_run_log(ctx)
 
-        ctx.args.dry_run = False
+        # If build flag is set, make backup of context & call plain build command
         oldctx = ctx.copy()
-
         if ctx.args.build or ctx.args.force_rebuild_deps:
             ctx.args.targets = [ctx.args.target]
             ctx.args.packages = []
@@ -84,21 +84,32 @@ class RunCommand(Command):
             build_command.targets = self.targets
             build_command.packages = self.packages
             build_command.run(ctx)
-
         ctx = oldctx
+
+        # Load the dependencies of the target & then backup the context again
         load_deps(ctx, target)
+        orig_cwd = os.getcwd()
+        orig_ctx = ctx.copy()
 
         for instance in instances:
-            oldctx = ctx.copy()
             ctx.log.info(f"running {target.name}-{instance.name}")
 
+            # Ensure all dependencies of the instance are loaded before running
             load_deps(ctx, instance)
+            instance.configure(ctx)
             instance.prepare_run(ctx)
-            target.goto_rootdir(ctx)
-            target.run(ctx, instance, pool)
-            instance.process_run(ctx)
 
-            ctx = oldctx
+            # Run the hooks & target run function
+            target.goto_rootdir(ctx)
+            target.run_hooks_pre_run(ctx, instance)
+            target.run(ctx, instance, pool)
+            target.run_hooks_post_run(ctx, instance)
+            os.chdir(orig_cwd)
+
+            # Process the run & restore the backed up configuration
+            instance.process_run(ctx)
+            os.chdir(orig_cwd)
+            ctx = orig_ctx
 
         if pool:
             pool.wait_all()

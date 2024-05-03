@@ -1,10 +1,11 @@
 import argparse
 import os
+from pathlib import Path
 import shutil
 from abc import ABCMeta, abstractmethod
-from typing import Iterable, Iterator, Mapping
+from typing import Callable, Iterable, Iterator, Mapping
 
-from .context import Context
+from .context import Context, HookFunc
 from .instance import Instance
 from .package import Package
 from .parallel import Pool
@@ -292,11 +293,24 @@ class Target(metaclass=ABCMeta):
         :param Context ctx: the configuration context
         :param Instance instance: instance used to build the target
         """
-        if ctx.hooks.pre_build:
-            self.goto_rootdir(ctx)  # Run hooks in target root
+        if ctx.hooks.post_build:
+            ctx.log.info(f"Running pre-build hooks on target '{self.name}' in '{self.path(ctx)}'")
+            self.goto_rootdir(ctx)
+
             for hook in ctx.hooks.pre_build:
-                ctx.log.info(f"Running pre-build hook {hook} in {self.path(ctx)}")
+                ctx.log.info(f"Running pre-build hook '{ctx.hooks.hook_name(hook)}' in '{self.path(ctx)}'")
                 hook(ctx, self.path(ctx))
+
+    def __run_bin_hooks(self, ctx: Context, instance: Instance, hook_type: str, hooks: Iterable[HookFunc]) -> None:
+        ctx.log.info(f"Running {hook_type} hooks on target '{self.name}'")
+        for bin in map(lambda bin: Path(bin).resolve(), self.binary_paths(ctx, instance)):
+            assert bin.is_file()
+            os.chdir(bin.parent)
+            ctx.log.info(f"Running {hook_type} hooks on binary '{self.path(ctx)}'")
+
+            for hook in hooks:
+                ctx.log.info(f"Running {hook_type} hook '{ctx.hooks.hook_name(hook)}' on '{bin}' in '{bin.parent}'")
+                hook(ctx, str(bin))
 
     def run_hooks_post_build(self, ctx: Context, instance: Instance) -> None:
         """
@@ -309,10 +323,30 @@ class Target(metaclass=ABCMeta):
         :param Instance instance: instance used to get the compiled binaries with
         """
         if ctx.hooks.post_build:
-            for binary in self.binary_paths(ctx, instance):
-                absbin = os.path.abspath(binary)
-                basedir = os.path.dirname(absbin)
-                for hook in ctx.hooks.post_build:
-                    ctx.log.info(f"Running post-build hook {hook} on {absbin} in {basedir}")
-                    os.chdir(basedir)
-                    hook(ctx, absbin)
+            self.__run_bin_hooks(ctx, instance, "post-build", ctx.hooks.post_build)
+
+    def run_hooks_pre_run(self, ctx: Context, instance: Instance) -> None:
+        """
+        If ctx.hooks.pre_run contains any callable instance, they are called
+        before this target's :func:`run()` function is called. The callable
+        receives the binary that the target is about to run (as reported by
+        :func:`target.binary_paths()`) as an argument alongside the context
+
+        :param Context ctx: the configuration context
+        :param Instance instance: instance used to run the target with
+        """
+        if ctx.hooks.pre_run:
+            self.__run_bin_hooks(ctx, instance, "pre-run", ctx.hooks.pre_run)
+
+    def run_hooks_post_run(self, ctx: Context, instance: Instance) -> None:
+        """
+        If ctx.hooks.pre_run contains any callable instance, they are called
+        after this target's :func:`run()` function completed. The callable
+        receives the binary that the target just executed (as reported by
+        :func:`target.binary_paths()`) as an argument alongside the context
+
+        :param Context ctx: the configuration context
+        :param Instance instance: instance used to run the target with
+        """
+        if ctx.hooks.post_run:
+            self.__run_bin_hooks(ctx, instance, "post-run", ctx.hooks.post_run)
