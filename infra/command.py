@@ -186,6 +186,9 @@ def load_package(ctx: Context, package: Package) -> None:
         package.install_env(ctx)
 
 
-def load_deps(ctx: Context, obj: Target | Instance | Package) -> None:
-    for package in get_deps(obj):
-        load_package(ctx, package)
+def load_deps(ctx: Context, *objs: Target | Instance | Package) -> None:
+    ctx.log.info(f"Loading deps of {len(objs)} objects")
+    for obj in objs:
+        ctx.log.info(f"Loading dependencies of {obj.ident if isinstance(obj, Package) else obj.name}")
+        for package in get_deps(obj):
+            load_package(ctx, package)
