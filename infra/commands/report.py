@@ -610,7 +610,7 @@ def parse_logs(
 
     instance_names = [instance.name for instance in instances]
     instance_dirs = []
-    results: dict[str, list[ResultDict]] = dict((iname, []) for iname in instance_names)
+    results: dict[str, list[ResultDict]] = {iname: [] for iname in instance_names}
 
     for rundir in abs_rundirs:
         targetdir = os.path.join(rundir, target.name)
