@@ -284,6 +284,14 @@ class Target(metaclass=ABCMeta):
         raise NotImplementedError(self.__class__.__name__)
 
     def run_hooks_pre_build(self, ctx: Context, instance: Instance) -> None:
+        """
+        If ctx.hooks.pre_build contains any callable instances, they are called
+        in the target's root directory. Each callable received the root path
+        of the target as an argument.
+
+        :param Context ctx: the configuration context
+        :param Instance instance: instance used to build the target
+        """
         if ctx.hooks.pre_build:
             self.goto_rootdir(ctx)  # Run hooks in target root
             for hook in ctx.hooks.pre_build:
@@ -291,6 +299,15 @@ class Target(metaclass=ABCMeta):
                 hook(ctx, self.path(ctx))
 
     def run_hooks_post_build(self, ctx: Context, instance: Instance) -> None:
+        """
+        If ctx.hooks.post_build contains any callable instances, they are called
+        after this target's :func:`build()` function has completed. The callable
+        is called once for each compiled binary, as reported by this target's
+        :func:`binary_paths()` function.
+
+        :param Context ctx: the configuration context
+        :param Instance instance: instance used to get the compiled binaries with
+        """
         if ctx.hooks.post_build:
             for binary in self.binary_paths(ctx, instance):
                 absbin = os.path.abspath(binary)

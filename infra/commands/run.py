@@ -29,6 +29,7 @@ class RunCommand(Command):
                 help=f"configuration options for running {target.name}",
                 formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             )
+            setattr(tparser, "completer", self.complete_package)
 
             tparser.add_argument(
                 "instances",
