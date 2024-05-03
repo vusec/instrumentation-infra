@@ -44,34 +44,28 @@ class ExecHookCommand(Command):
             instance.add_build_args(parser)
             instance.add_run_args(parser)
 
-                for pre_build_hook in ctx.hooks.pre_build:
-                    pre_build_hook(ctx, str(target_dir))
+    def run(self, ctx: Context) -> None:
+        # While the target hasn't always been built yet, the instance &
+        # its dependencies should have, so just load them here
+        instance = self.instances[ctx.args.instance]
+        ctx.args.dry_run = False
+        load_deps(ctx, instance)
+        instance.configure(ctx)
 
-            case "post-build" | "pre-run" | "post-run":
-                target_file = Path(ctx.args.targetfile).resolve()
-                target_dir = target_file.parent
-                assert target_file.is_file() and target_dir.is_dir()
-                os.chdir(target_dir)
+        # Pre-build hooks usually receive directories, not files
+        target_file = Path(ctx.args.targetfile).resolve()
+        target_dir = target_file if target_file.is_dir() else target_file.parent
+        assert target_dir.is_dir()
+        os.chdir(target_dir)
 
-                # Since things should already be built, don't re-build but just load
-                # Also ensure ctx.hooks is populated (done by instance.configure())
-                instance = self.instances[ctx.args.instance]
-                ctx.args.dry_run = False
-                load_deps(ctx, instance)
-                instance.configure(ctx)
+        # Ensure the selected hook type exists
+        hook_type = str(ctx.args.hooktype).replace("-", "_")
+        assert hasattr(ctx.hooks, hook_type)
 
-                match ctx.args.hooktype:
-                    case "post-build":
-                        for post_build_hook in ctx.hooks.post_build:
-                            post_build_hook(ctx, str(target_file))
-                    case "pre-run":
-                        for pre_run_hook in ctx.hooks.pre_run:
-                            pre_run_hook(ctx, str(target_file))
-                    case "post-run":
-                        for post_run_hook in ctx.hooks.post_run:
-                            post_run_hook(ctx, str(target_file))
-                    case _:
-                        raise RuntimeError(f"Unknown error; bad hook type: {ctx.args.hooktype}!")
+        ctx.log.info(f"Running {hook_type} hooks on {target_file} in {target_dir}")
 
-            case _:
-                raise RuntimeError(f"Bad hook type: {ctx.args.hooktype}; expected one of: {self.hook_types}")
+        # Get the hooks from the hook type; execute each
+        hook: HookFunc
+        for hook in getattr(ctx.hooks, hook_type):
+            ctx.log.info(f"Running {hook_type} hook '{ctx.hooks.hook_name(hook)}' on {target_file} in {target_dir}")
+            hook(ctx, str(target_file))
