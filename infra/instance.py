@@ -58,6 +58,21 @@ class Instance(metaclass=ABCMeta):
         """
         pass
 
+    def add_run_args(self, parser: ArgumentParser) -> None:
+        """
+        Extend the command-line arguments for the :ref:`run <usage-run>`
+        command with custom arguments for this instance. These arguments end up
+        in the global context, so it is a good idea to prefix them with the
+        instance name to avoid collisions with other instances and targets.
+
+        Use this to enable run flags for your instance on the command line,
+        rather than having to create separate instances for every option when
+        experimenting.
+
+        :param parser: the argument parser to extend
+        """
+        pass
+
     def dependencies(self) -> Iterator[Package]:
         """
         Specify dependencies that should be built and installed in the run
