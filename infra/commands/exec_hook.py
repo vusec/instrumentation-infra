@@ -52,20 +52,13 @@ class ExecHookCommand(Command):
         load_deps(ctx, instance)
         instance.configure(ctx)
 
-        # Pre-build hooks usually receive directories, not files
         target_file = Path(ctx.args.targetfile).resolve()
-        target_dir = target_file if target_file.is_dir() else target_file.parent
-        assert target_dir.is_dir()
-        os.chdir(target_dir)
-
-        # Ensure the selected hook type exists
         hook_type = str(ctx.args.hooktype).replace("-", "_")
+        ctx.log.info(f"Running {hook_type} hooks on {target_file}")
         assert hasattr(ctx.hooks, hook_type)
-
-        ctx.log.info(f"Running {hook_type} hooks on {target_file} in {target_dir}")
 
         # Get the hooks from the hook type; execute each
         hook: HookFunc
         for hook in getattr(ctx.hooks, hook_type):
-            ctx.log.info(f"Running {hook_type} hook '{ctx.hooks.hook_name(hook)}' on {target_file} in {target_dir}")
+            ctx.log.info(f"Running {hook_type} hook '{ctx.hooks.hook_name(hook)}' on {target_file}")
             hook(ctx, str(target_file))

@@ -305,11 +305,11 @@ class Target(metaclass=ABCMeta):
         ctx.log.info(f"Running {hook_type} hooks on target '{self.name}'")
         for bin in map(lambda bin: Path(bin).resolve(), self.binary_paths(ctx, instance)):
             assert bin.is_file()
-            os.chdir(bin.parent)
-            ctx.log.info(f"Running {hook_type} hooks on binary '{self.path(ctx)}'")
+            self.goto_rootdir(ctx)
+            ctx.log.info(f"Running {hook_type} hooks on binary '{bin}' in '{self.path(ctx)}'")
 
             for hook in hooks:
-                ctx.log.info(f"Running {hook_type} hook '{ctx.hooks.hook_name(hook)}' on '{bin}' in '{bin.parent}'")
+                ctx.log.info(f"Running {hook_type} hook '{ctx.hooks.hook_name(hook)}' on '{bin}' in '{self.path(ctx)}'")
                 hook(ctx, str(bin))
 
     def run_hooks_post_build(self, ctx: Context, instance: Instance) -> None:
