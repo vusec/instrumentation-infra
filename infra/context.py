@@ -121,20 +121,20 @@ class Context:
     #: Command(s) to prepend in front of the target's run command (executed directly on
     #: the command line). This can be set to a custom shell script, or for example
     #: ``perf`` or ``valgrind``.
-    target_run_wrapper: str = ""  # TODO: merge this with Tools?
+    target_run_wrapper: str = ""
 
     #: File object used for writing all executed commands, if enabled.
     runlog_file: io.TextIOWrapper | None = None
 
-    #: The amount of parallel jobs to use. Contains the value of the ``-j`` command-line
-    #: option, defaulting to the number of CPU cores returned by
-    #: :func:`multiprocessing.cpu_count`.
-    jobs: int = 8
+    #: The amount of parallel jobs to use. Contains the value of the ``-j``
+    #: command-line option, defaulting to the number of CPU cores returned by
+    #: :func:`multiprocessing.cpu_count` (limited to 64 at most)
+    jobs: int = field(default=min(cpu_count(), 64))
 
     #: Architecture to build targets for. Initialized to :func:`platform.machine`.
     #: Valid values include ``x86_64`` and ``arm64``/``aarch64``; for more, refer to
     #: ``uname -m`` and :func:`platform.machine`.
-    arch: str = "unknown"
+    arch: str = field(default=platform.machine())
 
     #: C compiler to use when building targets.
     cc: str = "cc"

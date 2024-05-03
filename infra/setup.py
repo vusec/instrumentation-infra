@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import logging
+from multiprocessing import cpu_count
 import os
 import platform
 import sys
@@ -59,8 +60,6 @@ class Setup:
     targets: Index[Target]
     commands: Index[Command]
 
-    _max_default_jobs = 64
-
     def __init__(self, setup_path: str):
         """
         :param setup_path: Path to the script running :func:`Setup.main`.
@@ -94,7 +93,13 @@ class Setup:
             "--verbosity",
             default="info",
             choices=["critical", "error", "warning", "info", "debug"],
-            help="set logging verbosity of infrastructure utility",
+            help="Set logging verbosity of infrastructure utility",
+        )
+        parser.add_argument(
+            "-j",
+            "--jobs",
+            default=min(cpu_count(), 64),
+            help="Set the number of parallel jobs; not the same as --parallelmax"
         )
 
         subparsers = parser.add_subparsers(

@@ -33,8 +33,6 @@ class Command(metaclass=ABCMeta):
     instances: Index[Instance]
     packages: Index[Package]
 
-    _max_default_jobs = 64
-
     @abstractmethod
     def add_args(self, parser: ArgumentParser) -> None:
         pass

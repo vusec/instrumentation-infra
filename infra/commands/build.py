@@ -1,18 +1,12 @@
 from abc import abstractmethod
 import argparse
-import os
-from multiprocessing import cpu_count
-from typing import Union
 
 from ..command import Command, get_deps
 from ..context import Context
 from ..instance import Instance
 from ..package import Package
 from ..target import Target
-from ..util import FatalError
 from .clean import clean_package, clean_target
-
-default_jobs = min(cpu_count(), 64)
 
 
 class BuildCommand(Command):
@@ -46,13 +40,6 @@ class BuildCommand(Command):
                 metavar="INSTANCE",
                 choices=[instance.name for instance in self.instances.all()],
                 help=" | ".join([instance.name for instance in self.instances.all()]),
-            )
-            tparser.add_argument(
-                "-j",
-                "--jobs",
-                type=int,
-                default=default_jobs,
-                help=f"maximum number of build processes (default {default_jobs})",
             )
             tparser.add_argument(
                 "--deps-only",
@@ -224,13 +211,6 @@ class PkgBuildCommand(Command):
         )
         setattr(packagearg, "completer", self.complete_package)
 
-        parser.add_argument(
-            "-j",
-            "--jobs",
-            type=int,
-            default=default_jobs,
-            help=f"maximum number of build processes (default {default_jobs})",
-        )
         parser.add_argument(
             "--force-rebuild-deps",
             action="store_true",

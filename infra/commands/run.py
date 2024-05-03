@@ -48,13 +48,6 @@ class RunCommand(Command):
                 help="force rebuilding of dependencies (implies --build)",
             )
             tparser.add_argument(
-                "-j",
-                "--jobs",
-                type=int,
-                default=default_jobs,
-                help=f"maximum number of build processes (default {default_jobs})",
-            )
-            tparser.add_argument(
                 "-i",
                 "--iterations",
                 metavar="ITERATIONS",
