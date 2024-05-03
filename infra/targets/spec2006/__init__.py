@@ -586,7 +586,16 @@ class SPEC2006(Target):
                 print(f"COPTIMIZE   = -std=gnu89")
                 print(f"CXXOPTIMIZE = -std=c++98")
 
-                # post-build hooks call back into the setup script
+                # configure pre/post build hooks directly in the setup script;
+                # note that build hooks don't always append the instance name
+                # to the compiled binary so strip it just in case
+                if ctx.hooks.pre_build:
+                    print(f"")
+                    print(
+                        f"build_pre_bench = {ctx.paths.setup} exec-hook pre-build "
+                        f"{instance.name} `echo ${{commandexe}} "
+                        f'| sed "s/_\\[a-z0-9\\]\\\\+\\\\.{config_name}\\\\\\$//"`'
+                    )
                 if ctx.hooks.post_build:
                     print(f"")
                     print(
@@ -594,9 +603,18 @@ class SPEC2006(Target):
                         f"{instance.name} `echo ${{commandexe}} "
                         f'| sed "s/_\\[a-z0-9\\]\\\\+\\\\.{config_name}\\\\\\$//"`'
                     )
-                    print("")
+
+                # runs always clone the binary and append the instance name; leave it
+                # in tact so that the argument refers to the actually executed binary
+                if ctx.hooks.pre_run:
+                    print(f"")
+                    print(f"monitor_pre_bench = {ctx.paths.setup} exec-hook pre-run {instance.name} ${{commandexe}}")
+                if ctx.hooks.post_run:
+                    print(f"")
+                    print(f"monitor_post_bench = {ctx.paths.setup} exec-hook post-run {instance.name} ${{commandexe}}")
 
                 # allow run wrapper to be set using --define run_wrapper=...
+                print(f"")
                 print(f"%ifdef %{{run_wrapper}}")
                 print(f"  monitor_wrapper = %{{run_wrapper}} $command")
                 print(f"%endif")
@@ -645,18 +663,19 @@ class SPEC2006(Target):
         return config_name
 
     def run_hooks_pre_build(self, ctx: Context, instance: Instance) -> None:
-        if ctx.hooks.pre_build:
-            for bench in self._get_benchmarks(ctx, instance):
-                path = self.benches_dir(ctx, bench)
-                os.chdir(path)
-                for hook in ctx.hooks.pre_build:
-                    ctx.log.info(f"Running hook {hook} on {bench} in {path}")
-                    hook(ctx, str(path))
+        """Overridden because directly handled through SPEC config monitor wrappers"""
+        pass
 
-    # override post-build hook runner rather than defining `binary_paths` since
-    # we add hooks to the generated SPEC config file and call them through the
-    # exec-hook setup command instead
     def run_hooks_post_build(self, ctx: Context, instance: Instance) -> None:
+        """Overridden because directly handled through SPEC config monitor wrappers"""
+        pass
+
+    def run_hooks_pre_run(self, ctx: Context, instance: Instance) -> None:
+        """Overridden because directly handled through SPEC config monitor wrappers"""
+        pass
+
+    def run_hooks_post_run(self, ctx: Context, instance: Instance) -> None:
+        """Overridden because directly handled through SPEC config monitor wrappers"""
         pass
 
     def _get_benchmarks(self, ctx: Context, instance: Instance) -> Iterable[str]:
