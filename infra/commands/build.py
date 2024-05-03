@@ -123,6 +123,7 @@ class BuildCommand(Command):
             instance.configure(ctx)
             build_deps_once(instance)
             build_deps_once(target)
+            instance.prepare_build(ctx)
 
             if not ctx.args.deps_only:
                 ctx.log.info(f"building {target.name}-{instance.name}")
@@ -132,6 +133,7 @@ class BuildCommand(Command):
                     target.build(ctx, instance, pool)
                     target.run_hooks_post_build(ctx, instance)
 
+            instance.process_build(ctx)
             ctx = oldctx
 
         if pool:

@@ -98,6 +98,32 @@ class Instance(metaclass=ABCMeta):
         """
         pass
 
+    def prepare_build(self, ctx: Context) -> None:
+        """
+        Modify context variables to change how a target is built. Note that this
+        is distinct from the :func:`instance.configure()` method, as that method
+        runs prior to building dependencies. This method runs after all dependencies
+        are built (including dependencies of the target), but before the target
+        itself is actually built.
+
+        Note that this is similar to the pre-build hooks, but in the case pre-build
+        hooks are executed through the ExecHook command (and not directly through
+        commands like build/run) those hooks cannot modify the actual build config.
+
+        :param Context ctx: the configuration context
+        """
+        pass
+
+    def process_build(self, ctx: Context) -> None:
+        """
+        Analogous to :func:`instance.process_run()`; allows post-processing of
+        target(s) after they are built, but not on each target binary separately
+        as would be the case when using post-build hooks.
+
+        :param Context ctx: the configuration context
+        """
+        pass
+
     def prepare_run(self, ctx: Context) -> None:
         """
         Modify context variables to change how a target is run.
