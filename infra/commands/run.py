@@ -95,8 +95,8 @@ class RunCommand(Command):
             load_deps(ctx, instance)
             instance.prepare_run(ctx)
             target.goto_rootdir(ctx)
-
             target.run(ctx, instance, pool)
+            instance.process_run(ctx)
 
             ctx = oldctx
 
