@@ -127,3 +127,65 @@ def get_deps(*objs: Instance | Package | Target) -> list[Package]:
             add_dep(dep, set())
 
     return list(deps)
+
+
+def fetch_package(ctx: Context, package: Package, force_rebuild: bool) -> None:
+    package.goto_rootdir(ctx)
+
+    if package.is_fetched(ctx):
+        ctx.log.debug(f"{package.ident()} already fetched, skip")
+    elif not force_rebuild and package.is_installed(ctx):
+        ctx.log.debug(f"{package.ident()} already installed, skip fetching")
+    else:
+        ctx.log.info(f"fetching {package.ident()}")
+        if not ctx.args.dry_run:
+            package.goto_rootdir(ctx)
+            package.fetch(ctx)
+
+
+def build_package(ctx: Context, package: Package, force_rebuild: bool) -> None:
+    package.goto_rootdir(ctx)
+    built = package.is_built(ctx)
+
+    if not force_rebuild:
+        if built:
+            ctx.log.debug(f"{package.ident()} already built, skip")
+            return
+        if package.is_installed(ctx):
+            ctx.log.debug(f"{package.ident()} already installed, skip building")
+            return
+
+    load_deps(ctx, package)
+
+    force = " (forced rebuild)" if force_rebuild and built else ""
+    ctx.log.info(f"building {package.ident()}" + force)
+    if not ctx.args.dry_run:
+        package.goto_rootdir(ctx)
+        package.build(ctx)
+
+
+def install_package(ctx: Context, package: Package, force_rebuild: bool) -> None:
+    package.goto_rootdir(ctx)
+    installed = package.is_installed(ctx)
+
+    if not force_rebuild and installed:
+        ctx.log.debug(f"{package.ident()} already installed, skip")
+    else:
+        force = " (forced reinstall)" if force_rebuild and installed else ""
+        ctx.log.info(f"installing {package.ident()}" + force)
+        if not ctx.args.dry_run:
+            package.goto_rootdir(ctx)
+            package.install(ctx)
+
+    package.goto_rootdir(ctx)
+
+
+def load_package(ctx: Context, package: Package) -> None:
+    ctx.log.debug(f"install {package.ident()} into env")
+    if not ctx.args.dry_run:
+        package.install_env(ctx)
+
+
+def load_deps(ctx: Context, obj: Target | Instance | Package) -> None:
+    for package in get_deps(obj):
+        load_package(ctx, package)

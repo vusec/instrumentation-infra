@@ -1,8 +1,8 @@
 import argparse
 
-from ..command import Command
+from ..command import Command, load_deps
 from ..context import Context
-from .build import BuildCommand, default_jobs, load_deps
+from .build import BuildCommand
 
 
 class RunCommand(Command):

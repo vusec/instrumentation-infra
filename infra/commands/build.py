@@ -1,7 +1,6 @@
-from abc import abstractmethod
 import argparse
 
-from ..command import Command, get_deps
+from ..command import Command, build_package, fetch_package, get_deps, install_package
 from ..context import Context
 from ..instance import Instance
 from ..package import Package
@@ -139,60 +138,6 @@ class BuildCommand(Command):
             pool.wait_all()
 
 
-# This command does not appear in main --help usage because it is meant to be
-# used as a callback for build scripts
-class ExecHookCommand(Command):
-    @property
-    def name(self) -> str:
-        return "exec-hook"
-
-    @property
-    def description(self) -> str:
-        return "intended to be used as a callback for build scripts"
-
-    def add_args(self, parser: argparse.ArgumentParser) -> None:
-        parser.add_argument(
-            "hooktype",
-            choices=["pre-build", "post-build"],
-            help="hook type",
-        )
-        parser.add_argument(
-            "instance",
-            metavar="INSTANCE",
-            choices=[instance.name for instance in self.instances.all()],
-            help=" | ".join([instance.name for instance in self.instances.all()]),
-        )
-        parser.add_argument(
-            "targetfile",
-            metavar="TARGETFILE",
-            help="file to run hook on",
-        )
-
-    def run(self, ctx: Context) -> None:
-        instance = self.instances[ctx.args.instance]
-        ctx.args.dry_run = False
-
-        absfile = os.path.abspath(ctx.args.targetfile)
-        if not os.path.exists(absfile):
-            raise FatalError(f"file {absfile} does not exist")
-
-        hooktype = ctx.args.hooktype.replace("-", "_")
-        assert hasattr(ctx.hooks, hooktype)
-
-        # don't build packages (should have been done already since this
-        # command should only be called recursively), just load them
-        load_deps(ctx, instance)
-
-        # populate ctx.hooks[hooktype]
-        instance.configure(ctx)
-
-        # run hooks
-        basedir = os.path.dirname(absfile)
-        for hook in getattr(ctx.hooks, hooktype):
-            os.chdir(basedir)
-            hook(ctx, absfile)
-
-
 class PkgBuildCommand(Command):
     @property
     def name(self) -> str:
@@ -251,65 +196,3 @@ class PkgBuildCommand(Command):
             install_package(ctx, package, force_deps)
 
         build_package(ctx, main_package, True)
-
-
-def fetch_package(ctx: Context, package: Package, force_rebuild: bool) -> None:
-    package.goto_rootdir(ctx)
-
-    if package.is_fetched(ctx):
-        ctx.log.debug(f"{package.ident()} already fetched, skip")
-    elif not force_rebuild and package.is_installed(ctx):
-        ctx.log.debug(f"{package.ident()} already installed, skip fetching")
-    else:
-        ctx.log.info(f"fetching {package.ident()}")
-        if not ctx.args.dry_run:
-            package.goto_rootdir(ctx)
-            package.fetch(ctx)
-
-
-def build_package(ctx: Context, package: Package, force_rebuild: bool) -> None:
-    package.goto_rootdir(ctx)
-    built = package.is_built(ctx)
-
-    if not force_rebuild:
-        if built:
-            ctx.log.debug(f"{package.ident()} already built, skip")
-            return
-        if package.is_installed(ctx):
-            ctx.log.debug(f"{package.ident()} already installed, skip building")
-            return
-
-    load_deps(ctx, package)
-
-    force = " (forced rebuild)" if force_rebuild and built else ""
-    ctx.log.info(f"building {package.ident()}" + force)
-    if not ctx.args.dry_run:
-        package.goto_rootdir(ctx)
-        package.build(ctx)
-
-
-def install_package(ctx: Context, package: Package, force_rebuild: bool) -> None:
-    package.goto_rootdir(ctx)
-    installed = package.is_installed(ctx)
-
-    if not force_rebuild and installed:
-        ctx.log.debug(f"{package.ident()} already installed, skip")
-    else:
-        force = " (forced reinstall)" if force_rebuild and installed else ""
-        ctx.log.info(f"installing {package.ident()}" + force)
-        if not ctx.args.dry_run:
-            package.goto_rootdir(ctx)
-            package.install(ctx)
-
-    package.goto_rootdir(ctx)
-
-
-def load_package(ctx: Context, package: Package) -> None:
-    ctx.log.debug(f"install {package.ident()} into env")
-    if not ctx.args.dry_run:
-        package.install_env(ctx)
-
-
-def load_deps(ctx: Context, obj: Union[Target, Instance, Package]) -> None:
-    for package in get_deps(obj):
-        load_package(ctx, package)
