@@ -410,37 +410,49 @@ def run(
         ctx.runlog_file.write("{\n" if len(loc_env) > 0 else "{")
         ctx.runlog_file.write("\n".join([f"\t{key}={val}" for key, val in loc_env.items()]))
         ctx.runlog_file.write("\n}" if len(loc_env) > 0 else "}")
-        if not defer or silent or "stdout" in kwargs:
-            ctx.runlog_file.write("\n\n===== START OF OUTPUT =====\n\n")
+        if defer or silent or "stdout" in kwargs or "stderr" in kwargs:
+            ctx.runlog_file.write("\n\nOutput redirected; not captured in runlog file\n\n")
         ctx.runlog_file.flush()
 
     # Create tee to split output to runlog file & string buffer; also to stdout if teeout is true
-    if defer or silent or "stdout" in kwargs:
-        _stdout_tee = None
-        _stderr_tee = None
+    _stdout_tee = None
+    _stderr_tee = None
+
+    if defer or silent:
         kwargs.setdefault("stdout", subprocess.PIPE)
         kwargs.setdefault("stderr", subprocess.PIPE)
     else:
-        # Create a list of writers, if runlog file is not none, add it; if teeout, also add stdout
-        stdout_writers: list[io.IOBase | IO] = [io.StringIO()]
-        stderr_writers: list[io.IOBase | IO] = [io.StringIO()]
-        if ctx.runlog_file is not None and isinstance(ctx.runlog_file, io.TextIOWrapper):
-            stdout_writers.append(ctx.runlog_file)
-            stderr_writers.append(ctx.runlog_file)
-        if teeout:
-            stdout_writers.append(sys.stdout)
-            stderr_writers.append(sys.stderr)
-        assert len(stdout_writers) >= 1
-        assert len(stderr_writers) >= 1
+        # If stdout wasn't redirected by the user, create a _Tee for it to capture & redirect stdout
+        if "stdout" not in kwargs:
+            stdout_writers: list[io.IOBase | IO] = [io.StringIO()]
 
-        _stdout_tee = _Tee(*stdout_writers)
-        _stderr_tee = _Tee(*stderr_writers)
-        assert isinstance(_stdout_tee, _Tee)
-        assert isinstance(_stderr_tee, _Tee)
-        assert len(_stdout_tee.writers) > 0 and isinstance(_stdout_tee.writers[0], io.StringIO)
-        assert len(_stderr_tee.writers) > 0 and isinstance(_stderr_tee.writers[0], io.StringIO)
-        kwargs.setdefault("stdout", _stdout_tee)
-        kwargs.setdefault("stderr", _stderr_tee)
+            # If the runlog file is an open file, add it as an output so stdout is written to it
+            if ctx.runlog_file is not None and isinstance(ctx.runlog_file, io.TextIOWrapper):
+                stdout_writers.append(ctx.runlog_file)
+
+            # If teeout is set, redirect stdout to STDERR (this avoids conflicts with logging prints)
+            if teeout:
+                stdout_writers.append(sys.stderr)
+
+            # Create a new asynchronous _Tee object to write to the runlog file/stdout while the command runs
+            _stdout_tee = _Tee(*stdout_writers)
+            kwargs["stdout"] = _stdout_tee
+
+        # If stderr wasn't redirected by the user, create a _Tee for it to capture & redirect stderr
+        if "stderr" not in kwargs:
+            stderr_writers: list[io.IOBase | IO] = [io.StringIO()]
+
+            # If the runlog file is an open file, add it as an output so stderr is written to it
+            if ctx.runlog_file is not None and isinstance(ctx.runlog_file, io.TextIOWrapper):
+                stderr_writers.append(ctx.runlog_file)
+
+            # If teeout is set, also redirect stderr to the system stderrr
+            if teeout:
+                stderr_writers.append(sys.stderr)
+
+            # Create a new asynchronous _Tee object to write stderr to the runlog file/stderr while the command runs
+            _stderr_tee = _Tee(*stderr_writers)
+            kwargs["stderr"] = _stderr_tee
 
     # If deferring, return immediately; check if command exists by catching FileNotFoundError
     try:
@@ -450,68 +462,45 @@ def run(
     except FileNotFoundError:
         if ctx.runlog_file is not None:
             assert isinstance(ctx.runlog_file, io.TextIOWrapper)
-            ctx.runlog_file.write("> ERROR: Command not found!")
-            ctx.runlog_file.write("\n\n===== END OF OUTPUT =====\n\n")
+            ctx.runlog_file.write(f"> ERROR: Command not found: {cmd_str}")
             ctx.runlog_file.flush()
 
         log_stream = ctx.log.error if allow_error else ctx.log.critical
         log_stream(f"Running command:   '{cmd_str}'\n")
         log_stream(f"Unquoted command:  '{' '.join(cmd_list)}'\n")
         log_stream(f"Working directory: '{os.getcwd()}'\n")
-        log_stream("Local environment: ")
-        log_stream("{\n" if len(loc_env) > 0 else "{")
+        log_stream("Local environment: {")
         log_stream("\n".join([f"\t{key}={val}" for key, val in loc_env.items()]))
-        log_stream("\n}\n\n" if len(loc_env) > 0 else "}\n\n")
-        for handler in ctx.log.handlers:
-            handler.flush()
+        log_stream("}")
 
         if allow_error:
             return Process(None, cmd_str=cmd_str, teeout=teeout)
         raise
 
-    if _stdout_tee is not None and _stderr_tee is not None:
-        assert isinstance(_stdout_tee, _Tee)
-        assert isinstance(_stderr_tee, _Tee)
-        assert len(_stdout_tee.writers) > 0
-        assert len(_stderr_tee.writers) > 0
-        assert isinstance(_stdout_tee.writers[0], io.StringIO)
-        assert isinstance(_stderr_tee.writers[0], io.StringIO)
-
-        # Store the stdout/stderr from the string buffer into the Process' overwrite variables
-        proc.stdout_override = _stdout_tee.writers[0].getvalue()
-        proc.stderr_override = _stderr_tee.writers[0].getvalue()
-
-        # Close the _tee object; stops the thread and prints all output still in the buffer
+    # Close the stdout/stderr tee's if they were open; this also flushes them
+    if _stdout_tee is not None:
         _stdout_tee.close()
+    if _stderr_tee is not None:
         _stderr_tee.close()
 
-    if ctx.runlog_file is not None:
-        assert isinstance(ctx.runlog_file, io.TextIOWrapper)
-        ctx.runlog_file.write("\n\n===== END OF OUTPUT =====\n\n")
-        ctx.runlog_file.flush()
+    # Store the stdout/stderr values in the overwrite buffers for quicker access (also as a string)
+    if _stdout_tee is not None:
+        assert len(_stdout_tee.writers) > 0
+        assert isinstance(_stdout_tee.writers[0], io.StringIO)
+        proc.stdout_override = _stdout_tee.writers[0].getvalue()
+    if _stderr_tee is not None:
+        assert len(_stderr_tee.writers) > 0
+        assert isinstance(_stderr_tee.writers[0], io.StringIO)
+        proc.stderr_override = _stderr_tee.writers[0].getvalue()
 
+    # Finally, check the process' return code & if errors weren't allowed, raise an error now
     if proc.returncode != 0 and not allow_error:
-        ctx.log.critical(f"Return code:             {proc.returncode}")
-        ctx.log.critical(f"Executed command:        {cmd_str}")
-        ctx.log.critical(f"Working directory:       {os.getcwd()}")
-        if len(loc_env) > 0:
-            ctx.log.critical(
-                "Failure environment:     {\n" + "\n".join([f"\t{key}={val}" for key, val in loc_env.items()]) + "\n}"
-            )
-
-        # If stdout/stderr were not piped/output, output them now anyway
-        assert proc.proc is not None
-        if not teeout:
-            if len(proc.stdout.strip()) > 0:
-                ctx.log.critical(
-                    "Failing command STDOUT:\n"
-                    + ("\n".join([f"\t> {line.strip()}" for line in proc.stdout.strip().splitlines()]))
-                )
-            if len(proc.stderr.strip()) > 0:
-                ctx.log.critical(
-                    "Failing command STDERR:\n"
-                    + ("\n".join([f"\t> {line.strip()}" for line in proc.stderr.strip().splitlines()]))
-                )
+        ctx.log.critical(f"Return code:       {proc.returncode}")
+        ctx.log.critical(f"Executed command:  {cmd_str}")
+        ctx.log.critical(f"Working directory: {os.getcwd()}")
+        ctx.log.critical("Local environment: {")
+        ctx.log.critical("\n".join([f"\t{key}={val}" for key, val in loc_env.items()]))
+        ctx.log.critical("}")
         raise RuntimeError(f"Command failed but allow_errors was False; invalid return code: {proc.returncode}")
 
     return proc
@@ -560,92 +549,111 @@ class _Tee(io.IOBase):
 
     ansi_escape = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]")  # 7-bit C1 ANSI sequences
 
-    def __init__(self, *writers: io.IOBase | IO):
+    def __init__(self, *writers: io.IOBase | io.TextIOBase | IO):
         super().__init__()
-        self.writers = list(writers)
-        assert len(self.writers) > 0
+        self.writers: list[io.IOBase | io.TextIOBase | IO] = list(writers)
+        assert self.writers, "At least one writer must be provided to _Tee!"
 
+        # Create new pipes to read/write from (used as input for select)
         self.readfd, self.writefd = os.pipe()
+        os.set_blocking(self.readfd, False)
 
-        self.running = False  # True while flusher is still running
-        self.synchronise = False  # Marks when the flusher thread should synchronise & wait
-        self.synchronised = threading.Event()  # Set by flusher thread when fully synchronised & waiting
-        self.restart = threading.Event()  # Set by caller when flusher can continue after flushing
+        # Configure events to synchronise the flusher thread and signal when to flush/close
+        self.running = threading.Event()
         self.thread = threading.Thread(target=self._flusher, daemon=True)
+
+        # Set the running condition to true and start the thread
+        self.running.set()
         self.thread.start()
 
-    def __del__(self) -> None:
-        self.close()
-
-    def flush(self) -> None:
-        for writer in self.writers:
-            writer.flush()
-
-    def flush_wait(self) -> None:
-        self.synchronise = True
-        self.synchronised.wait()
-        self.flush()
-        self.synchronise = False
-
-    def flush_all(self) -> None:
-        self.flush_wait()
-        self.restart.set()
-
-    def write(self, data: str) -> int:
-        written = 0
-        for writer in self.writers:
-            written += writer.write(data if writer.isatty() else self.ansi_escape.sub("", data))
-        return written
-
-    emit = write
-
     def fileno(self) -> int:
+        """Anything writing to this object will be read by the flusher thread"""
         return self.writefd
 
     def read_fileno(self) -> int:
+        """Returns the file number of the pipe the flusher thread is reading from"""
         return self.readfd
 
+    def write(self, data: str | bytes) -> int:
+        """Writes input to all writers in self.writers; converts text data to binary to support both"""
+        if isinstance(data, str):
+            data = data.encode()
+        os.write(self.writefd, data)
+        return len(data)
+
     def close(self) -> None:
-        if self.running:
-            self.flush_wait()
-            self.running = False
-            self.restart.set()
-            self.thread.join()
-            os.close(self.readfd)
-            os.close(self.writefd)
+        """Signals flusher to stop & waits until all data is read; then joins the thread & flushes all writers"""
+        self.running.clear()
+        os.close(self.writefd)
+        self.thread.join()
+        os.close(self.readfd)
+        for writer in self.writers:
+            writer.flush()
+
+    def flush(self) -> None:
+        """Flushes all stored writers"""
+        for writer in self.writers:
+            writer.flush()
 
     def _flusher(self) -> None:
-        self.running = True
-        poller = select.poll()
-        poller.register(self.readfd, select.POLLIN | select.POLLPRI)
+        # Wrap the main read-write loop in a try-finally block to ensure lingering data is read/written
+        try:
+            # While the _Tee hasn't been closed yet
+            while self.running.is_set():
+                # Try to read the data; if the IO blocks just try again
+                try:
+                    data = os.read(self.readfd, io.DEFAULT_BUFFER_SIZE)
 
-        buf: bytes = b""
+                    # Skip empty data
+                    if not data:
+                        continue
 
-        def write_buf() -> None:
-            nonlocal buf
-            nl = buf.find(b"\n") + 1
-            while nl > 0:
-                self.write(buf[:nl].decode(encoding="ascii", errors="replace"))
-                self.flush()
-                buf = buf[nl:]
-                nl = buf.find(b"\n") + 1
+                    # Try to decode the data as text; if that fails, only write to supporting writers
+                    try:
+                        for writer in self.writers:
+                            # Only write ANSII-escape sequences to TTY writers; otherwise strip them
+                            if writer.isatty() and isinstance(writer, io.TextIOBase):
+                                writer.write(data.decode(encoding="utf-8"))
+                            elif isinstance(writer, io.TextIOBase):
+                                writer.write(self.ansi_escape.sub("", data.decode(encoding="utf-8")))
+                            else:
+                                # This writer expects binary data; don't decode the textual data
+                                writer.write(data)
+                            writer.flush()
+                    except UnicodeDecodeError:
+                        # The data is binary; only write it to writers that support it (not strings/stdout)
+                        for writer in self.writers:
+                            if isinstance(writer, (io.BufferedWriter, io.RawIOBase)):
+                                writer.write(data)
+                                writer.flush()
+                except BlockingIOError:
+                    continue
+        finally:
+            # Flush any remaining data (if any)
+            while True:
+                try:
+                    data = os.read(self.readfd, io.DEFAULT_BUFFER_SIZE)
+                    if not data:
+                        break
 
-        while self.running:
-            if poller.poll(100):
-                for fd, flag in poller.poll(100):
-                    assert fd == self.readfd
-                    if flag & (select.POLLIN | select.POLLPRI):
-                        buf += os.read(self.readfd, io.DEFAULT_BUFFER_SIZE)
-                        write_buf()
-            elif self.synchronise:
-                if buf:
-                    write_buf()
-                self.synchronised.set()
-                self.restart.wait()
-
-        # Write any remaining data if there is any
-        if buf:
-            write_buf()
+                    try:
+                        for writer in self.writers:
+                            if writer.isatty():
+                                assert isinstance(writer, io.TextIOBase)
+                                writer.write(data.decode(encoding="utf-8"))
+                            elif isinstance(writer, io.TextIOBase):
+                                writer.write(self.ansi_escape.sub("", data.decode(encoding="utf-8")))
+                            else:
+                                writer.write(data)
+                            writer.flush()
+                    except UnicodeDecodeError:
+                        # The data is binary; only write it to writers that support it (not strings/stdout)
+                        for writer in self.writers:
+                            if isinstance(writer, (io.BufferedWriter, io.RawIOBase)):
+                                writer.write(data)
+                                writer.flush()
+                except BlockingIOError:
+                    break
 
 
 def require_program(ctx: Context, name: str, error: str | None = None) -> None:
