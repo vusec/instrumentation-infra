@@ -14,7 +14,7 @@ from .gnu import (
 )
 from .gperftools import Gperftools, LibUnwind
 from .libshrink import LibShrink
-from .llvm import LLVM, LLVMBinDist
+from .llvm import LLVM
 from .llvm_passes import BuiltinLLVMPasses, LLVMPasses
 from .ninja import Ninja
 from .patchelf import PatchElf
