@@ -407,9 +407,9 @@ def run(
         ctx.runlog_file.write(f"Unquoted command:  '{' '.join(cmd_list)}'\n")
         ctx.runlog_file.write(f"Working directory: '{os.getcwd()}'\n")
         ctx.runlog_file.write("Local environment: ")
-        ctx.runlog_file.write("{\n" if len(loc_env) > 0 else "{")
-        ctx.runlog_file.write("\n".join([f"\t{key}={val}" for key, val in loc_env.items()]))
-        ctx.runlog_file.write("\n}" if len(loc_env) > 0 else "}")
+        ctx.runlog_file.write("{\n" if len(run_env) > 0 else "{")
+        ctx.runlog_file.write("\n".join([f"\t{key}={val}" for key, val in sorted(run_env.items(), key=lambda item: item[0])]))
+        ctx.runlog_file.write("\n}" if len(run_env) > 0 else "}")
         if defer or silent or "stdout" in kwargs or "stderr" in kwargs:
             ctx.runlog_file.write("\n\nOutput redirected; not captured in runlog file\n\n")
         ctx.runlog_file.flush()
