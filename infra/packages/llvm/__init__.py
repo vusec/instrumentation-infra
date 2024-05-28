@@ -542,6 +542,10 @@ class LLVM(Package):
         else:
             ctx.log.warning(f"Binary not found: 'llvm-ranlib' ({bins_dir / 'llvm-ranlib'})")
 
+        # If LLD was built, use it as a linker
+        if self.lld:
+            ctx.add_flags("-fuse-ld=lld", cc=False, cxx=False, ld=True, lib_ld=False, dups=False)
+
     @staticmethod
     def load_pass_plugin(ctx: Context, libs: Iterable[str]) -> None:
         """
