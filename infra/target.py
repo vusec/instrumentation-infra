@@ -293,7 +293,7 @@ class Target(metaclass=ABCMeta):
         :param Context ctx: the configuration context
         :param Instance instance: instance used to build the target
         """
-        if ctx.hooks.post_build:
+        if ctx.hooks.pre_build:
             ctx.log.info(f"Running pre-build hooks on target '{self.name}' in '{self.path(ctx)}'")
             self.goto_rootdir(ctx)
 
