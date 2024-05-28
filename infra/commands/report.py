@@ -93,6 +93,7 @@ class ReportCommand(Command):
         subparsers = parser.add_subparsers(
             title="target",
             metavar="TARGET",
+            dest="target",
             help=" | ".join([target.name for target in self.targets.all()]),
         )
         subparsers.required = True
