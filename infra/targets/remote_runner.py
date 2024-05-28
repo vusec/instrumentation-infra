@@ -357,7 +357,7 @@ class RemoteRunner:
         env: Mapping[str, str] = {},
         allow_error: bool = False,
     ) -> dict[str, Any] | None:
-        assert psutil is not None
+        assert psutil is not None, "psutil is not installed!"
         if self.proc is not None and self.proc.poll() is None:
             self._error("already running a process")
 
