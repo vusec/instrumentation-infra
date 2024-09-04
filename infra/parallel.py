@@ -214,7 +214,7 @@ class Pool(metaclass=ABCMeta):
         onsuccess: Callable[[Job], bool | None] | None = None,
         onerror: Callable[[Job], bool | None] | None = None,
         **kwargs: Any,
-    ) -> Iterable[Job]:
+    ) -> list[Job]:
         """
         A non-blocking wrapper for :func:`util.run`, to be used when
         ``--parallel`` is specified.
@@ -241,13 +241,14 @@ class Pool(metaclass=ABCMeta):
             job.output = ""
             job.errput = ""
             event_mask = select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP
-            if job.proc.proc.stdout is not None:
-                self.jobs[job.proc.stdout_io.fileno()] = job
-                self.poller.register(job.proc.stdout_io, event_mask)
-            if job.proc.proc.stderr is not None:
-                self.jobs[job.proc.stderr_io.fileno()] = job
-                self.poller.register(job.proc.stderr_io, event_mask)
-            jobs.append(job)
+            if job.proc.proc is not None:
+                if job.proc.proc.stdout is not None:
+                    self.jobs[job.proc.stdout_io.fileno()] = job
+                    self.poller.register(job.proc.stdout_io, event_mask)
+                if job.proc.proc.stderr is not None:
+                    self.jobs[job.proc.stderr_io.fileno()] = job
+                    self.poller.register(job.proc.stderr_io, event_mask)
+                jobs.append(job)
         return jobs
 
     def onsuccess(self, job: Job) -> None:
