@@ -4,9 +4,7 @@ import re
 import sys
 import shlex
 import shutil
-import select
 import logging
-import textwrap
 import threading
 import subprocess
 
@@ -177,46 +175,104 @@ def join_env_paths(env: EnvDict) -> dict[str, str]:
     return ret
 
 
-class StrippingFormatter(logging.Formatter):
-    """Formatter that strips ANSI escape sequences from the message"""
+def get_stream_formatter() -> logging.Formatter:
+    try:
+        from textwrap import TextWrapper
 
-    # 7-bit C1 ANSI sequences
-    ansi_escape = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]")
+        wrapper = TextWrapper(
+            width=shutil.get_terminal_size(fallback=(80, 24))[0],
+            initial_indent=(" " * 9),
+            subsequent_indent=(" " * 9),
+            tabsize=4,
+        )
 
-    def format(self, record: logging.LogRecord) -> str:
-        if isinstance(record.msg, str):
-            record.msg = self.ansi_escape.sub("", record.msg)
-        return super().format(record)
+    except ImportError:
+        wrapper = None
+
+    try:
+        import colorlog
+
+        class ColourWrapper(colorlog.ColoredFormatter):
+            def __init__(self) -> None:
+                super().__init__(
+                    fmt=(
+                        "%(log_color)s%(levelname)8s%(reset)s "
+                        "%(bold_white)s%(module)s%(reset)s from "
+                        "%(purple)s%(funcName)s%(reset)s::"
+                        "%(blue)s%(filename)s%(reset)s"
+                        "(%(yellow)s%(lineno)d%(reset)s) at "
+                        "%(green)s%(asctime)s.%(msecs)03d%(reset)s:\n"
+                        "%(message_log_color)s%(message)s%(reset)s"
+                    ),
+                    datefmt="%H:%M:%S",
+                    log_colors={
+                        "NOTSET": "bold_white",
+                        "DEBUG": "bold_cyan",
+                        "INFO": "bold_green",
+                        "WARN": "bold_yellow",
+                        "WARNING": "bold_yellow",
+                        "ERROR": "bold_red",
+                        "FATAL": "bold_white,bg_bold_red",
+                        "CRITICAL": "bold_white,bg_bold_red",
+                    },
+                    secondary_log_colors={
+                        "message": {
+                            "NOTSET": "thin_white",
+                            "DEBUG": "thin_white",
+                            "INFO": "thin_white",
+                            "WARN": "thin_white",
+                            "WARNING": "thin_white",
+                            "ERROR": "thin_white",
+                            "FATAL": "thin_white",
+                            "CRITICAL": "thin_white",
+                        }
+                    },
+                )
+
+            def format(self, record: logging.LogRecord) -> str:
+                # If no wrapper was set, just format regularly
+                if wrapper is None:
+                    return super().format(record)
+                header, *message = super().format(record).splitlines()
+                return header + "\n" + ("\n".join(wrapper.fill(line) for line in message))
+
+        return ColourWrapper()
+    except ImportError:
+
+        class Wrapper(logging.Formatter):
+            def __init__(self) -> None:
+                super().__init__(
+                    fmt="",
+                    datefmt="",
+                )
+
+            def format(self, record: logging.LogRecord) -> str:
+                return super().format(record)
+
+        return Wrapper()
 
 
-class MultiFormatter(logging.Formatter):
-    """Wraps long lines & indents subsequent lines to configured width"""
+def get_file_formatter() -> logging.Formatter:
+    """Creates and returns formatter that strips ANSI escape sequences from messages"""
 
-    def __init__(
-        self,
-        fmt: str | None = None,
-        datefmt: str | None = None,
-        style: Literal["%", "{", "$"] = "%",
-        validate: bool = True,
-        hdr_wrapper: textwrap.TextWrapper | None = None,
-        msg_wrapper: textwrap.TextWrapper | None = None,
-        *,
-        defaults: Mapping[str, Any] | None = None,
-    ) -> None:
-        self.hdr_wrapper = hdr_wrapper
-        self.msg_wrapper = msg_wrapper
-        super().__init__(fmt, datefmt, style, validate, defaults=defaults)
+    class StrippingFormatter(logging.Formatter):
+        """Formatter that strips ANSI escape sequences from the message"""
 
-    def format(self, record: logging.LogRecord) -> str:
-        """Aligns (multiline) message indented to width of formatted header"""
-        # If no wrapper was set, just format regularly
-        if self.hdr_wrapper is None or self.msg_wrapper is None:
+        def __init__(self) -> None:
+            super().__init__(
+                fmt="%(asctime)s.%(msecs)03d [%(funcName)s(%(module)s::%(lineno)d)] |%(levelname)s| %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+
+        # 7-bit C1 ANSI sequences
+        ansi_escape = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]")
+
+        def format(self, record: logging.LogRecord) -> str:
+            if isinstance(record.msg, str):
+                record.msg = self.ansi_escape.sub("", record.msg)
             return super().format(record)
 
-        first, *trailing = super().format(record).splitlines()
-        head = self.hdr_wrapper.fill(first)
-        rest = "\n".join(self.msg_wrapper.fill(line) for line in trailing)
-        return head if len(rest) == 0 else head + "\n" + rest
+    return StrippingFormatter()
 
 
 @dataclass
@@ -389,8 +445,7 @@ def run(
     assert cmd_list is not None
 
     cmd_str = get_safe_cmd_str(cmd_list, kwargs.get("stdin", None))
-    ctx.log.info(f"Running command: {cmd_str}")
-    ctx.log.debug(f"Running in directory: {os.getcwd()}")
+    ctx.log.info(f"Running command: {cmd_str} (working dir: {os.getcwd()})")
 
     # Local env is given env merged with CTX's running env, final env is merged with OS' env
     loc_env = join_env_paths(ctx.runenv) | join_env_paths(env)
@@ -465,13 +520,14 @@ def run(
             ctx.runlog_file.write(f"> ERROR: Command not found: {cmd_str}")
             ctx.runlog_file.flush()
 
-        log_stream = ctx.log.error if allow_error else ctx.log.critical
-        log_stream(f"Running command:   '{cmd_str}'\n")
-        log_stream(f"Unquoted command:  '{' '.join(cmd_list)}'\n")
-        log_stream(f"Working directory: '{os.getcwd()}'\n")
-        log_stream("Local environment: {")
-        log_stream("\n".join([f"\t{key}={val}" for key, val in loc_env.items()]))
-        log_stream("}")
+        (ctx.log.error if allow_error else ctx.log.critical)(
+            f"Running command:   '{cmd_str}'\n"
+            + f"Unquoted command:  '{' '.join(cmd_list)}'\n"
+            + f"Working directory: '{os.getcwd()}'\n"
+            + "Local environment: {"
+            + "\n".join([f"\t{key}={val}" for key, val in loc_env.items()])
+            + "}"
+        )
 
         if allow_error:
             return Process(None, cmd_str=cmd_str, teeout=teeout)
@@ -495,12 +551,14 @@ def run(
 
     # Finally, check the process' return code & if errors weren't allowed, raise an error now
     if proc.returncode != 0 and not allow_error:
-        ctx.log.critical(f"Return code:       {proc.returncode}")
-        ctx.log.critical(f"Executed command:  {cmd_str}")
-        ctx.log.critical(f"Working directory: {os.getcwd()}")
-        ctx.log.critical("Local environment: {")
-        ctx.log.critical("\n".join([f"\t{key}={val}" for key, val in loc_env.items()]))
-        ctx.log.critical("}")
+        ctx.log.critical(
+            f"Return code:       {proc.returncode}\n"
+            + f"Executed command:  {cmd_str}\n"
+            + f"Working directory: {os.getcwd()}\n"
+            + "Local environment: {\n\t"
+            + "\n\t".join([f"\t{key}={val}" for key, val in loc_env.items()])
+            + "\n}"
+        )
         raise RuntimeError(f"Command failed but allow_errors was False; invalid return code: {proc.returncode}")
 
     return proc
