@@ -188,19 +188,17 @@ class Package(metaclass=ABCMeta):
         :param ctx: the configuration context
         """
         # XXX rename 'install_env' to 'load'?
-        binpath = self.path(ctx, "install/bin")
-        if os.path.exists(binpath):
-            curbinpath = os.getenv("PATH", "").split(":")
-            prevbinpath = ctx.runenv.setdefault("PATH", curbinpath)
-            assert isinstance(prevbinpath, list)
-            prevbinpath.insert(0, binpath)
+        if os.path.exists(bins_path := self.path(ctx, "install", "bin")):
+            ctx.log.debug(f"Installing {bins_path} into $PATH for {self.ident()}")
+            cur_bins = ctx.runenv.setdefault("PATH", [])
+            assert isinstance(cur_bins, list)
+            cur_bins.insert(0, bins_path)
 
-        libpath = self.path(ctx, "install/lib")
-        if os.path.exists(libpath):
-            curlibpath = os.getenv("LD_LIBRARY_PATH", "").split(":")
-            prevlibpath = ctx.runenv.setdefault("LD_LIBRARY_PATH", curlibpath)
-            assert isinstance(prevlibpath, list)
-            prevlibpath.insert(0, libpath)
+        if os.path.exists(libs_path := self.path(ctx, "install", "lib")):
+            ctx.log.debug(f"Installing {libs_path} into $LD_LIBRARY_PATH for {self.ident()}")
+            cur_libs = ctx.runenv.setdefault("LD_LIBRARY_PATH", [])
+            assert isinstance(cur_libs, list)
+            cur_libs.insert(0, libs_path)
 
     def goto_rootdir(self, ctx: Context, *args: str) -> None:
         """

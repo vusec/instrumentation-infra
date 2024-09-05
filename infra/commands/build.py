@@ -68,76 +68,73 @@ class BuildCommand(Command):
                 instance.add_build_args(tparser)
 
     def run(self, ctx: Context) -> None:
+        self.enable_run_log(ctx)
+        pool = self.make_pool(ctx)
         target = self.targets[ctx.args.target]
         instances = self.instances.select(ctx.args.instances)
-        pool = self.make_pool(ctx)
+        ctx.log.info(f"Running {self.name} command on target {target}")
+        ctx.log.info(f"Building target & dependencies with instances: {instances}")
 
-        deps = get_deps(target, *instances)
-
-        self.enable_run_log(ctx)
-
-        # clean target if requested
+        # First clean the target if configured
         if ctx.args.clean:
             clean_target(ctx, target)
 
-        # first fetch all necessary code so that the internet connection can be
-        # broken during building
-        for package in deps:
-            fetch_package(ctx, package, ctx.args.force_rebuild_deps)
+        # Next, fetch all dependencies of the target and all instances
+        for package in get_deps(target, *instances):
+            fetch_package(ctx, package)
 
-        if not ctx.args.deps_only:
+        # If also building the target (not just dependencies), also fetch the target
+        if ctx.args.deps_only:
+            ctx.log.info(f"Not fetching target; only building dependencies of {target.name}")
+        elif target.is_fetched(ctx):
+            ctx.log.info(f"Target found; not re-fetching: {target.name}")
+        else:
+            ctx.log.info(f"Target not found; fetching: {target.name}")
             target.goto_rootdir(ctx)
-            if target.is_fetched(ctx):
-                ctx.log.debug(f"{target.name} already fetched, skip")
-            else:
-                ctx.log.info(f"fetching {target.name}")
-                target.fetch(ctx)
+            target.fetch(ctx)
 
-        cached_deps = {obj: get_deps(obj) for obj in [target] + instances}
-
-        built_packages = set()
-
-        def build_package_once(package: Package, force: bool) -> None:
-            if package not in built_packages:
-                build_package(ctx, package, force)
-                install_package(ctx, package, force)
-                built_packages.add(package)
-
-        def build_deps_once(obj: Instance | Target) -> None:
-            for package in cached_deps[obj]:
-                force = ctx.args.force_rebuild_deps
-                build_package_once(package, force)
-                ctx.log.debug(f"install {package.ident()} in env")
-                package.install_env(ctx)
-
-        if ctx.args.deps_only and not instances:
-            oldctx = ctx.copy()
-            build_deps_once(target)
-            ctx = oldctx
-
+        # For each instance, call its configuration method and build the its & the target's
+        # dependencies; if not only building dependencies, also build the target
         for instance in instances:
-            # use a copy of the context for instance configuration to avoid
-            # stacking configurations between instances
-            # FIXME: only copy the build env (the part that changes)
-            oldctx = ctx.copy()
+            ctx.log.info(f"Building dependencies of {target.name} and {instance.name}")
+
+            # Create a clean copy of the current context; then call the instance's configuration function
+            original_ctx = ctx.copy()
             instance.configure(ctx)
-            build_deps_once(instance)
-            build_deps_once(target)
-            instance.prepare_build(ctx)
 
-            if not ctx.args.deps_only:
-                ctx.log.info(f"building {target.name}-{instance.name}")
-                if not ctx.args.dry_run:
-                    target.goto_rootdir(ctx)
-                    target.run_hooks_pre_build(ctx, instance)
-                    target.build(ctx, instance, pool)
-                    target.run_hooks_post_build(ctx, instance)
+            # Get unique (depth-first search) list of dependencies of instance & target;
+            # build, install, and load them into the current configuration context
+            for dep in get_deps(instance, target):
+                ctx.log.info(f"Processing dependency: {dep}")
+                build_package(ctx, dep, ctx.args.force_rebuild_deps)
+                install_package(ctx, dep, ctx.args.force_rebuild_deps)
 
-            instance.process_build(ctx)
-            ctx = oldctx
+            # If the current run should only build dependencies or is only a dry-run, don't
+            # actually run the build preparations or hooks nor build the target itself
+            if ctx.args.deps_only:
+                ctx.log.info(f"Only building & installing dependencies of {target.name} and {instance.name}; skipping")
+            elif ctx.args.dry_run:
+                ctx.log.warning(f"Dry-run: not running hooks or target build for {target.name} and {instance.name}")
+            else:
+                ctx.log.info(f"Running build sequence for {target.name} with instance {instance.name}")
 
-        if pool:
-            pool.wait_all()
+                # Go to the target's root directory & run the instance's build preparation & pre-build hooks
+                target.goto_rootdir(ctx)
+                instance.prepare_build(ctx)
+                target.run_hooks_pre_build(ctx, instance)
+
+                # Build the target itself; if a parallel processing pool was used, wait for all of them to finish
+                target.build(ctx, instance, pool)
+                if pool is not None:
+                    pool.wait_all()
+
+                # Run the instance's post-build hooks and build post-processing function
+                target.run_hooks_post_build(ctx, instance)
+                instance.process_build(ctx)
+
+            # Finish the build by restoring the original configuration context and processing the next instance
+            ctx.log.info(f"Build of {target.name} finished ({instance.name}); restoring configuration context")
+            ctx = original_ctx
 
 
 class PkgBuildCommand(Command):
@@ -186,12 +183,12 @@ class PkgBuildCommand(Command):
             clean_package(ctx, main_package)
 
         for package in deps:
-            fetch_package(ctx, package, force_deps)
+            fetch_package(ctx, package)
 
-        fetch_package(ctx, main_package, True)
+        fetch_package(ctx, main_package)
 
         for package in deps:
-            fetch_package(ctx, package, force_deps)
+            fetch_package(ctx, package)
 
         for package in deps:
             build_package(ctx, package, force_deps)

@@ -21,9 +21,8 @@ from typing import (
     IO,
     Any,
     AnyStr,
-    Literal,
-    Mapping,
     TypeVar,
+    Mapping,
     Callable,
     Iterable,
     Iterator,
@@ -34,7 +33,6 @@ from typing import (
     MutableMapping,
 )
 
-EnvDict: TypeAlias = Mapping[str, str | list[str]]
 ResultVal: TypeAlias = bool | int | float | str
 ResultDict: TypeAlias = MutableMapping[str, ResultVal]
 ResultsByInstance: TypeAlias = MutableMapping[str, list[ResultDict]]
@@ -153,7 +151,7 @@ def apply_patch(ctx: Context, patch_path: Path | str, strip_count: int) -> bool:
     return True
 
 
-def join_env_paths(env: EnvDict) -> dict[str, str]:
+def join_env_paths(env: dict[str, str | list[str]]) -> dict[str, str]:
     """
     Convert an environment dictionary to a dictionary mapping variable names to their values, all as
     strings. Lists in the given dictionary are converted to ":"-delimited lists (e.g. like $PATH).
@@ -161,18 +159,10 @@ def join_env_paths(env: EnvDict) -> dict[str, str]:
     Note: the given dictionary should contain only str or list[str], but for both this function will
     also attempt to convert them to string if possible.
 
-    :param EnvDict env: the environment dicitonary to convert (should contain str or list[str])
+    :param env: the environment dicitonary to convert (should contain str or list[str])
     :return dict[str, str]: a str-to-str mapping that can be used to pass to e.g. subprocess.run()
     """
-    ret = {}
-    for k, v in env.items():
-        if isinstance(v, str):
-            ret[k] = v
-        elif isinstance(v, Iterable):
-            ret[k] = ":".join([str(x) for x in v])
-        else:
-            ret[k] = str(v)
-    return ret
+    return {k: ":".join(str(x) for x in v) if isinstance(v, list) else v for k, v in env.items()}
 
 
 def get_stream_formatter() -> logging.Formatter:
@@ -366,7 +356,7 @@ def get_cmd_list(raw_cmd: Iterable[Any] | str) -> list[str] | None:
         return None
 
 
-def get_safe_cmd_str(cmd_list: Iterable[str], stdin: Any | None = None) -> str:
+def get_safe_cmd_str(cmd_list: Iterable[str] | None, stdin: Any | None = None) -> str:
     """Converts the given command list (e.g. output of :func:`get_cmd_list()`) to a safe-to-print
     string. Uses :func:`qjoin()` (which uses :func:`shlex.quote()`) to convert each element from
     the iterable to a safely quoted element. The concatenated string is returned.
@@ -377,6 +367,8 @@ def get_safe_cmd_str(cmd_list: Iterable[str], stdin: Any | None = None) -> str:
     :param io.FileIO | None stdin: _description_, defaults to None optional input file
     :return str: a safe to print string
     """
+    if not cmd_list:
+        return ""
     if not isinstance(stdin, io.FileIO):
         return qjoin(cmd_list)
     return f"{qjoin(cmd_list)} < {shlex.quote(str(stdin))}"
@@ -389,7 +381,7 @@ def run(
     silent: bool = False,
     teeout: bool = False,
     defer: bool = False,
-    env: EnvDict = {},
+    env: dict[str, str | list[str]] | None = None,
     **kwargs: Any,
 ) -> Process:
     """
@@ -442,14 +434,31 @@ def run(
     :returns: a handle to the completed or running process
     """
     cmd_list = get_cmd_list(raw_cmd=cmd)
-    assert cmd_list is not None
-
     cmd_str = get_safe_cmd_str(cmd_list, kwargs.get("stdin", None))
     ctx.log.info(f"Running command: {cmd_str} (working dir: {os.getcwd()})")
+    assert cmd_list is not None
 
-    # Local env is given env merged with CTX's running env, final env is merged with OS' env
-    loc_env = join_env_paths(ctx.runenv) | join_env_paths(env)
-    run_env = os.environ | loc_env
+    # Start the local environment with the current running environment and the stored C/C++/etc compilers
+    loc_env: dict[str, str | list[str]] = {
+        "CC": ctx.cc,
+        "CXX": ctx.cxx,
+        "FC": ctx.fc,
+        "AR": ctx.ar,
+        "NM": ctx.nm,
+        "RANLIB": ctx.ranlib,
+        **ctx.runenv,
+    }
+
+    # Overwrite any values from the env argument (if given)
+    if env is not None:
+        loc_env |= env
+
+    # Take the OS' environment and merge the local running environment into it; overwrite simple string
+    # variables; merge path-like variables (prepending components from ctx.runenv variables)
+    run_env: dict[str, str] = {
+        key: ":".join(loc_val + os.environ[key].split(":")) if isinstance(loc_val, list) else loc_val
+        for key, loc_val in loc_env.items()
+    } | {key: os_val for key, os_val in os.environ.items() if key not in loc_env}
 
     # Set "universal_newlines=True" to read output as text, not binary
     kwargs.setdefault("universal_newlines", True)
@@ -525,7 +534,7 @@ def run(
             + f"Unquoted command:  '{' '.join(cmd_list)}'\n"
             + f"Working directory: '{os.getcwd()}'\n"
             + "Local environment: {"
-            + "\n".join([f"\t{key}={val}" for key, val in loc_env.items()])
+            + "\n".join([f"\t{key}={val}" for key, val in run_env.items()])
             + "}"
         )
 
@@ -556,7 +565,7 @@ def run(
             + f"Executed command:  {cmd_str}\n"
             + f"Working directory: {os.getcwd()}\n"
             + "Local environment: {\n\t"
-            + "\n\t".join([f"\t{key}={val}" for key, val in loc_env.items()])
+            + "\n\t".join([f"\t{key}={val}" for key, val in run_env.items()])
             + "\n}"
         )
         raise RuntimeError(f"Command failed but allow_errors was False; invalid return code: {proc.returncode}")

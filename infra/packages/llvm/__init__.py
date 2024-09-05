@@ -508,17 +508,20 @@ class LLVM(Package):
             raise FileNotFoundError(f"No LLVM root/bins/libs dir: ({root_dir}:{bins_dir}:{libs_dir})")
 
         # Prepend LLVM's directories to the front of $PATH/$LD_LIBRARY_PATH so they're prioritised
-        cur_path = ctx.runenv.setdefault("PATH", os.environ.get("PATH", "").split(":"))
-        cur_libs = ctx.runenv.setdefault("LD_LIBRARY_PATH", os.environ.get("LD_LIBRARY_PATH", "").split(":"))
-        if isinstance(cur_path, str):
-            cur_path = cur_path.split(":")
-        if isinstance(cur_libs, str):
-            cur_libs = cur_libs.split(":")
+        ctx.log.debug(f"Installing {bins_dir} into $PATH for {self.ident()}")
+        cur_bins = ctx.runenv.setdefault("PATH", [])
+        assert isinstance(cur_bins, list)
+        cur_bins.insert(0, str(bins_dir))
+
+        ctx.log.debug(f"Installing {bins_dir} into $LD_LIBRARY_PATH for {self.ident()}")
+        cur_libs = ctx.runenv.setdefault("LD_LIBRARY_PATH", [])
+        assert isinstance(cur_libs, list)
+        cur_libs.insert(0, str(libs_dir))
 
         # Set the defaults; set LLVM_DIR and add bins/libs dir to $PATH & $LD_LIBRARY_PATH
         ctx.runenv["LLVM_DIR"] = str(root_dir)
-        cur_path.insert(0, str(bins_dir))
-        cur_libs.insert(0, str(libs_dir))
+        # ctx.runenv["PATH"] = [str(bins_dir)] + cur_path
+        # ctx.runenv["LD_LIBRARY_PATH"] = [str(libs_dir)] + cur_libs
 
         # Also explicitly set ctx.cc/ctx.cxx/etc to point to this LLVM instance (if the bins exist)
         if (bins_dir / "clang").is_file():

@@ -110,85 +110,125 @@ class Command(metaclass=ABCMeta):
 
 
 def get_deps(*objs: Instance | Package | Target) -> list[Package]:
-    deps: MutableMapping[Package, bool] = OrderedDict()
+    """Iterates over the dependencies of all given objects (instances, packages, or targets) in a
+    depth-first manner (i.e. the deepest dependency will be at the head of the returned list) such
+    that building can happen in order of dependency.
 
-    def add_dep(dep: Package, visited: set[Package]) -> None:
-        if dep in visited:
-            raise FatalError(f"recursive dependency {dep}")
-        visited.add(dep)
+    Note that if dependencies are shared among the initial objects, they are returned in the order
+    they are encountered (i.e. if the first object has a shared dependency higher in the dependency-
+    -chain than a subsequent object, the dependency will be returned at the level it is first seen)
 
-        for nested_dep in dep.dependencies():
-            add_dep(nested_dep, set(visited))
+    :return list[Package]: a list of all dependencies in depth-first order
+    """
+    seen: set[Package] = set()
+    deps: list[Package] = list()
 
-        deps.setdefault(dep, True)
+    def _add_deps(pkg: Package) -> None:
+        if pkg in seen:
+            return
+        seen.add(pkg)
+
+        for dep in pkg.dependencies():
+            _add_deps(dep)
+        deps.append(pkg)
 
     for obj in objs:
         for dep in obj.dependencies():
-            add_dep(dep, set())
+            _add_deps(dep)
 
-    return list(deps)
-
-
-def fetch_package(ctx: Context, package: Package, force_rebuild: bool) -> None:
-    package.goto_rootdir(ctx)
-
-    if package.is_fetched(ctx):
-        ctx.log.debug(f"{package.ident()} already fetched, skip")
-    elif not force_rebuild and package.is_installed(ctx):
-        ctx.log.debug(f"{package.ident()} already installed, skip fetching")
-    else:
-        ctx.log.info(f"fetching {package.ident()}")
-        if not ctx.args.dry_run:
-            package.goto_rootdir(ctx)
-            package.fetch(ctx)
+    return deps
 
 
-def build_package(ctx: Context, package: Package, force_rebuild: bool) -> None:
-    package.goto_rootdir(ctx)
-    built = package.is_built(ctx)
+def load_deps(ctx: Context, *objs: Instance | Package | Target) -> None:
+    """For all dependencies of the given object(s), load/install them into the
+    running environment so they can be used while building the given objects
 
-    if not force_rebuild:
-        if built:
-            ctx.log.debug(f"{package.ident()} already built, skip")
-            return
-        if package.is_installed(ctx):
-            ctx.log.debug(f"{package.ident()} already installed, skip building")
-            return
-
-    load_deps(ctx, package)
-
-    force = " (forced rebuild)" if force_rebuild and built else ""
-    ctx.log.info(f"building {package.ident()}" + force)
-    if not ctx.args.dry_run:
-        package.goto_rootdir(ctx)
-        package.build(ctx)
-
-
-def install_package(ctx: Context, package: Package, force_rebuild: bool) -> None:
-    package.goto_rootdir(ctx)
-    installed = package.is_installed(ctx)
-
-    if not force_rebuild and installed:
-        ctx.log.debug(f"{package.ident()} already installed, skip")
-    else:
-        force = " (forced reinstall)" if force_rebuild and installed else ""
-        ctx.log.info(f"installing {package.ident()}" + force)
-        if not ctx.args.dry_run:
-            package.goto_rootdir(ctx)
-            package.install(ctx)
-
-    package.goto_rootdir(ctx)
-
-
-def load_package(ctx: Context, package: Package) -> None:
-    ctx.log.debug(f"install {package.ident()} into env")
-    if not ctx.args.dry_run:
-        package.install_env(ctx)
-
-
-def load_deps(ctx: Context, *objs: Target | Instance | Package) -> None:
-    ctx.log.info(f"Loading deps of {len(objs)} objects")
+    :param Context ctx: the configuration context
+    :param Instance | Package | Target object: the object whose dependencies to load
+    """
     for obj in objs:
         ctx.log.info(f"Loading dependencies of {obj.ident() if isinstance(obj, Package) else obj.name}")
-        for package in get_deps(obj):
-            load_package(ctx, package)
+        for dep in get_deps(obj):
+            dep.goto_rootdir(ctx)
+            dep.install_env(ctx)
+
+
+def fetch_target(ctx: Context, target: Target) -> None:
+    """If the target hasn't been fetched yet (i.e. :fun:`target.is_fetched(ctx)` returns `False`),
+    this function will call the target's :fun:`target.fetch(ctx)` function to fetch the target
+
+    :param Context ctx: the configuration context
+    :param Target target: the target to possibly fetch
+    """
+    target.goto_rootdir(ctx)
+
+    if target.is_fetched(ctx):
+        ctx.log.debug(f"Target {target.name} is already fetched; skipping")
+    else:
+        if ctx.args.dry_run:
+            ctx.log.warning(f"Only running as a dry-run; not fetching target: {target.name}")
+        else:
+            ctx.log.info(f"Target {target.name} not found; fetching")
+
+
+def fetch_package(ctx: Context, package: Package) -> None:
+    """If the package hasn't been fetched yet (i.e. :fun:`package.is_fetched(ctx)` returns `False`),
+    this function will call the package's :fun:`package.fetch(ctx)` function to fetch the package
+
+    :param Context ctx: the configuration context
+    :param Package package: the package to possibly fetch
+    """
+    package.goto_rootdir(ctx)
+
+    if not package.is_fetched(ctx):
+        ctx.log.info(f"Package {package.ident()} is not found; fetching")
+        package.fetch(ctx)
+    else:
+        ctx.log.debug(f"Package {package.ident()} is already fetched; skipping")
+
+
+def build_package(ctx: Context, package: Package, force_rebuild: bool = False) -> None:
+    """Checks if the given package should be rebuilt, and if so, rebuilds the package using the
+    current configuration context. Forcing a rebuild can be done with :param:`force_rebuild`
+
+    :param Context ctx: the configuration context
+    :param Package package: the package to possibly build
+    :param bool force_rebuild: always build the package, even if already built, defaults to False
+    """
+    package.goto_rootdir(ctx)
+
+    if not package.is_built(ctx):
+        ctx.log.info(f"Package {package.ident()} is not built; building")
+        package.build(ctx)
+    elif force_rebuild:
+        ctx.log.warning(f"Forcing rebuilds enabled; building {package.ident()}")
+        package.build(ctx)
+    else:
+        ctx.log.debug(f"Package {package.ident()} is already built; skipping")
+
+
+def install_package(ctx: Context, package: Package, force_rebuild: bool = False) -> None:
+    """Checks if the given package should be installed, and if so, installs the package using the
+    current configuration context. If the rebuilding was forced (with :param:`force_rebuild`),
+    the package will also be re-installed.
+
+    Note that this function also installs the package into the configuration context's environment
+    by calling :fun:`package.install_env(ctx)` on the package (even if not (re-)installed)
+
+    :param Context ctx: the configuration context
+    :param Package package: the package to possibly install
+    :param bool force_rebuild: if the package was rebuilt, also re-install it, defaults to False
+    """
+    package.goto_rootdir(ctx)
+
+    if not package.is_installed(ctx):
+        ctx.log.info(f"Package {package.ident()} is not installed; installing")
+        package.install(ctx)
+    elif force_rebuild:
+        ctx.log.warning(f"Forcing rebuilds enabled; installing {package.ident()}")
+        package.install(ctx)
+    else:
+        ctx.log.debug(f"Package {package.ident()} is already installed; skipping")
+
+    ctx.log.info(f"Installing package {package.ident()} into configuration environment")
+    package.install_env(ctx)
