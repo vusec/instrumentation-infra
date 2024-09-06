@@ -456,7 +456,7 @@ def run(
     # Take the OS' environment and merge the local running environment into it; overwrite simple string
     # variables; merge path-like variables (prepending components from ctx.runenv variables)
     run_env: dict[str, str] = {
-        key: ":".join(loc_val + os.environ[key].split(":")) if isinstance(loc_val, list) else loc_val
+        key: ":".join(loc_val + os.environ.get(key, "").split(":")) if isinstance(loc_val, list) else loc_val
         for key, loc_val in loc_env.items()
     } | {key: os_val for key, os_val in os.environ.items() if key not in loc_env}
 
