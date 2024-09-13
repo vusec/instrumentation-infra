@@ -518,10 +518,8 @@ class LLVM(Package):
         assert isinstance(cur_libs, list)
         cur_libs.insert(0, str(libs_dir))
 
-        # Set the defaults; set LLVM_DIR and add bins/libs dir to $PATH & $LD_LIBRARY_PATH
+        # Set the $LLVM_DIR to the root directory of the installation (the prefix)
         ctx.runenv["LLVM_DIR"] = str(root_dir)
-        # ctx.runenv["PATH"] = [str(bins_dir)] + cur_path
-        # ctx.runenv["LD_LIBRARY_PATH"] = [str(libs_dir)] + cur_libs
 
         # Also explicitly set ctx.cc/ctx.cxx/etc to point to this LLVM instance (if the bins exist)
         if (bins_dir / "clang").is_file():
@@ -545,9 +543,35 @@ class LLVM(Package):
         else:
             ctx.log.warning(f"Binary not found: 'llvm-ranlib' ({bins_dir / 'llvm-ranlib'})")
 
-        # If LLD was built, use it as a linker
+        # If LLD was built, use it as a linker by setting '-fuse-ld=lld` and symlinking `ld` to `ld.lld`
         if self.lld:
             ctx.add_flags("-fuse-ld=lld", cc=False, cxx=False, ld=True, lib_ld=False, dups=False)
+
+            if (lld_bin := bins_dir / "ld.lld").is_file():
+                if not (ld_link := bins_dir / "ld").is_file():
+                    try:
+                        ctx.log.info(f"Setting ld.lld as default linker by symlinking {ld_link} to {lld_bin}")
+                        ld_link.symlink_to(target=lld_bin)
+                    except PermissionError as err:
+                        if not (local_link := Path(self.path(ctx, "install", "bin", "ld"))).is_file():
+                            ctx.log.info(f"Permission denied; locally symlinking {local_link} to {lld_bin} instead")
+                            try:
+                                local_link.parent.mkdir(parents=True, exist_ok=True)
+                                local_link.symlink_to(target=lld_bin)
+
+                                # Also add this local directory to the current $PATH if not in there yet
+                                if str(local_link.parent) not in cur_bins:
+                                    cur_bins.insert(0, str(local_link.parent))
+                            except Exception as err:
+                                ctx.log.error(f"Could not set ld.lld as default linker:\n{err}")
+                        else:
+                            ctx.log.debug(f"{local_link} already exists; not symlinking to {lld_bin}")
+                    except Exception as err:
+                        ctx.log.error(f"Could not set ld.lld as default linker:\n{err}")
+                else:
+                    ctx.log.debug(f"{bins_dir / 'ld'} already exists; not symlinking to {lld_bin}")
+            else:
+                raise FileNotFoundError(f"Failed to find ld.lld binary but lld is enabled: {bins_dir / 'ld.lld'}")
 
     @staticmethod
     def load_pass_plugin(ctx: Context, libs: Iterable[str]) -> None:
