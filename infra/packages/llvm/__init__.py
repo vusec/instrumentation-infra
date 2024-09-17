@@ -559,13 +559,14 @@ class LLVM(Package):
                                 local_link.parent.mkdir(parents=True, exist_ok=True)
                                 local_link.symlink_to(target=lld_bin)
 
-                                # Also add this local directory to the current $PATH if not in there yet
-                                if str(local_link.parent) not in cur_bins:
-                                    cur_bins.insert(0, str(local_link.parent))
                             except Exception as err:
                                 ctx.log.error(f"Could not set ld.lld as default linker:\n{err}")
                         else:
                             ctx.log.debug(f"{local_link} already exists; not symlinking to {lld_bin}")
+
+                        # Also add this local directory to the current $PATH if not in there yet
+                        if str(local_link.parent) not in cur_bins:
+                            cur_bins.insert(0, str(local_link.parent))
                     except Exception as err:
                         ctx.log.error(f"Could not set ld.lld as default linker:\n{err}")
                 else:
