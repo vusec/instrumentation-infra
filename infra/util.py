@@ -267,6 +267,22 @@ def get_file_formatter() -> logging.Formatter:
 
 @dataclass
 class Process:
+    """Wrapper class around the result of a call to :func:`subprocess.run()` or :func:`subprocess.Popen()`.
+
+    The return value of the call to :func:`subprocess.run()`/:func:`subprocess.Popen()` is stored in
+    :var:`self.proc` and the stringified command that was run is stored in :var:`self.cmd_str`.
+
+    This class also provides convenience accessors for a process' return code, stdout, and stderr through
+    :prop:`self.returncode`, :prop:`self.stdout`, and :prop:`self.stderr`. Note that these properties
+    are "guaranteed"; i.e. if the stored process was deffered through :func:`subprocess.Popen()`,
+    fetching :prop:`self.returncode` will wait for completion to return the return code. Similarly,
+    fetching :prop:`self.stdout` or :prop:`self.stderr` will return the underlying process' stdout or
+    stderr (and decode them if necessary); if the underlying process' stdout/stderr properties are
+    an IO type, they are read to a string and stored (meaning :prop:`self.stdout`/:prop:`self.stderr`
+    will only read from the IO streams once and return previously read strings on subsequent
+    calls to :prop:`self.stdout` or :prop:`self.stderr`).
+    """
+
     proc: subprocess.CompletedProcess | subprocess.Popen | None
     cmd_str: str
     teeout: bool
@@ -276,12 +292,42 @@ class Process:
 
     @property
     def returncode(self) -> int:
+        """Returns the return code of the executed process.
+
+        If the underlying process is of type :type:`subprocecss.CompletedProcess` (i.e. from
+        :func:`subprocess.run()`) the return code is directly returned.
+
+        If the underlying type is of type :type:`subprocess.Popen()` (i.e. a deferred process),
+        this is equivalent to calling :func:`proc.wait(timeout=None)` (i.e. this call will block
+        until the process finished running and the return code is available).
+
+        :raises ProcessLookupError: raised if the stored process :var:`self.proc` is None
+        :return int: the return code of the process
+        """
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no return code!")
         return self.proc.returncode if self.proc is not None else -1
 
     @property
     def stdout(self) -> str:
+        """Returns whatever the executed process wrote the stdout as a string object.
+
+        If the type of stdout is :type:`bytes`, the output is decoded to a string (encoding is
+        assumed to be "ascii") and returned. Note the read/decoded output is also stored in
+        :param:`self.stdout_override` so it doesn't need to be decoded again in the future.
+
+        If the type of stdout is an IO stream (:type:`typing.IO`), the output is read (and decoded if
+        applicable) from the stream (with :func:`self.proc.stdout.read()`). The result is stored in
+        :param:`self.stdout_override` so that subsequent accesses to this property won't try to
+        read from the stream again and instead return what was read/decoded previously
+
+        Note that this property will return the empty string if :param:`self.proc.stdout` was not
+        captured at all (i.e. is :type:`None`)
+
+        :raises ProcessLookupError: raised if the stored process :param:`self.proc` is invalid (i.e. is `None`)
+        :raises ValueError: raised if the type of :param:`self.proc.stdout` is not :type:`None|str|bytes|IO`
+        :return str: returns whatever the executed command wrote to :param:`stdout`
+        """
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no stdout!")
         if self.stdout_override is not None:
@@ -294,6 +340,24 @@ class Process:
 
     @property
     def stderr(self) -> str:
+        """Returns whatever the executed process wrote the stderr as a string object.
+
+        If the type of stderr is :type:`bytes`, the output is decoded to a string (encoding is
+        assumed to be "ascii") and returned. Note the read/decoded output is also stored in
+        :param:`self.stderr_override` so it doesn't need to be decoded again in the future.
+
+        If the type of stderr is an IO stream (:type:`typing.IO`), the output is read (and decoded if
+        applicable) from the stream (with :func:`self.proc.stderr.read()`). The result is stored in
+        :param:`self.stderr_override` so that subsequent accesses to this property won't try to
+        read from the stream again and instead return what was read/decoded previously
+
+        Note that this property will return the empty string if :param:`self.proc.stderr` was not
+        captured at all (i.e. is :type:`None`)
+
+        :raises ProcessLookupError: raised if the stored process :param:`self.proc` is invalid (i.e. is `None`)
+        :raises ValueError: raised if the type of :param:`self.proc.stderr` is not :type:`None|str|bytes|IO`
+        :return str: returns whatever the executed command wrote to :param:`stderr`
+        """
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no stderr!")
         if self.stderr_override is not None:
@@ -306,6 +370,14 @@ class Process:
 
     @property
     def stdout_io(self) -> IO[AnyStr]:
+        """Alternative version of :prop:`self.stdout` that instead returns the IO stream of the underlying
+        process' stdout instead of reading from it and returning the contained string value; equivalent
+        to accessing :param:`self.proc.stdout` directly to use in :func:`self.proc.stdout.read()`
+
+        :raises ProcessLookupError: raised if the stored process :param:`self.proc` is invalid (i.e. is `None`)
+        :raises ValueError: raised if the type of :param:`self.proc.stdout` is not an IO type
+        :return IO[AnyStr] | None: the IO stream of :param:`self.proc.stdout`
+        """
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no stdout!")
         assert self.stdout_override is None
@@ -315,6 +387,14 @@ class Process:
 
     @property
     def stderr_io(self) -> IO[AnyStr]:
+        """Alternative version of :prop:`self.stderr` that instead returns the IO stream of the underlying
+        process' stderr instead of reading from it and returning the contained string value; equivalent
+        to accessing :param:`self.proc.stderr` directly to use in :func:`self.proc.stderr.read()`
+
+        :raises ProcessLookupError: raised if the stored process :param:`self.proc` is invalid (i.e. is `None`)
+        :raises ValueError: raised if the type of :param:`self.proc.stderr` is not an IO type
+        :return IO[AnyStr] | None: the IO stream of :param:`self.proc.stderr`
+        """
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no stderr!")
         assert self.stderr_override is None
@@ -323,13 +403,29 @@ class Process:
         return self.proc.stderr
 
     def poll(self) -> int | None:
+        """Calls :func:`self.proc.poll()` iff the underlying process is of type :type:`subprocess.Popen`,
+        otherwise if the underlying process is of type :type:`subprocess.CompletedProcess`, this simply
+        returns :param:`self.proc.returncode`
+
+        :raises ProcessLookupError: raised if the stored process :param:`self.proc` is invalid (i.e. is `None`)
+        :return int | None: the return code or the result of :func:`self.proc.poll()`
+        """
         if self.proc is None:
             raise ProcessLookupError("Cannot poll invalid (None) process!")
         if isinstance(self.proc, subprocess.CompletedProcess):
             return self.returncode
         return self.proc.poll()
 
-    def wait(self) -> int:
+        return self.returncode if isinstance(self.proc, subprocess.CompletedProcess) else self.proc.poll()
+
+    def wait(self, timeout: float | None = None) -> int:
+        """Calls :func:`self.proc.wait()` iff the underlying process is of type :type:`subprocess.Popen`,
+        otherwise if the underlying process is of type :type:`subprocess.CompletedProcess`, this simply
+        returns :param:`self.proc.returncode`
+
+        :raises ProcessLookupError: raised if the stored process :param:`self.proc` is invalid (i.e. is `None`)
+        :return int: the return code or the result of :func:`self.proc.wait()`
+        """
         if self.proc is None:
             raise ProcessLookupError("Cannot wait on invalid (None) process!")
         if isinstance(self.proc, subprocess.CompletedProcess):
