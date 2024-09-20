@@ -9,9 +9,9 @@ import shlex
 import sys
 import threading
 import time
+import subprocess
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, field
-from subprocess import STDOUT
 from typing import (
     IO,
     Any,
@@ -32,33 +32,51 @@ from .util import FatalError, Process, require_program, run
 class Job:
     proc: Process
     jobid: str
-    outfiles: list[str]
-    nnodes: int = field(default=1, init=False)
-    start_time: float = field(default_factory=time.time, init=False)
-    onsuccess: Callable[["Job"], bool | None] | None = field(default=None, init=False)
-    onerror: Callable[["Job"], bool | None] | None = field(default=None, init=False)
-    output: str = field(default="", init=False)
-    errput: str = field(default="", init=False)
+    nnodes: int = 1
+    out_base: str = ""
+    start_time: float = time.time()
+    onsuccess: Callable[["Job"], bool | None] | None = None
+    onerror: Callable[["Job"], bool | None] | None = None
+    outs: str = ""
+    errs: str = ""
 
     @property
-    def stdout(self) -> IO:
+    def returncode(self) -> int:
+        return self.proc.returncode
+
+    @property
+    def stdout(self) -> str:
+        return self.proc.stdout
+
+    @property
+    def stderr(self) -> str:
+        return self.proc.stderr
+
+    @property
+    def stdout_io(self) -> IO | None:
         return self.proc.stdout_io
 
     @property
-    def stderr(self) -> IO:
-        return self.proc.stderr_io
+    def stderr_io(self) -> IO | None:
+        return self.proc.stdout_io
+
+    def poll(self) -> int | None:
+        return self.proc.poll()
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.proc.wait(timeout)
 
 
 @dataclass
 class ProcessJob(Job):
-    stdout_outfile_handle: IO
-    stderr_outfile_handle: IO
+    stdout_handle: IO | None = None
+    stderr_handle: IO | None = None
 
 
 @dataclass
 class SSHJob(Job):
-    outfile_handle: IO
-    node: str
+    outfile_handle: IO | None = None
+    node: str = ""
 
     tunnel_src: int | None = None
     tunnel_dest: int | None = None
@@ -66,9 +84,9 @@ class SSHJob(Job):
 
 @dataclass
 class PrunJob(Job):
-    nnodes: int
-
-    logged: bool = False
+    nnodes: int = 1
+    outfile_handle: IO | None = None
+    logged: bool = True
 
 
 class Pool(metaclass=ABCMeta):
@@ -232,43 +250,48 @@ class Pool(metaclass=ABCMeta):
         self._start_poller()
 
         if outfile is None:
-            outfile = f"{jobid}.out"
+            outfile = f"{jobid}"
 
         jobs = []
         for job in self.make_jobs(ctx, cmd, jobid, outfile, nnodes, **kwargs):
+            assert job.proc.proc is not None
             job.onsuccess = onsuccess
             job.onerror = onerror
-            job.output = ""
-            job.errput = ""
-            event_mask = select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP
-            if job.proc.proc is not None:
-                if job.proc.proc.stdout is not None:
-                    self.jobs[job.proc.stdout_io.fileno()] = job
-                    self.poller.register(job.proc.stdout_io, event_mask)
-                if job.proc.proc.stderr is not None:
-                    self.jobs[job.proc.stderr_io.fileno()] = job
-                    self.poller.register(job.proc.stderr_io, event_mask)
-                jobs.append(job)
+            job.outs = ""
+            job.errs = ""
+
+            if (outs_io := job.stdout_io) is not None:
+                self.jobs[outs_io.fileno()] = job
+                self.poller.register(outs_io, select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP)
+
+            if (errs_io := job.stderr_io) is not None:
+                self.jobs[errs_io.fileno()] = job
+                self.poller.register(errs_io, select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP)
+
+            jobs.append(job)
+
         return jobs
 
     def onsuccess(self, job: Job) -> None:
         # don't log if onsuccess() returns False
         if not job.onsuccess or job.onsuccess(job) is not False:
             self.log.info(f"job {job.jobid} finished {self._get_elapsed(job)}")
-            self.log.debug(f"command: {job.proc.cmd_str}")
 
     def onerror(self, job: Job) -> None:
         # don't log if onerror() returns False
         if not job.onerror or job.onerror(job) is not False:
-            self.log.error(f"job {job.jobid} returned status {job.proc.returncode} " f"{self._get_elapsed(job)}")
-            self.log.error(f"command: {job.proc.cmd_str}")
-            sys.stdout.write(f"stdout:\n{job.output}\n")
-            sys.stdout.write(f"stderr:\n{job.errput}\n")
-            sys.stdout.flush()
+            self.log.error(
+                "Command returned non-zero error status code:\n"
+                + f"\tJob ID:       {job.jobid}\n"
+                + f"\tRuntime:      {self._get_elapsed(job)}\n"
+                + f"\tCommand:      {job.proc.cmd_str}\n"
+                + f"\tReturn code:  {job.returncode}\n\n"
+                + f"{''.join(f'STDOUT > {line}\n' for line in job.outs)}\n\n"
+                + f"{''.join(f'STDERR > {line}\n' for line in job.errs)}\n\n"
+            )
 
     def _get_elapsed(self, job: Job) -> str:
-        elapsed = round(time.time() - job.start_time)
-        return f"after {elapsed} seconds"
+        return f"after {round(time.time() - job.start_time)} seconds"
 
 
 class ProcessPool(Pool):
@@ -285,81 +308,118 @@ class ProcessPool(Pool):
         **kwargs: Any,
     ) -> Iterator[Job]:
         for i in range(nnodes):
-            jobid = jobid_base if nnodes == 1 else f"{jobid_base}-{i}"
-            outfile = outfile_base if nnodes == 1 else f"{outfile_base}-{i}"
+            outfile: str = outfile_base if nnodes == 1 else f"{outfile_base}-{i}"
+            jobid: str = jobid_base if nnodes == 1 else f"{jobid_base}-{i}"
 
-            stdout_file = f"{outfile}.stdout.log"
-            stderr_file = f"{outfile}.stderr.log"
-
-            self._wait_for_queue_space(1)
-            ctx.log.info("running " + jobid)
-
-            proc = run(ctx, cmd, defer=True, bufsize=io.DEFAULT_BUFFER_SIZE, **kwargs)
-            _set_non_blocking(proc.stdout_io)
-            _set_non_blocking(proc.stderr_io)
             os.makedirs(os.path.dirname(outfile), exist_ok=True)
-            job = ProcessJob(
-                proc,
-                jobid,
-                [stdout_file, stderr_file],
-                open(stdout_file, "w"),
-                open(stderr_file, "w"),
-            )
+            self._wait_for_queue_space(1)
 
-            yield job
+            ctx.log.info(f"Running {jobid}; output base-file: {outfile}")
+            if (proc := run(ctx, cmd, defer=True, bufsize=io.DEFAULT_BUFFER_SIZE, **kwargs)).proc is not None:
+                outfiles: list[str] = []
+                if (outs_io := proc.stdout_io) is not None:
+                    outfiles.append(f"{outfile}.stdout.log")
+                    _set_non_blocking(outs_io)
+                if (errs_io := proc.stderr_io) is not None:
+                    outfiles.append(f"{outfile}.stderr.log")
+                    _set_non_blocking(errs_io)
+
+                yield ProcessJob(
+                    proc=proc,
+                    jobid=jobid,
+                    nnodes=1,
+                    out_base=outfile,
+                    start_time=time.time(),
+                    onsuccess=None,
+                    onerror=None,
+                    outs="",
+                    errs="",
+                    stdout_handle=open(f"{outfile}.stdout.log", mode="w") if proc.stdout_io is not None else None,
+                    stderr_handle=open(f"{outfile}.stderr.log", mode="w") if proc.stderr_io is not None else None,
+                )
+            else:
+                RuntimeError(f"Failed to create process {jobid} for command: {cmd}")
 
     def process_job_output(self, job: Job, fd: int | None = None) -> None:
         assert isinstance(job, ProcessJob)
-        assert fd is None or fd == job.stdout.fileno() or fd == job.stderr.fileno()
 
-        # If no file descriptor is specified, read from the process' stdout
+        # If no descriptor is given and both stdout & stderr are None, there's nothing to process
         if fd is None:
-            fd = job.stdout.fileno()
+            if (outs_io := job.stdout_io) is not None:
+                fd = outs_io.fileno()
+            elif (errs_io := job.stderr_io) is not None:
+                fd = errs_io.fileno()
+            else:
+                return
 
-        # Read from the file descriptor & write to the stdout/stderr file correspondingly
-        if fd == job.stdout.fileno():
-            # Read into buffer while there is data to read; stop on EOF reached
-            while True:
-                buf = job.stdout.read(io.DEFAULT_BUFFER_SIZE)
-                if not buf:
-                    break
-                if isinstance(buf, bytes):
-                    buf = buf.decode(encoding="ascii", errors="replace")
-                assert isinstance(buf, str)
-                buf = self.ansi_escape.sub("", buf)
-                job.output += buf
-                job.stdout_outfile_handle.write(buf)
-                job.stdout_outfile_handle.flush()
-        if fd == job.stderr.fileno():
-            # Read into buffer while there is data to read; stop on EOF reached
-            while True:
-                buf = job.stderr.read(io.DEFAULT_BUFFER_SIZE)
-                if not buf:
-                    break
-                if isinstance(buf, bytes):
-                    buf = buf.decode(encoding="ascii", errors="replace")
-                assert isinstance(buf, str)
-                buf = self.ansi_escape.sub("", buf)
-                job.errput += buf
-                job.stderr_outfile_handle.write(buf)
-                job.stderr_outfile_handle.flush()
+        # Read from the stdout file descriptor if it's not None & write to the stdout file
+        if (outs_io := job.stdout_io) is not None and outs_io.fileno() == fd:
+            assert job.stdout_handle is not None
+
+            # Read until EOF is reached; write to outfile handle (decode if necessary)
+            while _outs_line := outs_io.readline():
+                if isinstance(_outs_line, str):
+                    outs_line = self.ansi_escape.sub("", _outs_line)
+                elif isinstance(_outs_line, bytes):
+                    outs_line = self.ansi_escape.sub("", _outs_line.decode(encoding="ascii", errors="replace"))
+                else:
+                    raise TypeError(f"Invalid type from stdout stream: {type(_outs_line)}")
+
+                job.outs += outs_line
+                job.stdout_handle.write(outs_line)
+                job.stdout_handle.flush()
+
+        # Read from the stderr file descriptor if it's not None & write to the stderr file
+        if (errs_io := job.stderr_io) is not None and errs_io.fileno() == fd:
+            assert job.stderr_handle is not None
+
+            # Read until EOF is reached; write to outfile handle (decode if necessary)
+            while _errs_line := errs_io.readline():
+                if isinstance(_errs_line, str):
+                    errs_line = self.ansi_escape.sub("", _errs_line)
+                elif isinstance(_errs_line, bytes):
+                    errs_line = self.ansi_escape.sub("", _errs_line.decode(encoding="ascii", errors="replace"))
+                else:
+                    raise TypeError(f"Invalid type from stderr stream: {type(_errs_line)}")
+
+                job.stderr_handle.write(errs_line)
+                job.stderr_handle.flush()
+                job.errs += errs_line
 
     def onsuccess(self, job: Job) -> None:
         assert isinstance(job, ProcessJob)
         job.proc.wait()
-        self.process_job_output(job, job.proc.stdout_io.fileno())
-        self.process_job_output(job, job.proc.stderr_io.fileno())
-        job.stdout_outfile_handle.close()
-        job.stderr_outfile_handle.close()
+
+        if (outs_io := job.stdout_io) is not None:
+            assert job.stdout_handle is not None
+            self.process_job_output(job, outs_io.fileno())
+            job.stdout_handle.flush()
+            job.stdout_handle.close()
+
+        if (errs_io := job.stderr_io) is not None:
+            assert job.stderr_handle is not None
+            self.process_job_output(job, errs_io.fileno())
+            job.stderr_handle.flush()
+            job.stderr_handle.close()
+
         super().onsuccess(job)
 
     def onerror(self, job: Job) -> None:
         assert isinstance(job, ProcessJob)
         job.proc.wait()
-        self.process_job_output(job, job.proc.stdout_io.fileno())
-        self.process_job_output(job, job.proc.stderr_io.fileno())
-        job.stdout_outfile_handle.close()
-        job.stderr_outfile_handle.close()
+
+        if (outs_io := job.stdout_io) is not None:
+            assert job.stdout_handle is not None
+            self.process_job_output(job, outs_io.fileno())
+            job.stdout_handle.flush()
+            job.stdout_handle.close()
+
+        if (errs_io := job.stderr_io) is not None:
+            assert job.stderr_handle is not None
+            self.process_job_output(job, errs_io.fileno())
+            job.stderr_handle.flush()
+            job.stderr_handle.close()
+
         super().onerror(job)
 
 
@@ -428,7 +488,7 @@ class SSHPool(Pool):
             return
         for node in self.nodes:
             cmd = ["ssh", *self.ssh_opts, node, "echo -n hi"]
-            p = run(self._ctx, cmd, stderr=STDOUT, silent=True)
+            p = run(self._ctx, cmd, stderr=subprocess.STDOUT, silent=True)
             if p.returncode or not str(p.stdout).endswith("hi"):
                 self._ctx.log.error("Testing SSH node " + node + " failed:\n" + p.stdout)
                 sys.exit(-1)
@@ -547,39 +607,69 @@ class SSHPool(Pool):
                 ctx,
                 ssh_cmd,
                 defer=True,
-                stderr=STDOUT,
+                stderr=subprocess.STDOUT,
                 bufsize=io.DEFAULT_BUFFER_SIZE,
                 universal_newlines=False,
                 **kwargs,
             )
-            _set_non_blocking(proc.stdout_io)
+
+            if (outs_io := proc.stdout_io) is not None:
+                _set_non_blocking(outs_io)
 
             os.makedirs(os.path.dirname(outfile), exist_ok=True)
-            job = SSHJob(proc, jobid, [outfile], open(outfile, "wb"), node)
-
-            if tunnel_to_nodes_dest:
-                job.tunnel_src = tunnel_src
-                job.tunnel_dest = tunnel_to_nodes_dest
-
-            yield job
+            yield SSHJob(
+                proc=proc,
+                jobid=jobid,
+                nnodes=1,
+                out_base=outfile,
+                start_time=time.time(),
+                onsuccess=None,
+                onerror=None,
+                outs="",
+                errs="",
+                outfile_handle=open(outfile, mode="w"),
+                tunnel_src=tunnel_src if tunnel_to_nodes_dest else None,
+                tunnel_dest=tunnel_to_nodes_dest if tunnel_to_nodes_dest else None,
+            )
 
     def process_job_output(self, job: Job, fd: int | None = None) -> None:
         assert isinstance(job, SSHJob)
-        buf = job.stdout.read(io.DEFAULT_BUFFER_SIZE)
-        if buf is not None:
-            job.output += buf.decode("ascii", errors="replace")
-            job.outfile_handle.write(buf)
+
+        if (outs_io := job.stdout_io) is not None:
+            while _outs_line := outs_io.readline():
+                if isinstance(_outs_line, str):
+                    outs_line = _outs_line
+                elif isinstance(_outs_line, bytes):
+                    outs_line = _outs_line.decode(encoding="ascii", errors="replace")
+                else:
+                    raise TypeError(f"Type of line read from stdout is invalid; got: {type(_outs_line)}")
+
+                assert job.outfile_handle is not None
+                job.outfile_handle.write(outs_line)
+                job.outfile_handle.flush()
+                job.outs += outs_line
 
     def onsuccess(self, job: Job) -> None:
         assert isinstance(job, SSHJob)
-        job.outfile_handle.close()
+
+        if (outs_io := job.stdout_io) is not None:
+            self.process_job_output(job, outs_io.fileno())
+            assert job.outfile_handle is not None
+            if not job.outfile_handle.closed:
+                job.outfile_handle.close()
+
         self.available_nodes.append(job.node)
         super().onsuccess(job)
 
     def onerror(self, job: Job) -> None:
         assert isinstance(job, SSHJob)
-        self.available_nodes.append(job.node)
-        job.outfile_handle.close()
+
+        if (outs_io := job.stdout_io) is not None:
+            self.process_job_output(job, outs_io.fileno())
+            assert job.outfile_handle is not None
+            if not job.outfile_handle.closed:
+                job.outfile_handle.close()
+
         super().onerror(job)
 
 
@@ -617,15 +707,27 @@ class PrunPool(Pool):
             ctx,
             cmd,
             defer=True,
-            stderr=STDOUT,
+            stderr=subprocess.STDOUT,
             bufsize=0,
             universal_newlines=False,
             **kwargs,
         )
-        _set_non_blocking(proc.stdout_io)
-        outfiles = [f"{outfile_base}.{i}" for i in range(nnodes)]
-        job = PrunJob(proc, jobid_base, outfiles, nnodes)
-        yield job
+
+        if (outs_io := proc.stdout_io) is not None:
+            _set_non_blocking(outs_io)
+
+        yield PrunJob(
+            proc=proc,
+            jobid=jobid_base,
+            nnodes=nnodes,
+            out_base=outfile_base,
+            start_time=time.time(),
+            onsuccess=None,
+            onerror=None,
+            outs="",
+            errs="",
+            outfile_handle=open(outfile_base, mode="w") if proc.stdout_io is not None else None,
+        )
 
     def process_job_output(self, job: Job, fd: int | None = None) -> None:
         assert isinstance(job, PrunJob)
@@ -666,19 +768,31 @@ class PrunPool(Pool):
 
             return f"node[{','.join(groupstrings)}]"
 
-        buf = job.stdout.read(1024)
-        if buf is None:
-            return
-
-        job.output += buf.decode("ascii")
-
-        if job.logged:
-            return
-
-        numseconds = None
+        numseconds: int | None = None
         nodes: list[tuple[int, int]] = []
 
-        for line in job.output.splitlines():
+        if (outs_io := job.stdout_io) is not None:
+            while _outs_line := outs_io.readline():
+                if isinstance(_outs_line, str):
+                    outs_line = _outs_line
+                elif isinstance(_outs_line, bytes):
+                    outs_line = _outs_line.decode(encoding="ascii", errors="replace")
+                else:
+                    raise TypeError(f"Type of line read from stdout is invalid; got: {type(_outs_line)}")
+
+                if job.logged and job.outfile_handle is not None:
+                    job.outfile_handle.write(outs_line)
+                    job.outfile_handle.flush()
+                    job.outs += outs_line
+
+                if outs_line.startswith(":"):
+                    for m in re.finditer(r"node(\d+)/(\d+)", outs_line):
+                        nodes.append((int(m.group(1)), int(m.group(2))))
+                elif numseconds is None:
+                    if (match := re.search(r"for (\d+) seconds", outs_line)) is not None:
+                        numseconds = int(match.group(1))
+
+        for line in job.outs.splitlines():
             if line.startswith(":"):
                 for m in re.finditer(r"node(\d+)/(\d+)", line):
                     nodes.append((int(m.group(1)), int(m.group(2))))

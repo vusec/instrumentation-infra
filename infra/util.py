@@ -284,8 +284,8 @@ class Process:
     """
 
     proc: subprocess.CompletedProcess | subprocess.Popen | None
-    cmd_str: str
     teeout: bool
+    cmd_str: str
 
     stdout_override: str | None = None
     stderr_override: str | None = None
@@ -306,7 +306,8 @@ class Process:
         """
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no return code!")
-        return self.proc.returncode if self.proc is not None else -1
+
+        return self.proc.returncode if isinstance(self.proc, subprocess.CompletedProcess) else self.proc.wait()
 
     @property
     def stdout(self) -> str:
@@ -330,13 +331,32 @@ class Process:
         """
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no stdout!")
+
         if self.stdout_override is not None:
             return self.stdout_override
+
+        if self.proc.stdout is None:
+            return ""
+
         if isinstance(self.proc.stdout, str):
-            return self.proc.stdout
+            self.stdout_override = self.proc.stdout
+            return self.stdout_override
+
         if isinstance(self.proc.stdout, bytes):
-            return self.proc.stdout.decode(encoding="ascii", errors="replace")
-        raise ValueError(f"Only bytes/str values for proc.stdout are supported, got {type(self.proc.stdout)}")
+            self.stdout_override = self.proc.stdout.decode(encoding="ascii", errors="replace")
+            return self.stdout_override
+
+        if isinstance(self.proc.stdout, IO):
+            outs = self.proc.stdout.read()
+            if isinstance(outs, str):
+                self.stdout_override = outs
+                return outs
+            if isinstance(outs, bytes):
+                outs = outs.decode(encoding="ascii", errors="replace")
+                self.stdout_override = outs
+                return outs
+
+        raise ValueError(f"Unsupported type for stdout; expected str/bytes/IO, got: {type(self.proc.stdout)}")
 
     @property
     def stderr(self) -> str:
@@ -360,16 +380,34 @@ class Process:
         """
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no stderr!")
+
         if self.stderr_override is not None:
             return self.stderr_override
+
+        if self.proc.stderr is None:
+            return ""
+
         if isinstance(self.proc.stderr, str):
-            return self.proc.stderr
+            self.stderr_override = self.proc.stderr
+            return self.stderr_override
+
         if isinstance(self.proc.stderr, bytes):
-            return self.proc.stderr.decode(encoding="ascii", errors="replace")
-        raise ValueError(f"Only bytes/str values for proc.stderr are supported, got {type(self.proc.stderr)}")
+            self.stderr_override = self.proc.stderr.decode(encoding="ascii", errors="replace")
+            return self.stderr_override
+
+        if isinstance(self.proc.stderr, IO):
+            errs = self.proc.stderr.read()
+            if isinstance(errs, str):
+                self.stderr_override = errs
+                return errs
+            if isinstance(errs, bytes):
+                errs = errs.decode(encoding="ascii", errors="replace")
+                return errs
+
+        raise ValueError(f"Unsupported type for stderr; expected str/bytes/IO, got: {type(self.proc.stderr)}")
 
     @property
-    def stdout_io(self) -> IO[AnyStr]:
+    def stdout_io(self) -> IO[AnyStr] | None:
         """Alternative version of :prop:`self.stdout` that instead returns the IO stream of the underlying
         process' stdout instead of reading from it and returning the contained string value; equivalent
         to accessing :param:`self.proc.stdout` directly to use in :func:`self.proc.stdout.read()`
@@ -380,13 +418,14 @@ class Process:
         """
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no stdout!")
-        assert self.stdout_override is None
-        assert self.proc.stdout is not None
-        assert not isinstance(self.proc.stdout, (str, bytes))
-        return self.proc.stdout
+
+        if isinstance(self.proc.stdout, IO):
+            return self.proc.stdout
+
+        raise ValueError(f"Cannot get stdout IO stream; stdout is {type(self.proc.stdout)}")
 
     @property
-    def stderr_io(self) -> IO[AnyStr]:
+    def stderr_io(self) -> IO[AnyStr] | None:
         """Alternative version of :prop:`self.stderr` that instead returns the IO stream of the underlying
         process' stderr instead of reading from it and returning the contained string value; equivalent
         to accessing :param:`self.proc.stderr` directly to use in :func:`self.proc.stderr.read()`
@@ -397,10 +436,11 @@ class Process:
         """
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no stderr!")
-        assert self.stderr_override is None
-        assert self.proc.stderr is not None
-        assert not isinstance(self.proc.stderr, (str, bytes))
-        return self.proc.stderr
+
+        if isinstance(self.proc.stderr, IO):
+            return self.proc.stderr
+
+        raise ValueError(f"Cannot get stderr IO stream; stderr is {type(self.proc.stderr)}")
 
     def poll(self) -> int | None:
         """Calls :func:`self.proc.poll()` iff the underlying process is of type :type:`subprocess.Popen`,
@@ -412,9 +452,6 @@ class Process:
         """
         if self.proc is None:
             raise ProcessLookupError("Cannot poll invalid (None) process!")
-        if isinstance(self.proc, subprocess.CompletedProcess):
-            return self.returncode
-        return self.proc.poll()
 
         return self.returncode if isinstance(self.proc, subprocess.CompletedProcess) else self.proc.poll()
 
@@ -428,9 +465,8 @@ class Process:
         """
         if self.proc is None:
             raise ProcessLookupError("Cannot wait on invalid (None) process!")
-        if isinstance(self.proc, subprocess.CompletedProcess):
-            return self.proc.returncode
-        return self.proc.wait()
+
+        return self.returncode if isinstance(self.proc, subprocess.CompletedProcess) else self.proc.wait(timeout)
 
 
 def get_cmd_list(raw_cmd: Iterable[Any] | str) -> list[str] | None:
