@@ -828,16 +828,12 @@ def require_program(ctx: Context, name: str, error: str | None = None) -> None:
     :param error: optional error message
     :raises FatalError: if program is not found
     """
-    if "PATH" in ctx.runenv:
-        path = ":".join(ctx.runenv["PATH"])
-    else:
-        path = os.getenv("PATH", "")
+    runenv_path = _path if isinstance(_path := ctx.runenv.get("PATH", []), list) else _path.split(":")
+    global_path = os.getenv("PATH", "").split(":")
+    path = ":".join(runenv_path + global_path)
 
     if shutil.which(name, path=path) is None:
-        msg = f"'{name}' not found in PATH"
-        if error:
-            msg += ": " + error
-        raise FatalError(msg)
+        raise FatalError(f"'{name}' not found in PATH ({error if error else ''}): {path}")
 
 
 def untar(
