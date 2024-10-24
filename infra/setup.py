@@ -10,7 +10,7 @@ from multiprocessing import cpu_count
 
 from . import commands
 from .command import Command, get_deps
-from .context import Context, ContextPaths
+from .context import LOG_LVL_TRC, LOG_LVL_VRB, Context, ContextPaths, ExtLogger
 from .instance import Instance
 from .package import Package
 from .target import Target
@@ -70,7 +70,10 @@ class Setup:
         self.commands = Index("command")
         self.packages = LazyIndex("package", self._find_package)
 
+        # Set the custom extended logger class
+        logging.setLoggerClass(ExtLogger)
         logger = logging.getLogger("infra")
+        assert isinstance(logger, ExtLogger)
 
         infra_path = os.path.dirname(os.path.dirname(__file__))
         setup_path = os.path.abspath(setup_path)
@@ -154,6 +157,22 @@ class Setup:
         # Set logger to DEBUG (set lvl per handler instead) & disable propagation to ancestors
         self.ctx.log.setLevel(logging.DEBUG)
         self.ctx.log.propagate = False
+
+        # Add additional levels for trace & verbose messages
+        logging.addLevelName(LOG_LVL_VRB, "VERBOSE")
+        logging.addLevelName(LOG_LVL_TRC, "TRACE")
+
+        # Define a function for verbose logging messages
+        def _verbose(self: logging.Logger, message, *args, **kwargs):
+            if self.isEnabledFor(LOG_LVL_VRB):
+                self._log(LOG_LVL_VRB, message, *args, **kwargs)
+
+        # Define a function for trace level logging messages
+        def _trace(self: logging.Logger, message, *args, **kwargs):
+            if self.isEnabledFor(LOG_LVL_TRC):
+                self._log(LOG_LVL_TRC, message, *args, **kwargs)
+
+        # Store the extra handlers
 
         # Set the handler for writing to stdout (not stderr!)
         strm_hndlr = logging.StreamHandler(stream=sys.stdout)

@@ -1,92 +1,144 @@
-import fcntl
 import io
-import logging
 import os
-import random
 import re
-import select
-import shlex
 import sys
-import threading
 import time
+import fcntl
+import shlex
+import locale
+import random
+import logging
+import threading
 import subprocess
+
 from abc import ABCMeta, abstractmethod
+from typing import IO, Any, Callable, Iterable, Iterator, Sequence
+from pathlib import Path
 from dataclasses import dataclass, field
-from typing import (
-    IO,
-    Any,
-    Callable,
-    Iterable,
-    Iterator,
-    Sequence,
-)
+from multiprocessing import cpu_count
 
 from .context import Context
-from .util import FatalError, Process, require_program, run
-
-# TODO: rewrite this to use
-# https://docs.python.org/3/library/concurrent.futures.html?
+from .util import _Tee, FatalError, Process, require_program, run
 
 
 @dataclass
 class Job:
     proc: Process
     jobid: str
-    nnodes: int = 1
-    out_base: str = ""
-    start_time: float = time.time()
-    onsuccess: Callable[["Job"], bool | None] | None = None
-    onerror: Callable[["Job"], bool | None] | None = None
-    outs: str = ""
-    errs: str = ""
+    nnodes: int
+    out_file: str
+    start_time: float
+    out_stream: io.IOBase
+    good_callback: Callable[["Job"], bool | None] | None
+    fail_callback: Callable[["Job"], bool | None] | None
+
+    def __del__(self) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if not self.out_stream.closed:
+            self.out_stream.flush()
+            self.out_stream.close()
+
+    def elapsed(self) -> str:
+        return str(round(time.time() - self.start_time, ndigits=3))
 
     @property
-    def returncode(self) -> int:
-        return self.proc.returncode
+    def args(self):
+        return self.proc.args
+
+    @property
+    def cmd_str(self) -> str:
+        return self.proc.cmd_str
+
+    @property
+    def input(self) -> str | bytes:
+        return self.proc.input
+
+    @property
+    def stdin(self) -> IO | None:
+        return self.proc.stdin
 
     @property
     def stdout(self) -> str:
         return self.proc.stdout
 
     @property
+    def stdout_io(self) -> _Tee | None:
+        return self.proc.stdout_io
+
+    @property
+    def stdout_raw(self) -> bytes:
+        return self.proc.stdout_raw
+
+    @property
+    def stdout_buff(self) -> memoryview | None:
+        return self.proc.stdout_buff
+
+    @property
     def stderr(self) -> str:
         return self.proc.stderr
 
     @property
-    def stdout_io(self) -> IO | None:
-        return self.proc.stdout_io
+    def stderr_io(self) -> _Tee | None:
+        return self.proc.stderr_io
 
     @property
-    def stderr_io(self) -> IO | None:
-        return self.proc.stdout_io
+    def stderr_raw(self) -> bytes:
+        return self.proc.stderr_raw
+
+    @property
+    def stderr_buff(self) -> memoryview | None:
+        return self.proc.stderr_buff
+
+    @property
+    def pid(self) -> int:
+        return self.proc.pid
+
+    @property
+    def returncode(self) -> int | None:
+        return self.proc.returncode
+
+    def flush(self) -> None:
+        self.proc.flush()
+
+    def communicate(self, input: Any | None = None, timeout: float | None = None) -> tuple[Any, Any]:
+        return self.proc.communicate(input, timeout)
+
+    def kill(self) -> None:
+        self.proc.kill()
 
     def poll(self) -> int | None:
         return self.proc.poll()
 
-    def wait(self, timeout: float | None = None) -> int:
-        return self.proc.wait(timeout)
+    def wait(self, timeout: float | None = None):
+        return self.proc.wait()
+
+    def send_signal(self, sig: int) -> None:
+        self.proc.send_signal(sig)
+
+    def terminate(self) -> None:
+        self.proc.terminate()
 
 
 @dataclass
 class ProcessJob(Job):
-    stdout_handle: IO | None = None
-    stderr_handle: IO | None = None
+    pass
 
 
 @dataclass
 class SSHJob(Job):
-    outfile_handle: IO | None = None
-    node: str = ""
+    outfile_handle: io.IOBase | IO | None = field(default=None)
+    node: str = field(default="")
 
-    tunnel_src: int | None = None
-    tunnel_dest: int | None = None
+    tunnel_src: int | None = field(default=None)
+    tunnel_dest: int | None = field(default=None)
 
 
 @dataclass
 class PrunJob(Job):
-    nnodes: int = 1
-    outfile_handle: IO | None = None
-    logged: bool = True
+    outfile_handle: io.IOBase | IO | None = field(default=None)
+    logged: bool = field(default=True)
 
 
 class Pool(metaclass=ABCMeta):
@@ -109,318 +161,176 @@ class Pool(metaclass=ABCMeta):
     simultaneous jobs in the job queue (pending or running).
     """
 
-    # Wait time between checking for output and such
-    poll_interval: float = 0.050
+    poll_interval: float = 0.05
 
-    running: bool
-    jobs: dict[int, Job]
-    pollthread: threading.Thread | None
-
-    @abstractmethod
-    def make_jobs(
-        self,
-        ctx: Context,
-        cmd: str | Iterable[str],
-        jobid_base: str,
-        outfile_base: str,
-        nnodes: int,
-        **kwargs: Any,
-    ) -> Iterator[Job]:
-        pass
-
-    @abstractmethod
-    def process_job_output(self, job: Job, fd: int | None = None) -> None:
-        pass
-
-    def __init__(self, logger: logging.Logger, parallelmax: int):
-        """
-        :param logger: logging object for status updates (set to ``ctx.log``)
-        :param parallelmax: value of ``--parallelmax``
-        """
+    def __init__(self, logger: logging.Logger, parallelmax: int | None = None):
         self.log = logger
-        self.parallelmax = parallelmax
-        self.jobs = {}
-        self.running = True
-        self.pollthread = None
-        self._start_poller()
 
-    def __del__(self) -> None:
-        self.wait_all()
-        if self.pollthread is not None:
-            self.running = False
-            self.pollthread.join()  # Don't timeout on this join; has to finish
+        # Store the maximum parallelism; default to the number of CPUs available
+        self.__limit = parallelmax if parallelmax is not None else cpu_count()
 
-    def _start_poller(self) -> None:
-        if self.pollthread is None:
-            self.poller = select.epoll()
-            self.pollthread = threading.Thread(target=self._poller_thread, name="pool-poller")
-            self.pollthread.daemon = True
-            self.running = True
-            self.pollthread.start()
+        # Store a list to hold currently running jobs in
+        self.__curr_jobs: list[Job] = []
 
-    def _poller_thread(self) -> None:
-        # Monitor all jobs for finished jobs/output; call output/success/error handler callbacks
-        while self.running:
-            for fd, flags in self.poller.poll(timeout=self.poll_interval):
+        # Create & start a thread to continuously poll for finished jobs & handle them
+        self.__running = True
+        self.__thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self.__thread.start()
 
-                job = self.jobs[fd]
+    @property
+    def stopped(self) -> bool:
+        return not self.__running
 
-                # Regular data is available for read; handle it
-                if flags & (select.EPOLLIN | select.EPOLLPRI):
-                    self.process_job_output(job, fd)
+    def _poll_loop(self) -> None:
+        while self.__running:
+            while len(self.__curr_jobs) > 0:
+                for job in self.__curr_jobs[:]:
+                    try:
+                        # Check if the job completed & call the right callbacks if so
+                        if (ret_code := job.poll()) is not None:
+                            if ret_code == 0:
+                                self._handle_good(job)
+                            else:
+                                self._handle_fail(job)
 
-                # There was an error in the pipe
-                if flags & select.EPOLLERR:
-                    self.log.error(f"Error in file descriptor: {fd}")
-                    self.poller.unregister(fd)
-                    del self.jobs[fd]
+                            # After the job was handled, remove it from the list of running jobs
+                            self.__curr_jobs.remove(job)
 
-                    # Wait for the process itself to complete to ensure all output is captured
-                    job.proc.wait()
+                    except Exception as err:
+                        # Log but don't re-raise any jobs that threw an error; just remove them
+                        self.log.error(f"Handling of job failed ({err}) for: {job}")
+                        self.__curr_jobs.remove(job)
 
-                    # Check if another file descriptor in the list still refers to this job; remove it
-                    for alt_fd in {_fd for _fd, _job in self.jobs.items() if _job is job}:
-                        self.log.error(f"Found alternative file descriptor (with same job): {alt_fd}")
-                        self.process_job_output(job, alt_fd)
-                        self.poller.unregister(alt_fd)
-                        del self.jobs[alt_fd]
-
-                    # Call the error callback
-                    self.onerror(job)
-
-                # The process finished & closed the connection
-                if flags & select.EPOLLHUP:
-                    if job.proc.poll() is None:
-                        self.log.debug(f"Job {job.jobid} hung up but no return code yet; check later")
-                        continue
-
-                    self.poller.unregister(fd)
-                    del self.jobs[fd]
-
-                    # Check if another file descriptor of this same process is still in the jobs dict
-                    if job not in self.jobs.values():
-                        if job.proc.poll() == 0:
-                            self.onsuccess(job)
-                        else:
-                            self.onerror(job)
-
-    def _wait_for_queue_space(self, nodes_needed: int) -> None:
-        if self.parallelmax is not None:
-
-            def nodes_in_use() -> int:
-                return sum(job.nnodes for job in self.jobs.values())
-
-            while nodes_in_use() + nodes_needed > self.parallelmax:
-                time.sleep(self.poll_interval)
-
-    def wait_all(self) -> None:
-        """
-        Block (busy-wait) until all jobs in the queue have been completed.
-        Called automatically by :class:`Setup` after the ``build`` and ``run``
-        commands.
-        """
-        while len(self.jobs):
+            # If there were no more remaining jobs, sleep until checking again
             time.sleep(self.poll_interval)
+
+    def shutdown(self) -> None:
+        self.__running = False
+        self.__thread.join()
+
+    def wait(self) -> None:
+        while len(self.__curr_jobs) > 0:
+            time.sleep(self.poll_interval)
+
+    def wait_for_space(self, nnodes: int = 1) -> None:
+        assert nnodes <= self.__limit
+        while sum(job.nnodes for job in self.__curr_jobs) + nnodes > self.__limit:
+            time.sleep(self.poll_interval)
+
+    def _handle_good(self, job: Job) -> None:
+        if job.good_callback is None or not job.good_callback(job):
+            self.log.info(f"[PASS] Job '{job.jobid}' succeeded in {job.elapsed()} second(s)")
+        else:
+            self.log.info(
+                "[PASS] Job finished successfully\n"
+                + f"  Job ID:      '{job.jobid}'\n"
+                + f"  Command:     '{job.cmd_str}'\n"
+                + f"  Runtime:      {job.jobid} second(s)\n"
+                + f"  Job stdout:\n{''.join(f'    > {line}\n' for line in job.stdout.splitlines())}\n"
+                + f"  Job stderr:\n{''.join(f'    > {line}\n' for line in job.stderr.splitlines())}\n"
+            )
+
+    def _handle_fail(self, job: Job) -> None:
+        if job.fail_callback is None or not job.fail_callback(job):
+            self.log.info(f"[FAIL] Job '{job.jobid}' failed after {job.elapsed()} second(s)")
+        else:
+            self.log.info(
+                "[FAIL] Job execution failed\n"
+                + f"  Job ID:      '{job.jobid}'\n"
+                + f"  Command:     '{job.cmd_str}'\n"
+                + f"  Retcode:      {job.returncode}\n"
+                + f"  Runtime:      {job.jobid} second(s)\n"
+                + f"  Job stdout:\n{''.join(f'    > {line}\n' for line in job.stdout.splitlines())}\n"
+                + f"  Job stderr:\n{''.join(f'    > {line}\n' for line in job.stderr.splitlines())}\n"
+            )
 
     def run(
         self,
         ctx: Context,
-        cmd: str | Iterable[str],
+        cmd: str | Iterable[Any],
         jobid: str,
+        nnodes: int | None = None,
         outfile: str | None = None,
-        nnodes: int = 1,
-        onsuccess: Callable[[Job], bool | None] | None = None,
-        onerror: Callable[[Job], bool | None] | None = None,
-        **kwargs: Any,
+        allow_error: bool | None = None,
+        good_callback: Callable[["Job"], bool | None] | None = None,
+        fail_callback: Callable[["Job"], bool | None] | None = None,
+        **kwargs,
     ) -> list[Job]:
-        """
-        A non-blocking wrapper for :func:`util.run`, to be used when
-        ``--parallel`` is specified.
+        nnodes = nnodes if nnodes is not None else 1
+        out_file = outfile if outfile is not None else f"{jobid}"
+        allow_error = allow_error if allow_error is not None else False
+        ctx.log.info(f"Running {nnodes} nodes for job base ID '{jobid}'; logfile base: {out_file}")
 
-        :param ctx: the configuration context
-        :param cmd: the command to run
-        :param jobid: a human-readable ID for status reporting
-        :param outfile: full path to target file for command output
-        :param nnodes: number of cores or machines to run the command on
-        :param onsuccess: callback when the job finishes successfully
-        :param onerror: callback when the job exits with (typically I/O) error
-        :param kwargs: passed directly to :func:`util.run`
-        :returns: handles to created job processes
-        """
-        self._start_poller()
-
-        if outfile is None:
-            outfile = f"{jobid}"
-
-        jobs = []
-        for job in self.make_jobs(ctx, cmd, jobid, outfile, nnodes, **kwargs):
-            assert job.proc.proc is not None
-            job.onsuccess = onsuccess
-            job.onerror = onerror
-            job.outs = ""
-            job.errs = ""
-
-            if (outs_io := job.stdout_io) is not None:
-                self.jobs[outs_io.fileno()] = job
-                self.poller.register(outs_io, select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP)
-
-            if (errs_io := job.stderr_io) is not None:
-                self.jobs[errs_io.fileno()] = job
-                self.poller.register(errs_io, select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR | select.EPOLLHUP)
-
+        jobs: list[Job] = []
+        for job in self.make_jobs(
+            ctx=ctx,
+            cmd=cmd,
+            job_id=jobid,
+            nnodes=nnodes if nnodes is not None else 1,
+            out_file=out_file if out_file is not None else f"{jobid}",
+            allow_error=allow_error if allow_error is not None else False,
+            good_callback=good_callback,
+            fail_callback=fail_callback,
+            **kwargs,
+        ):
+            self.__curr_jobs.append(job)
             jobs.append(job)
-
         return jobs
 
-    def onsuccess(self, job: Job) -> None:
-        # don't log if onsuccess() returns False
-        if not job.onsuccess or job.onsuccess(job) is not False:
-            self.log.info(f"job {job.jobid} finished {self._get_elapsed(job)}")
-
-    def onerror(self, job: Job) -> None:
-        # don't log if onerror() returns False
-        if not job.onerror or job.onerror(job) is not False:
-            self.log.error(
-                "Command returned non-zero error status code:\n"
-                + f"\tJob ID:       {job.jobid}\n"
-                + f"\tRuntime:      {self._get_elapsed(job)}\n"
-                + f"\tCommand:      {job.proc.cmd_str}\n"
-                + f"\tReturn code:  {job.returncode}\n\n"
-                + f"{''.join(f'STDOUT > {line}\n' for line in job.outs)}\n\n"
-                + f"{''.join(f'STDERR > {line}\n' for line in job.errs)}\n\n"
-            )
-
-    def _get_elapsed(self, job: Job) -> str:
-        return f"after {round(time.time() - job.start_time)} seconds"
-
-
-class ProcessPool(Pool):
-    # 7-bit C1 ANSI sequences
-    ansi_escape = re.compile(r"(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]")
-
+    @abstractmethod
     def make_jobs(
         self,
         ctx: Context,
-        cmd: str | Iterable[str],
-        jobid_base: str,
-        outfile_base: str,
+        cmd: str | Iterable[Any],
+        job_id: str,
         nnodes: int,
-        **kwargs: Any,
+        out_file: str,
+        allow_error: bool,
+        good_callback: Callable[["Job"], bool | None] | None,
+        fail_callback: Callable[["Job"], bool | None] | None,
+        **kwargs,
     ) -> Iterator[Job]:
+        pass
+
+
+class ProcessPool(Pool):
+    def make_jobs(
+        self,
+        ctx: Context,
+        cmd: str | Iterable[Any],
+        job_id: str,
+        nnodes: int,
+        out_file: str,
+        allow_error: bool,
+        good_callback: Callable[[Job], bool | None] | None,
+        fail_callback: Callable[[Job], bool | None] | None,
+        **kwargs,
+    ) -> Iterator[Job]:
+        # Set required flags
+        kwargs["defer"] = True
+        kwargs["silent"] = True
+        kwargs["teeout"] = False
+        kwargs["merge_outputs"] = True
+
+        # Start one process (with subprocess.Popen) per requested node
         for i in range(nnodes):
-            outfile: str = outfile_base if nnodes == 1 else f"{outfile_base}-{i}"
-            jobid: str = jobid_base if nnodes == 1 else f"{jobid_base}-{i}"
+            self.wait_for_space(1)
+            _job_id = job_id if nnodes == 1 else f"{job_id}-{i}"
+            _out_file = f"{out_file if nnodes == 1 else f'{out_file}-{i}'}.log"
+            ctx.log.debug(f"Starting job '{_job_id}' with log file: {_out_file}")
 
-            os.makedirs(os.path.dirname(outfile), exist_ok=True)
-            self._wait_for_queue_space(1)
-
-            ctx.log.info(f"Running {jobid}; output base-file: {outfile}")
-            if (proc := run(ctx, cmd, defer=True, bufsize=io.DEFAULT_BUFFER_SIZE, **kwargs)).proc is not None:
-                outfiles: list[str] = []
-                if (outs_io := proc.stdout_io) is not None:
-                    outfiles.append(f"{outfile}.stdout.log")
-                    _set_non_blocking(outs_io)
-                if (errs_io := proc.stderr_io) is not None:
-                    outfiles.append(f"{outfile}.stderr.log")
-                    _set_non_blocking(errs_io)
-
-                yield ProcessJob(
-                    proc=proc,
-                    jobid=jobid,
-                    nnodes=1,
-                    out_base=outfile,
-                    start_time=time.time(),
-                    onsuccess=None,
-                    onerror=None,
-                    outs="",
-                    errs="",
-                    stdout_handle=open(f"{outfile}.stdout.log", mode="w") if proc.stdout_io is not None else None,
-                    stderr_handle=open(f"{outfile}.stderr.log", mode="w") if proc.stderr_io is not None else None,
-                )
-            else:
-                RuntimeError(f"Failed to create process {jobid} for command: {cmd}")
-
-    def process_job_output(self, job: Job, fd: int | None = None) -> None:
-        assert isinstance(job, ProcessJob)
-
-        # If no descriptor is given and both stdout & stderr are None, there's nothing to process
-        if fd is None:
-            if (outs_io := job.stdout_io) is not None:
-                fd = outs_io.fileno()
-            elif (errs_io := job.stderr_io) is not None:
-                fd = errs_io.fileno()
-            else:
-                return
-
-        # Read from the stdout file descriptor if it's not None & write to the stdout file
-        if (outs_io := job.stdout_io) is not None and outs_io.fileno() == fd:
-            assert job.stdout_handle is not None
-
-            # Read until EOF is reached; write to outfile handle (decode if necessary)
-            while _outs_line := outs_io.readline():
-                if isinstance(_outs_line, str):
-                    outs_line = self.ansi_escape.sub("", _outs_line)
-                elif isinstance(_outs_line, bytes):
-                    outs_line = self.ansi_escape.sub("", _outs_line.decode(encoding="ascii", errors="replace"))
-                else:
-                    raise TypeError(f"Invalid type from stdout stream: {type(_outs_line)}")
-
-                job.outs += outs_line
-                job.stdout_handle.write(outs_line)
-                job.stdout_handle.flush()
-
-        # Read from the stderr file descriptor if it's not None & write to the stderr file
-        if (errs_io := job.stderr_io) is not None and errs_io.fileno() == fd:
-            assert job.stderr_handle is not None
-
-            # Read until EOF is reached; write to outfile handle (decode if necessary)
-            while _errs_line := errs_io.readline():
-                if isinstance(_errs_line, str):
-                    errs_line = self.ansi_escape.sub("", _errs_line)
-                elif isinstance(_errs_line, bytes):
-                    errs_line = self.ansi_escape.sub("", _errs_line.decode(encoding="ascii", errors="replace"))
-                else:
-                    raise TypeError(f"Invalid type from stderr stream: {type(_errs_line)}")
-
-                job.stderr_handle.write(errs_line)
-                job.stderr_handle.flush()
-                job.errs += errs_line
-
-    def onsuccess(self, job: Job) -> None:
-        assert isinstance(job, ProcessJob)
-        job.proc.wait()
-
-        if (outs_io := job.stdout_io) is not None:
-            assert job.stdout_handle is not None
-            self.process_job_output(job, outs_io.fileno())
-            job.stdout_handle.flush()
-            job.stdout_handle.close()
-
-        if (errs_io := job.stderr_io) is not None:
-            assert job.stderr_handle is not None
-            self.process_job_output(job, errs_io.fileno())
-            job.stderr_handle.flush()
-            job.stderr_handle.close()
-
-        super().onsuccess(job)
-
-    def onerror(self, job: Job) -> None:
-        assert isinstance(job, ProcessJob)
-        job.proc.wait()
-
-        if (outs_io := job.stdout_io) is not None:
-            assert job.stdout_handle is not None
-            self.process_job_output(job, outs_io.fileno())
-            job.stdout_handle.flush()
-            job.stdout_handle.close()
-
-        if (errs_io := job.stderr_io) is not None:
-            assert job.stderr_handle is not None
-            self.process_job_output(job, errs_io.fileno())
-            job.stderr_handle.flush()
-            job.stderr_handle.close()
-
-        super().onerror(job)
+            os.makedirs(name=os.path.dirname(_out_file), exist_ok=True)
+            log_file = open(_out_file, mode="w", errors="replace")
+            yield ProcessJob(
+                proc=run(ctx=ctx, cmd=cmd, allow_error=allow_error, writers=[log_file], **kwargs),
+                jobid=_job_id,
+                nnodes=1,
+                out_file=_out_file,
+                start_time=time.time(),
+                out_stream=log_file,
+                good_callback=good_callback,
+                fail_callback=fail_callback,
+            )
 
 
 class SSHPool(Pool):
@@ -640,7 +550,7 @@ class SSHPool(Pool):
                 if isinstance(_outs_line, str):
                     outs_line = _outs_line
                 elif isinstance(_outs_line, bytes):
-                    outs_line = _outs_line.decode(encoding="ascii", errors="replace")
+                    outs_line = _outs_line.decode(encoding=locale.getpreferredencoding(False), errors="replace")
                 else:
                     raise TypeError(f"Type of line read from stdout is invalid; got: {type(_outs_line)}")
 
@@ -661,7 +571,7 @@ class SSHPool(Pool):
         self.available_nodes.append(job.node)
         super().onsuccess(job)
 
-    def onerror(self, job: Job) -> None:
+    def onfailure(self, job: Job) -> None:
         assert isinstance(job, SSHJob)
 
         if (outs_io := job.stdout_io) is not None:
@@ -670,7 +580,7 @@ class SSHPool(Pool):
             if not job.outfile_handle.closed:
                 job.outfile_handle.close()
 
-        super().onerror(job)
+        super().onfailure(job)
 
 
 class PrunPool(Pool):
@@ -776,7 +686,7 @@ class PrunPool(Pool):
                 if isinstance(_outs_line, str):
                     outs_line = _outs_line
                 elif isinstance(_outs_line, bytes):
-                    outs_line = _outs_line.decode(encoding="ascii", errors="replace")
+                    outs_line = _outs_line.decode(encoding=locale.getpreferredencoding(False), errors="replace")
                 else:
                     raise TypeError(f"Type of line read from stdout is invalid; got: {type(_outs_line)}")
 
@@ -809,6 +719,6 @@ class PrunPool(Pool):
             job.logged = True
 
 
-def _set_non_blocking(f: IO) -> None:
+def _set_non_blocking(f: io.IOBase | IO) -> None:
     flags = fcntl.fcntl(f, fcntl.F_GETFL)
     fcntl.fcntl(f, fcntl.F_SETFL, flags | os.O_NONBLOCK)

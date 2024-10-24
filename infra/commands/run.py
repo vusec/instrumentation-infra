@@ -113,5 +113,6 @@ class RunCommand(Command):
             os.chdir(orig_cwd)
             ctx = orig_ctx
 
-        if pool:
-            pool.wait_all()
+        # If applicable, shutdown the parallel pool properly (also waits)
+        if pool is not None:
+            pool.shutdown()

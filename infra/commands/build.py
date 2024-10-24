@@ -126,7 +126,7 @@ class BuildCommand(Command):
                 # Build the target itself; if a parallel processing pool was used, wait for all of them to finish
                 target.build(ctx, instance, pool)
                 if pool is not None:
-                    pool.wait_all()
+                    pool.wait()
 
                 # Run the instance's post-build hooks and build post-processing function
                 target.run_hooks_post_build(ctx, instance)
@@ -135,6 +135,10 @@ class BuildCommand(Command):
             # Finish the build by restoring the original configuration context and processing the next instance
             ctx.log.info(f"Build of {target.name} finished ({instance.name}); restoring configuration context")
             ctx = original_ctx
+
+        # If applicable, shutdown the parallel pool properly (also waits but that was already done)
+        if pool is not None:
+            pool.shutdown()
 
 
 class PkgBuildCommand(Command):

@@ -292,7 +292,6 @@ class Juliet(Target):
             proc = run(
                 ctx,
                 [str(testpath)],
-                env=ctx.runenv,
                 silent=True,
                 allow_error=False,
                 input=stdin,
@@ -313,7 +312,6 @@ class Juliet(Target):
             proc = run(
                 ctx,
                 [str(testpath)],
-                env=ctx.runenv,
                 silent=True,
                 allow_error=True,
                 input=stdin,

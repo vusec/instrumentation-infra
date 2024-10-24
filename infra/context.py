@@ -12,6 +12,48 @@ from multiprocessing import cpu_count
 
 HookFunc: TypeAlias = Callable[["Context", str], None]
 
+LOG_LVL_CRT = logging.CRITICAL
+LOG_LVL_FTL = logging.FATAL
+LOG_LVL_ERR = logging.ERROR
+LOG_LVL_WRN = logging.WARNING
+LOG_LVL_INF = logging.INFO
+LOG_LVL_VRB = (logging.INFO + logging.DEBUG) // 2
+LOG_LVL_DBG = logging.DEBUG
+LOG_LVL_TRC = (logging.DEBUG + logging.NOTSET) // 2
+LOG_LVL_NST = logging.NOTSET
+
+LOG_LEVEL_ABBREVIATIONS = {
+    "NST": "NST",
+    "TRC": "TRC",
+    "DBG": "DBG",
+    "VRB": "VRB",
+    "INF": "INF",
+    "WRN": "WRN",
+    "ERR": "ERR",
+    "FTL": "FTL",
+    "CRT": "CRT",
+    "NOTSET": "NST",
+    "TRACE": "TRC",
+    "DEBUG": "DBG",
+    "VERBOSE": "VRB",
+    "INFO": "INF",
+    "WARN": "WRN",
+    "WARNING": "WRN",
+    "ERROR": "ERR",
+    "FATAL": "FTL",
+    "CRITICAL": "CRT",
+}
+
+
+class ExtLogger(logging.Logger):
+    def verbose(self, message, *args, **kwargs):
+        if self.isEnabledFor(LOG_LVL_VRB):
+            self._log(LOG_LVL_VRB, message, *args, **kwargs)
+
+    def trace(self, message, *args, **kwargs):
+        if self.isEnabledFor(LOG_LVL_TRC):
+            self._log(LOG_LVL_TRC, message, *args, **kwargs)
+
 
 @dataclass(frozen=True)
 class ContextPaths:
@@ -107,7 +149,7 @@ class Context:
     paths: ContextPaths
 
     #: The logging object used for status updates.
-    log: logging.Logger
+    log: ExtLogger
 
     #: The logging level as requested by the user.
     #:
@@ -181,6 +223,37 @@ class Context:
     #:
     #: In practice it is either empty or ``['-flto']`` when compiling with LLVM.
     lib_ldflags: list[str] = field(default_factory=list)
+
+    def getEnvironment(self, include_flags: bool = False) -> dict[str, str | list[str]]:
+        """
+        Returns the environment stored in the context; sets variables like :var:`$CC` to default
+        programs stored in :var:`ctx.cc` and such. Optionally includes environment variables for
+        the stored flags, e.g. :var:`$CFLAGS` for flags in :var:`ctx.cflags`.
+
+        :param bool include_flags: whether to include environment variables for flags, defaults to False
+        :return dict[str, str | list[str]]: the environment for the current context
+        """
+        return (
+            self.runenv
+            | {
+                "CC": self.cc,
+                "CXX": self.cxx,
+                "FC": self.fc,
+                "AR": self.ar,
+                "NM": self.nm,
+                "RANLIB": self.ranlib,
+            }
+            | (
+                {
+                    "CFLAGS": " ".join(self.cflags),
+                    "CXXFLAGS": " ".join(self.cxxflags),
+                    "LDFLAGS": " ".join(self.ldflags),
+                    "LIB_LDFLAGS": " ".join(self.lib_ldflags),
+                }
+                if include_flags
+                else {}
+            )
+        )
 
     def add_flags(
         self,

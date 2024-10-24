@@ -452,7 +452,7 @@ class SPEC2017(Target):
             ),
         ]
         if pool:
-            pool.run(ctx, cmd, onsuccess=onsuccess, **kwargs)
+            pool.run(ctx, cmd, good_callback=onsuccess, **kwargs)
         else:
             assert onsuccess is None, "onsuccess not supported without pool"
             run(ctx, cmd, **kwargs)

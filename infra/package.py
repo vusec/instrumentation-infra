@@ -4,7 +4,7 @@ import shutil
 from abc import ABCMeta, abstractmethod
 from typing import Any, Iterable, Iterator
 
-from infra.context import Context
+from .context import Context
 
 PkgConfigOption = tuple[str, str, str | Iterable[str]]
 

@@ -668,7 +668,7 @@ class WebServerRunner:
         # Terminate the remote runners and clean up.
         client.close()
         server.close()
-        self.pool.wait_all()
+        self.pool.wait()
 
         self.ctx.log.info("Done, syncing results to " + self.logdir)
         self.pool.sync_from_nodes(client_debug_file, self.logfile(client_debug_file), client_node)
@@ -1430,11 +1430,6 @@ class Lighttpd(WebServer):
         path = join_env_paths(ctx.runenv).get("PATH", "")
         cc = shutil.which(ctx.cc, path=path)
         assert cc
-        env: dict[str, str | list[str]] = {
-            "CFLAGS": qjoin(ctx.cflags),
-            "LDFLAGS": qjoin(ctx.ldflags),
-            "ASAN_OPTIONS": "detect_leaks=0",  # Lighttphd suffers from memory leaks
-        }
         run(
             ctx,
             [
@@ -1446,7 +1441,11 @@ class Lighttpd(WebServer):
                 "build_static=yes",
                 "build_dynamic=no",
             ],
-            env=env,
+            env={
+                "CFLAGS": qjoin(ctx.cflags),
+                "LDFLAGS": qjoin(ctx.ldflags),
+                "ASAN_OPTIONS": "detect_leaks=0",  # Lighttphd suffers from memory leaks
+            },
         )
 
     def server_bin(self, ctx: Context, instance: Instance) -> str:
