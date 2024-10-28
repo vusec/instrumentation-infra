@@ -519,12 +519,12 @@ def run(
                 + f"\tWorking dir:    {os.getcwd()}\n"
                 + f"\tReturn code:    {ret_code}\n"
                 + f"\tFailed cmd:     {cmd_str}\n"
-                + f"\tCmd stdout:\n{''.join(f'\t\t> {line}\n' for line in stdout_tee.getstr().splitlines())}\n"
-                + (
-                    f"\tCmd stderr:\n{''.join(f'\t\t> {line}\n' for line in stderr_tee.getstr().splitlines())}\n"
-                    if stderr_tee is not None
-                    else "\tCmd stderr:\n\n"
-                )
+                # + f"\tCmd stdout:\n{''.join(f'\t\t> {line}\n' for line in stdout_tee.getstr().splitlines())}\n"
+                # + (
+                #     f"\tCmd stderr:\n{''.join(f'\t\t> {line}\n' for line in stderr_tee.getstr().splitlines())}\n"
+                #     if stderr_tee is not None
+                #     else "\tCmd stderr:\n\n"
+                # )
             )
             raise FatalError(f"Command execution error: '{cmd_str}'")
 
