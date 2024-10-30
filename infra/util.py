@@ -12,6 +12,7 @@ import subprocess
 
 from pathlib import Path
 from datetime import datetime
+import time
 
 from .context import LOG_LEVEL_ABBREVIATIONS, Context
 
@@ -127,7 +128,7 @@ class _Tee(io.IOBase):
     from :func:`open()`) and writes any data written to this :type:`_Tee` to those streams.
     """
 
-    poll_interval: float = 0.05
+    poll_interval: float = 0.01
 
     def __init__(self, *writers: io.IOBase | IO) -> None:
         super().__init__()
@@ -135,12 +136,22 @@ class _Tee(io.IOBase):
         # Store the writers locally; create a buffer to store written data; and track opened-status
         self.__writers = list(writers)
         self.__buffer = io.BytesIO()
-        self.__open = True
+        self.__closed = False
 
         # Create a pair of pipes to read/write data from/into this tee; set them to use blocking I/O
-        self.__r_fd, self.__w_fd = os.pipe()
-        os.set_blocking(self.__w_fd, True)
-        os.set_blocking(self.__r_fd, True)
+        while True:
+            try:
+                self.__r_fd, self.__w_fd = os.pipe()
+                os.set_blocking(self.__r_fd, True)
+                os.set_blocking(self.__w_fd, True)
+                break
+            except OSError:
+                time.sleep(self.poll_interval)
+                continue
+
+        # Track the opened status of the read & write pipe ends
+        self.__r_fd_closed = False
+        self.__w_fd_closed = False
 
         # Create a daemon thread to continuously flush incoming data to all of the stored writer objects
         self.__thread = threading.Thread(target=self._flusher_loop, daemon=True)
@@ -151,48 +162,97 @@ class _Tee(io.IOBase):
 
     def __exit__(self, _exc_type, _exc_val, _exc_tb) -> None:
         self.close()
+        self.close_buffer()
 
     def __del__(self) -> None:
         self.close()
+        self.close_buffer()
+
+    @property
+    def closed(self) -> bool:
+        return self.__closed
+
+    @property
+    def read_closed(self) -> bool:
+        return self.__r_fd_closed
+
+    @property
+    def write_closed(self) -> bool:
+        return self.__w_fd_closed
+
+    @property
+    def buffer_closed(self) -> bool:
+        return self.__buffer.closed
+
+    def close_buffer(self) -> None:
+        if not self.__buffer.closed:
+            self.__buffer.flush()
+            self.__buffer.close()
+
+    def close_read_fd(self) -> None:
+        if not self.__r_fd_closed:
+            os.close(self.__r_fd)
+            self.__r_fd_closed = True
+
+    def close_write_fd(self) -> None:
+        if not self.__w_fd_closed:
+            os.close(self.__w_fd)
+            self.__w_fd_closed = True
+
+    def join(self) -> None:
+        self.close_write_fd()
+        self.__thread.join()
+        self.close_read_fd()
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.join()
+        self.__closed = True
 
     def _flusher_loop(self) -> None:
-        # Read data that was written into this tee's pipe
-        while data := os.read(self.__r_fd, io.DEFAULT_BUFFER_SIZE):
-            # First store the incoming data in this tee's byte data buffer
-            self.__buffer.seek(0, io.SEEK_END)
-            self.__buffer.write(data)
+        try:
+            # Read data that was written into this tee's pipe
+            while data := os.read(self.__r_fd, io.DEFAULT_BUFFER_SIZE):
+                # First store the incoming data in this tee's byte data buffer
+                self.__buffer.seek(0, io.SEEK_END)
+                self.__buffer.write(data)
 
-            # Write data to stored writers (stripping/decoding data if applicable); remove closed writers
-            for writer in self.__writers[:]:
-                if writer.closed:
-                    self.__writers.remove(writer)
-                    continue
+                # Write data to stored writers (stripping/decoding data if applicable); remove closed writers
+                for writer in self.__writers[:]:
+                    if writer.closed:
+                        self.__writers.remove(writer)
+                        continue
 
-                # Write to the writer; strip/decode data first if necesasry for the writer type
-                try:
-                    match writer:
-                        case io.RawIOBase() | BinaryIO():
-                            if writer.isatty():
-                                writer.write(data)
-                            else:
-                                writer.write(ANSI_ESCAPE_RAW.sub(b"", data))
+                    # Write to the writer; strip/decode data first if necesasry for the writer type
+                    try:
+                        match writer:
+                            case io.RawIOBase() | BinaryIO():
+                                if writer.isatty():
+                                    writer.write(data)
+                                else:
+                                    writer.write(ANSI_ESCAPE_RAW.sub(b"", data))
 
-                        case io.TextIOBase() | TextIO():
-                            if writer.isatty():
-                                writer.write(data.decode(PREF_ENCODING, "replace"))
-                            else:
-                                writer.write(ANSI_ESCAPE_RAW.sub(b"", data).decode(PREF_ENCODING, "replace"))
+                            case io.TextIOBase() | TextIO():
+                                if writer.isatty():
+                                    writer.write(data.decode(PREF_ENCODING, "replace"))
+                                else:
+                                    writer.write(ANSI_ESCAPE_RAW.sub(b"", data).decode(PREF_ENCODING, "replace"))
 
-                        case _:
-                            raise TypeError(f"Unsupported type of writer; got: {type(writer)} ({writer})")
-                except:
-                    self.__writers.remove(writer)
+                            case _:
+                                raise TypeError(f"Unsupported type of writer; got: {type(writer)} ({writer})")
+                    except:
+                        self.__writers.remove(writer)
 
-            # Flush all remaining writers (doesn't flush removed writers)
+                # Flush all remaining writers (doesn't flush removed writers)
+                self.flush()
+
+                # Wait a small amount of time until re-trying
+                time.sleep(self.poll_interval)
+        finally:
+            # Flush remaining data & close read end of the pipe
             self.flush()
-
-        # Flush all remaining writers before terminating
-        self.flush()
+            self.close_read_fd()
 
     def flush(self) -> None:
         for writer in self.__writers[:]:
@@ -264,25 +324,6 @@ class _Tee(io.IOBase):
     def truncate(self, size: int | None = None) -> int:
         return self.__buffer.truncate(size)
 
-    @property
-    def closed(self) -> bool:
-        return not self.__open
-
-    def close(self) -> None:
-        if not self.__open:
-            return
-
-        # Stop accepting incoming data; wait for flusher thread to finish; then close read descriptor
-        os.close(self.__w_fd)
-        self.__thread.join()
-        os.close(self.__r_fd)
-
-        # Close the stored data buffer & clear the list of stored writers & set mark tee as closed
-        if not self.__buffer.closed:
-            self.__buffer.close()
-        self.__writers.clear()
-        self.__open = False
-
 
 class Process:
     def __init__(
@@ -302,6 +343,67 @@ class Process:
 
     def __del__(self) -> None:
         self.close()
+        self.close_buffers()
+
+    def __enter__(self) -> "Process":
+        return self
+
+    def __exit__(self, _exc_type, _exc_val, _exc_tb) -> None:
+        self.close()
+        self.close_buffers()
+
+    def close(self) -> None:
+        if self.__proc is not None:
+            try:
+                try:
+                    if self.__proc.stdin is not None and not self.__proc.stdin.closed:
+                        self.__proc.stdin.close()
+                except:
+                    pass
+                try:
+                    if self.__proc.stdout is not None and not self.__proc.stdout.closed:
+                        self.__proc.stdout.close()
+                except:
+                    pass
+                try:
+                    if self.__proc.stderr is not None and not self.__proc.stderr.closed:
+                        self.__proc.stderr.close()
+                except:
+                    pass
+                try:
+                    if self.__proc.poll() is None:
+                        self.__proc.wait()
+                except:
+                    pass
+            except:
+                pass
+            finally:
+                self.__proc = None
+
+        if self.__outs_tee is not None and not self.__outs_tee.closed:
+            self.__outs_tee.close()
+        if self.__errs_tee is not None and not self.__errs_tee.closed:
+            self.__errs_tee.close()
+
+    def close_stdout(self) -> None:
+        if self.__outs_tee is not None and not self.__outs_tee.buffer_closed:
+            self.__outs_tee.close_buffer()
+
+    def close_stderr(self) -> None:
+        if self.__errs_tee is not None and not self.__errs_tee.buffer_closed:
+            self.__errs_tee.close_buffer()
+
+    def close_buffers(self) -> None:
+        self.close_stdout()
+        self.close_stderr()
+
+    @property
+    def stdout_buff_closed(self) -> bool:
+        return self.__outs_tee is None or self.__outs_tee.buffer_closed
+
+    @property
+    def stderr_buff_closed(self) -> bool:
+        return self.__errs_tee is None or self.__errs_tee.buffer_closed
 
     @property
     def proc(self) -> subprocess.Popen | None:
@@ -366,14 +468,6 @@ class Process:
     def returncode(self) -> int | None:
         assert self.proc is not None
         return self.proc.returncode
-
-    def close(self) -> None:
-        if self.__outs_tee is not None:
-            self.__outs_tee.flush()
-            self.__outs_tee.close()
-        if self.__errs_tee is not None:
-            self.__errs_tee.flush()
-            self.__errs_tee.close()
 
     def flush(self) -> None:
         if self.__outs_tee is not None:
@@ -443,7 +537,7 @@ def run(
     cmd = cmd if isinstance(cmd, str) else [str(part) for part in cmd if part]
     cmd_arr = shlex.split(cmd) if isinstance(cmd, str) else cmd
     cmd_str = shlex.join(cmd_arr)
-    ctx.log.info(f'Running: "{cmd_str}"')
+    ctx.log.debug(f'Running command: "{cmd_str}"')
 
     # Determine if the input has text mode enabled or if it's in the default binary mode
     text_mode = kwargs.get("text", False) or kwargs.get("universal_newlines", False) or kwargs.get("encoding") is not None
@@ -513,20 +607,22 @@ def run(
 
     # If not deferring the command, wait for completion & report result and/or errors
     if not defer:
-        if (ret_code := _proc.wait(timeout=None)) != 0 and not allow_error:
+        ret_code = _proc.wait(timeout=None)
+        if stdout_tee is not None:
+            stdout_tee.close_write_fd()
+            stdout_tee.flush()
+        if stderr_tee is not None:
+            stderr_tee.close_write_fd()
+            stderr_tee.flush()
+        if ret_code != 0 and not allow_error:
             ctx.log.fatal(
-                "Execution failed but errors are not allowed!\n"
-                + f"\tWorking dir:    {os.getcwd()}\n"
-                + f"\tReturn code:    {ret_code}\n"
-                + f"\tFailed cmd:     {cmd_str}\n"
-                # + f"\tCmd stdout:\n{''.join(f'\t\t> {line}\n' for line in stdout_tee.getstr().splitlines())}\n"
-                # + (
-                #     f"\tCmd stderr:\n{''.join(f'\t\t> {line}\n' for line in stderr_tee.getstr().splitlines())}\n"
-                #     if stderr_tee is not None
-                #     else "\tCmd stderr:\n\n"
-                # )
+                "[FAIL] Command execution failed\n"
+                + f"  Status:       {ret_code}\n"
+                + f"  Command:     '{cmd_str}'\n"
+                + f"  Cmd stdout:   {f'\n{outs}' if stdout_tee is not None and (outs := stdout_tee.getstr()) else "<EMPTY>"}\n"
+                + f"  Cmd stderr:   {f'\n{errs}' if stderr_tee is not None and (errs := stderr_tee.getstr()) else "<EMPTY>"}\n"
             )
-            raise FatalError(f"Command execution error: '{cmd_str}'")
+            raise FatalError("Command execution failed")
 
     # Return the process (not necessarily completed) wrapped in a Process object
     return Process(proc=_proc, input=input, cmd_str=cmd_str, stdout_tee=stdout_tee, stderr_tee=stderr_tee)
