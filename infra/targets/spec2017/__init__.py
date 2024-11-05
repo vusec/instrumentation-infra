@@ -118,6 +118,7 @@ class SPEC2017(Target):
         patches: List[str] = [],
         nothp: bool = True,
         force_cpu: int = 0,
+        openmp_cores: int = 1,
         default_benchmarks: List[str] = [
             "intspeed_pure_c",
             "intspeed_pure_cpp",
@@ -139,6 +140,7 @@ class SPEC2017(Target):
         self.patches = patches
         self.nothp = nothp
         self.force_cpu = force_cpu
+        self.openmp_cores = openmp_cores
         self.default_benchmarks = default_benchmarks
         self.reporters = reporters
 
@@ -339,9 +341,19 @@ class SPEC2017(Target):
                 )
             else:
                 wrapper += f" taskset -c {self.force_cpu}"
+        if self.force_cpu < 0:
+            ctx.log.info(self._get_benchmarks(ctx, instance))
+            parallel_bins = ['619.lbm_s', '638.imagick_s', '644.nab_s', '657.xz_s']
+            # assume benchmarks are ran individually because of parallelmax
+            target_bin = self._get_benchmarks(ctx, instance)[0]
+            if target_bin in parallel_bins:
+                end_core = int(-1 * self.force_cpu)
+                wrapper += ' taskset -c 0-%d' % end_core
+            else:
+                wrapper += ' taskset -c 4'
 
         cmd = f"{wrapper} runcpu --config={config} --nobuild {qjoin(runargs)} {{bench}}"
-
+        ctx.log.info(cmd)
         benchmarks = self._get_benchmarks(ctx, instance)
 
         if pool:
@@ -484,9 +496,9 @@ class SPEC2017(Target):
 
                 print(f"#--------- How Many CPUs? ------------")
                 print(f"intrate,fprate:")
-                print(f"   copies            = 1")
+                print('   copies            = %d' % self.openmp_cores)
                 print(f"intspeed,fpspeed:")
-                print(f"   threads           = 1")
+                print('   threads           = %d' % self.openmp_cores)
                 print(f"")
 
                 print(f"#--------- Compilers -----------------")
@@ -507,6 +519,21 @@ class SPEC2017(Target):
                 print(f"default:")
                 print(f"     EXTRA_PORTABILITY = -DSPEC_LP64")
                 print(f"")
+
+                # post-build hooks call back into the setup script
+                if ctx.hooks.post_build:
+                    print(f"")
+                    print(
+                        f"build_post_bench = {ctx.paths.setup} exec-hook post-build "
+                        f"{instance.name} `echo ${{commandexe}} "
+                        f'| sed "s/_\\[a-z0-9\\]\\\\+\\\\.{config_name}\\\\\\$//"`'
+                    )
+                    print("")
+
+                # allow run wrapper to be set using --define run_wrapper=...
+                print(f"%ifdef %{{run_wrapper}}")
+                print(f"  monitor_wrapper = %{{run_wrapper}} $command")
+                print(f"%endif")
 
                 arch_suffixes = {
                     "x86_64": "X64",
@@ -631,7 +658,7 @@ class SPEC2017(Target):
                 match = re.search(rpat, logcontents, re.M | re.S)
                 assert match is not None
                 rundir, arglist = match.groups()
-                errfiles = re.findall(r"-e ([^ ]+err) \.\./run_", arglist)
+                errfiles = re.findall(r"-e ([^ ]+err) .*?\.\./run_", arglist)
                 benchmark_error = False
                 for errfile in errfiles:
                     path = os.path.join(fix_specpath(rundir), errfile)
