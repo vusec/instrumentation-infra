@@ -659,7 +659,8 @@ class SPEC2006(Target):
                 match = re.search(rpat, logcontents, re.M | re.S)
                 assert match is not None
                 rundir, arglist = match.groups()
-                errfiles = re.findall(r"-e ([^ ]+err) \.\./run_", arglist)
+                errfiles = re.findall(r"-e ([^ ]+err) .*?\.\./run_", arglist)
+                #errfiles = re.findall(r"-e ([^ ]+err) \.\./run_", arglist)
                 benchmark_error = False
                 for errfile in errfiles:
                     path = os.path.join(fix_specpath(rundir), errfile)
