@@ -332,7 +332,18 @@ class SPEC2017(Target):
         wrapper = "killwrap_tree"
         if self.nothp:
             wrapper += " nothp"
-        if self.force_cpu >= 0:
+
+        if self.openmp_cores > 1:
+            ctx.log.info(self._get_benchmarks(ctx, instance))
+            parallel_bins = ['619.lbm_s', '638.imagick_s', '644.nab_s', '657.xz_s']
+            # assume benchmarks are ran individually because of parallelmax
+            target_bin = self._get_benchmarks(ctx, instance)[0]
+            if target_bin in parallel_bins:
+                end_core = int(self.openmp_cores)-1
+                wrapper += ' taskset -c 0-%d' % end_core
+            else:
+                wrapper += ' taskset -c %d' % self.force_cpu
+        elif self.force_cpu >= 0:
             if isinstance(pool, ProcessPool) and pool.parallelmax > 1:
                 ctx.log.warning(
                     f"Ignoring force_cpu={self.force_cpu} for "
@@ -341,16 +352,6 @@ class SPEC2017(Target):
                 )
             else:
                 wrapper += f" taskset -c {self.force_cpu}"
-        if self.force_cpu < 0:
-            ctx.log.info(self._get_benchmarks(ctx, instance))
-            parallel_bins = ['619.lbm_s', '638.imagick_s', '644.nab_s', '657.xz_s']
-            # assume benchmarks are ran individually because of parallelmax
-            target_bin = self._get_benchmarks(ctx, instance)[0]
-            if target_bin in parallel_bins:
-                end_core = int(-1 * self.force_cpu)
-                wrapper += ' taskset -c 0-%d' % end_core
-            else:
-                wrapper += ' taskset -c 4'
 
         cmd = f"{wrapper} runcpu --config={config} --nobuild {qjoin(runargs)} {{bench}}"
         ctx.log.info(cmd)
