@@ -136,7 +136,7 @@ class Target(metaclass=ABCMeta):
         """
         yield from []
 
-    def path(self, ctx: Context, *args: str) -> str:
+    def path(self, ctx: Context, *args) -> str:
         """
         Get the absolute path to the build directory of this target, optionally
         suffixed with a subpath.

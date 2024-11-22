@@ -44,15 +44,36 @@ LOG_LEVEL_ABBREVIATIONS = {
     "CRITICAL": "CRT",
 }
 
+LOG_LEVEL_NAMES = {
+    LOG_LVL_CRT: {"CRT", "CRITICAL"},
+    LOG_LVL_FTL: {"FTL", "FATAL"},
+    LOG_LVL_ERR: {"ERR", "ERROR"},
+    LOG_LVL_WRN: {"WRN", "WARN", "WARNING"},
+    LOG_LVL_INF: {"INF", "INFO"},
+    LOG_LVL_VRB: {"VRB", "VERBOSE"},
+    LOG_LVL_DBG: {"DBG", "DEBUG"},
+    LOG_LVL_TRC: {"TRC", "TRACE"},
+    LOG_LVL_NST: {"NST", "NOTSET"},
+}
 
-class ExtLogger(logging.Logger):
+
+def add_custom_log_levels() -> None:
+    for lvl, names in LOG_LEVEL_NAMES.items():
+        for name in names:
+            logging.addLevelName(lvl, name)
+
+
+class ExtLogger(logging.getLoggerClass()):
+    def __init__(self, name: str, level: int | str = logging.NOTSET) -> None:
+        super().__init__(name, level)
+
     def verbose(self, message, *args, **kwargs):
         if self.isEnabledFor(LOG_LVL_VRB):
-            self._log(LOG_LVL_VRB, message, *args, **kwargs)
+            self._log(LOG_LVL_VRB, message, args, **kwargs)
 
     def trace(self, message, *args, **kwargs):
         if self.isEnabledFor(LOG_LVL_TRC):
-            self._log(LOG_LVL_TRC, message, *args, **kwargs)
+            self._log(LOG_LVL_TRC, message, args, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -91,12 +112,12 @@ class ContextPaths:
     @property
     def debuglog(self) -> str:
         """Path to the debug log."""
-        return os.path.join(self.log, "debug.txt")
+        return os.path.join(self.log, "debug.log")
 
     @property
     def runlog(self) -> str:
         """Path to the log of all executed commands."""
-        return os.path.join(self.log, "commands.txt")
+        return os.path.join(self.log, "commands.log")
 
     @property
     def packages(self) -> str:
