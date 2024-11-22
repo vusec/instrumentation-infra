@@ -88,7 +88,7 @@ class Command(metaclass=ABCMeta):
             if not ctx.args.ssh_nodes:
                 raise FatalError("--ssh-nodes required for --parallel=ssh")
             pmax = len(ctx.args.ssh_nodes) if ctx.args.parallelmax is None else ctx.args.parallelmax
-            return SSHPool(ctx, ctx.log, pmax, ctx.args.ssh_nodes)
+            return SSHPool(ctx, pmax, ctx.args.ssh_nodes)
 
         if ctx.args.parallel == "prun":
             if ctx.args.ssh_nodes:

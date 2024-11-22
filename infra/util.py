@@ -1,6 +1,8 @@
+import copy
 import io
 import os
 import re
+import selectors
 import sys
 import errno
 import shlex
@@ -21,28 +23,59 @@ from urllib.request import urlretrieve
 from collections import OrderedDict
 from typing import (
     IO,
-    TextIO,
-    BinaryIO,
     Any,
+    BinaryIO,
     Callable,
     Iterable,
     Iterator,
     KeysView,
     ItemsView,
+    TextIO,
     TypeAlias,
     ValuesView,
     MutableMapping,
 )
 
-ANSI_ESCAPE_RAW = re.compile(rb"(\x9B|\x1B\[|\033\[)[0-?]*[ -\/]*[@-~]")
-ANSI_ESCAPE_STR = re.compile(r"(\x9B|\x1B\[|\033\[)[0-?]*[ -\/]*[@-~]")
-PREF_ENCODING = locale.getpreferredencoding(False)
-
-
 ResultVal: TypeAlias = bool | int | float | str
 ResultDict: TypeAlias = MutableMapping[str, ResultVal]
 ResultsByInstance: TypeAlias = MutableMapping[str, list[ResultDict]]
 EnvDict: TypeAlias = dict[str, str | list[str]] | dict[str, str] | dict[str, list[str]]
+
+PREF_ENCODING = locale.getpreferredencoding(False)
+
+ANSI_ESCAPE_RAW = re.compile(
+    rb"""
+    (?: # 7-bit sequences
+        \x1B
+        [@-Z\\-_]
+    |   # 8-bit sequences (single byte Fe)
+        [\x80-\x9A\x9C-\x9F]
+    |   # CSI sequences
+        (?: \x1B\[ | \x9B )
+        [0-?]*  # Parameter bytes
+        [ -/]*  # Intermediate bytes
+        [@-~]   # Final byte
+    )
+""",
+    re.VERBOSE,
+)
+
+ANSI_ESCAPE_STR = re.compile(
+    r"""
+    (?: # 7-bit sequences
+        \x1B
+        [@-Z\\-_]
+    |   # 8-bit sequences (single byte Fe)
+        [\u0080-\u009A\u009C-\u009F]
+    |   # CSI sequences
+        (?: \x1B\[ | \u009B )
+        [0-?]*  # Parameter bytes
+        [ -/]*  # Intermediate bytes
+        [@-~]   # Final byte
+    )
+""",
+    re.VERBOSE,
+)
 
 
 class Index[T](MutableMapping[str, T]):
@@ -344,6 +377,11 @@ class Process:
     def __del__(self) -> None:
         self.close()
         self.close_buffers()
+        self.__errs_tee = None
+        self.__outs_tee = None
+        self.__cmd_str = None
+        self.__input = None
+        self.__proc = None
 
     def __enter__(self) -> "Process":
         return self
@@ -351,38 +389,44 @@ class Process:
     def __exit__(self, _exc_type, _exc_val, _exc_tb) -> None:
         self.close()
         self.close_buffers()
+        self.__errs_tee = None
+        self.__outs_tee = None
+        self.__cmd_str = None
+        self.__input = None
+        self.__proc = None
 
     def close(self) -> None:
         if self.__proc is not None:
             try:
-                try:
-                    if self.__proc.stdin is not None and not self.__proc.stdin.closed:
-                        self.__proc.stdin.close()
-                except:
-                    pass
-                try:
-                    if self.__proc.stdout is not None and not self.__proc.stdout.closed:
-                        self.__proc.stdout.close()
-                except:
-                    pass
-                try:
-                    if self.__proc.stderr is not None and not self.__proc.stderr.closed:
-                        self.__proc.stderr.close()
-                except:
-                    pass
-                try:
-                    if self.__proc.poll() is None:
-                        self.__proc.wait()
-                except:
-                    pass
+                if self.__proc.stdin is not None and not self.__proc.stdin.closed:
+                    self.__proc.stdin.flush()
+                    self.__proc.stdin.close()
             except:
                 pass
-            finally:
-                self.__proc = None
+            try:
+                if self.__proc.poll() is None:
+                    self.__proc.wait()
+            except:
+                pass
+            try:
+                if self.__proc.stdout is not None and not self.__proc.stdout.closed:
+                    self.__proc.stdout.flush()
+                    self.__proc.stdout.close()
+            except:
+                pass
+            try:
+                if self.__proc.stderr is not None and not self.__proc.stderr.closed:
+                    self.__proc.stderr.flush()
+                    self.__proc.stderr.close()
+            except:
+                pass
+            self.__proc = None
 
         if self.__outs_tee is not None and not self.__outs_tee.closed:
+            self.__outs_tee.flush()
             self.__outs_tee.close()
         if self.__errs_tee is not None and not self.__errs_tee.closed:
+            self.__errs_tee.flush()
             self.__errs_tee.close()
 
     def close_stdout(self) -> None:
@@ -396,6 +440,11 @@ class Process:
     def close_buffers(self) -> None:
         self.close_stdout()
         self.close_stderr()
+
+    @property
+    def text_mode(self) -> bool:
+        assert self.proc is not None
+        return getattr(self.proc, "text", None) is True or getattr(self.proc, "universal_newlines", None) is True
 
     @property
     def stdout_buff_closed(self) -> bool:
@@ -539,9 +588,6 @@ def run(
     cmd_str = shlex.join(cmd_arr)
     ctx.log.debug(f'Running command: "{cmd_str}"')
 
-    # Determine if the input has text mode enabled or if it's in the default binary mode
-    text_mode = kwargs.get("text", False) or kwargs.get("universal_newlines", False) or kwargs.get("encoding") is not None
-
     # Merge the context's environment into the OS (prioritising context)
     run_env: dict[str, str] = {key: val for key, val in os.environ.items()}
     ctx_env: EnvDict = ctx.getEnvironment(include_flags=with_env_flags)
@@ -578,16 +624,19 @@ def run(
     kwargs["stdout"] = stdout_tee
     kwargs["stderr"] = stderr_tee if stderr_tee is not None else subprocess.STDOUT
 
-    # Always pipe stdin to be safe
-    kwargs["stdin"] = subprocess.PIPE
+    # Pipe stdin iff any input was provided
+    if input:
+        kwargs["stdin"] = subprocess.PIPE
 
     try:
         _proc = subprocess.Popen(cmd, env=run_env, **kwargs)
     except Exception as err:
         # Clean up the tees
         stdout_tee.close()
+        stdout_tee.close_buffer()
         if stderr_tee is not None:
             stderr_tee.close()
+            stderr_tee.close_buffer()
 
         # If not allowing errors, re-raise the exception
         if not allow_error:
@@ -598,34 +647,35 @@ def run(
         ctx.log.warning(f"Execution failed but allowing errors of: '{cmd_str}'")
         return Process(proc=None, input=input, cmd_str=cmd_str, stdout_tee=None, stderr_tee=None)
 
-    # If any input was given, communicate it to the process (warning: could block)
-    if input is not None:
-        if isinstance(input, str):
-            _proc.communicate(input if text_mode else input.encode(PREF_ENCODING, "replace"))  # type: ignore
-        else:
-            _proc.communicate(input.decode(PREF_ENCODING, "replace") if text_mode else input)  # type: ignore
+    # Create the process object to hold this subprocess
+    proc = Process(proc=_proc, input=input, cmd_str=cmd_str, stdout_tee=stdout_tee, stderr_tee=stderr_tee)
+
+    # If the input buffer was opened & pass any given input to the subprocess & close the buffer
+    if input and proc.stdin is not None:
+        try:
+            match input:
+                case str():
+                    proc.stdin.write(input if proc.text_mode else input.encode(encoding=PREF_ENCODING, errors="replace"))
+                case bytes():
+                    proc.stdin.write(input.decode(encoding=PREF_ENCODING, errors="replace") if proc.text_mode else input)
+            proc.stdin.flush()
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
 
     # If not deferring the command, wait for completion & report result and/or errors
     if not defer:
-        ret_code = _proc.wait(timeout=None)
-        if stdout_tee is not None:
-            stdout_tee.close_write_fd()
-            stdout_tee.flush()
-        if stderr_tee is not None:
-            stderr_tee.close_write_fd()
-            stderr_tee.flush()
+        ret_code = proc.wait(timeout=None)
+        proc.flush()
+        proc.close()
+
+        # If the processes threw an error and errors are disallowed, log it and raise an exception
         if ret_code != 0 and not allow_error:
-            ctx.log.fatal(
-                "[FAIL] Command execution failed\n"
-                + f"  Status:       {ret_code}\n"
-                + f"  Command:     '{cmd_str}'\n"
-                + f"  Cmd stdout:   {f'\n{outs}' if stdout_tee is not None and (outs := stdout_tee.getstr()) else "<EMPTY>"}\n"
-                + f"  Cmd stderr:   {f'\n{errs}' if stderr_tee is not None and (errs := stderr_tee.getstr()) else "<EMPTY>"}\n"
-            )
+            ctx.log.fatal(f"[FAIL] Command failed\n  Status:       {ret_code}\n  Command:     '{cmd_str}'\n")
             raise FatalError("Command execution failed")
 
-    # Return the process (not necessarily completed) wrapped in a Process object
-    return Process(proc=_proc, input=input, cmd_str=cmd_str, stdout_tee=stdout_tee, stderr_tee=stderr_tee)
+    # Return the Process object; not completed if `defer` was True
+    return proc
 
 
 def apply_patch(ctx: Context, patch_path: Path | str, strip_count: int) -> bool:
@@ -717,7 +767,9 @@ def get_stream_formatter() -> logging.Formatter:
                     datefmt="%H:%M:%S",
                     log_colors={
                         "NST": "bold_white",
+                        "TRC": "bold_magenta",
                         "DBG": "bold_cyan",
+                        "VRB": "bold_blue",
                         "INF": "bold_green",
                         "WRN": "bold_yellow",
                         "ERR": "bold_red",
@@ -727,7 +779,9 @@ def get_stream_formatter() -> logging.Formatter:
                     secondary_log_colors={
                         "message": {
                             "NST": "thin_white",
+                            "TRC": "thin_white",
                             "DBG": "thin_white",
+                            "VRB": "thin_white",
                             "INF": "thin_white",
                             "WRN": "thin_white",
                             "ERR": "thin_white",
@@ -738,10 +792,12 @@ def get_stream_formatter() -> logging.Formatter:
                 )
 
             def format(self, record: logging.LogRecord) -> str:
-                record.levelname = LOG_LEVEL_ABBREVIATIONS.get(record.levelname, "???")
+                levelname = LOG_LEVEL_ABBREVIATIONS.get(record.levelname, "???")
+                record_copy = copy.copy(record)
+                record_copy.levelname = levelname
                 if wrapper is None:
-                    return super().format(record)
-                header, *message = super().format(record).splitlines()
+                    return super().format(record_copy)
+                header, *message = super().format(record_copy).splitlines()
                 formatted_message = "\n".join(wrapper.fill(line.rstrip()) for line in message)
                 return f"{header}\n{formatted_message}"
 
@@ -774,9 +830,16 @@ def get_file_formatter() -> logging.Formatter:
             )
 
         def format(self, record: logging.LogRecord) -> str:
+            original_msg = record.msg
             if isinstance(record.msg, str):
-                record.msg = strip_ansi(record.msg)
-            return super().format(record)
+                record.msg = ANSI_ESCAPE_STR.sub("", record.msg)
+            elif isinstance(record.msg, bytes):
+                record.msg = ANSI_ESCAPE_RAW.sub(b"", record.msg)
+            else:
+                record.msg = ANSI_ESCAPE_STR.sub("", str(record.msg))
+            formatted = super().format(record)
+            record.msg = original_msg  # Restore original message
+            return formatted
 
     return StrippingFormatter()
 
@@ -874,3 +937,31 @@ def strip_ansi(data: str | bytes) -> str | bytes:
             return ANSI_ESCAPE_RAW.sub(b"", data)
         case _:
             raise TypeError(f"Cannot strip ANSI sequences from type: {type(data)}")
+
+
+def dir_has_up_to_date_repo(path: str | os.PathLike, repo: str) -> bool:
+    """Checks if the given path is a directory containing a fully-up-to-date version of the given git repo"""
+    _dir = Path(path)
+
+    # Check if the directory itself exists
+    if not _dir.is_dir():
+        return False
+
+    try:
+        git_cmd = ["git", "-C", str(_dir)]
+
+        # Check if the given directory contains a git repository at all
+        subprocess.run([*git_cmd, "rev-parse"], check=True)
+
+        # Check if the remote URL of the directory git repo matches
+        proc = subprocess.run([*git_cmd, "remote", "get-url", "origin"], capture_output=True, check=True, text=True)
+        if proc.stdout.strip() != repo:
+            return False
+
+        # Lastly check if the local commit is the same as the remote's latest commit
+        subprocess.run([*git_cmd, "fetch"], check=True)
+        local = subprocess.run([*git_cmd, "rev-parse", "@"], capture_output=True, check=True, text=True)
+        remote = subprocess.run([*git_cmd, "rev-parse", "@{u}"], capture_output=True, check=True, text=True)
+        return local.stdout.strip() == remote.stdout.strip()
+    except:
+        return False
