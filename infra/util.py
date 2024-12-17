@@ -420,7 +420,6 @@ class Process:
                     self.__proc.stderr.close()
             except:
                 pass
-            self.__proc = None
 
         if self.__outs_tee is not None and not self.__outs_tee.closed:
             self.__outs_tee.flush()
