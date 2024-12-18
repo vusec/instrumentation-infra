@@ -1,0 +1,11 @@
+diff -u -r ORIG_SPEC_CPU2017/benchspec/CPU/525.x264_r/src/ldecod_src/context_ini.c RSAN_SPEC_CPU2017/benchspec/CPU/525.x264_r/src/ldecod_src/context_ini.c
+--- ORIG_SPEC_CPU2017/benchspec/CPU/525.x264_r/src/ldecod_src/context_ini.c     2010-06-06 04:52:16.000000000 +0200
++++ RSAN_SPEC_CPU2017/benchspec/CPU/525.x264_r/src/ldecod_src/context_ini.c     2024-12-18 11:56:27.937537817 +0100
+@@ -59,6 +59,7 @@
+   } \
+ }
+ 
++__attribute__((no_sanitize_address, disable_sanitizer_instrumentation, noinline))
+ void init_contexts (Slice *currSlice)
+ {
+   MotionInfoContexts*  mc = currSlice->mot_ctx;
