@@ -1,0 +1,23 @@
+diff -u -r ORIG_SPEC_CPU2006v1.2/benchspec/CPU2006/403.gcc/src/cppinit.c RSAN_SPEC_CPU2006v1.2/benchspec/CPU2006/403.gcc/src/cppinit.c
+--- ORIG_SPEC_CPU2006v1.2/benchspec/CPU2006/403.gcc/src/cppinit.c       2005-06-03 04:43:52.000000000 +0200
++++ RSAN_SPEC_CPU2006v1.2/benchspec/CPU2006/403.gcc/src/cppinit.c       2024-12-18 11:43:22.471028835 +0100
+@@ -1280,6 +1280,7 @@
+    accept options beginning with -W that we do not recognise, but not
+    to swallow any subsequent command line argument; this is handled as
+    special cases in cpp_handle_option.  */
++__attribute__((no_sanitize_address, disable_sanitizer_instrumentation, noinline))
+ static int
+ parse_option (input)
+      const char *input;
+diff -u -r ORIG_SPEC_CPU2006v1.2/benchspec/CPU2006/464.h264ref/src/context_ini.c RSAN_SPEC_CPU2006v1.2/benchspec/CPU2006/464.h264ref/src/context_ini.c
+--- ORIG_SPEC_CPU2006v1.2/benchspec/CPU2006/464.h264ref/src/context_ini.c       2005-11-11 17:55:24.000000000 +0100
++++ RSAN_SPEC_CPU2006v1.2/benchspec/CPU2006/464.h264ref/src/context_ini.c       2024-12-18 11:42:39.054832154 +0100
+@@ -199,7 +199,7 @@
+ }
+ 
+ 
+-
++__attribute__((no_sanitize_address, disable_sanitizer_instrumentation, noinline))
+ void init_contexts ()
+ {
+   MotionInfoContexts*  mc = img->currentSlice->mot_ctx;
