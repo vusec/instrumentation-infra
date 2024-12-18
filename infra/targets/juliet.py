@@ -178,7 +178,27 @@ class Juliet(Target):
                 part = m.group(2)
 
                 # Only run selected flow-variants (normally only 01)
-                if variant not in ctx.args.variants:
+                #if variant not in ctx.args.variants:
+                #    continue
+
+                # random global is not deterministic
+                if variant == 12:
+                    continue
+
+                # Skip 32-bit bugs (not bugs on 64-bit)
+                if "sizeof_struct" in testname or "sizeof_double" in testname or "sizeof_int64" in testname:
+                    continue
+
+                # Skip intra-struct overflows (out of scope)
+                if "wchar_t_type_overrun" in testname:
+                    continue
+
+                # Skip random (non-deterministic) bugs
+                if "rand" in testname:
+                    continue
+
+                # Skip flaky bug (no null terminator print, does not go OOB if memory is zero)
+                if "CWE126_Buffer_Overread__CWE170" in testname:
                     continue
 
                 # Skip windows-only tests
@@ -289,7 +309,12 @@ class Juliet(Target):
     def run_cwe(self, ctx: Context, instance: Instance, cwe: str) -> None:
         bdir = Path(self.path(ctx))
         objdir = bdir / "obj" / instance.name / cwe
-        stdin = b"A" * 8
+        # stdin = b"A" * 8
+        if cwe == "CWE124" or cwe == "CWE127":
+            # for underflows
+            stdin = b"-600"
+        else:
+            stdin = b"600"
 
         good_ok_cnt, good_total_cnt = 0, 0
         gooddir = objdir / "good"
