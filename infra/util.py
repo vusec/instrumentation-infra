@@ -2,19 +2,20 @@ import copy
 import io
 import os
 import re
-import selectors
 import sys
+import time
 import errno
 import shlex
 import locale
 import shutil
 import logging
+import resource
 import threading
 import subprocess
 
 from pathlib import Path
+from itertools import chain
 from datetime import datetime
-import time
 
 from .context import LOG_LEVEL_ABBREVIATIONS, Context
 
@@ -578,7 +579,7 @@ def run(
     :param bool merge_outputs: whether to merge stderr into stdout, defaults to False
     :param bool with_env_flags: whether to include flags from `ctx.[c|cxx|ld]FLAGS`, defaults to False
     :param dict[str, str  |  list[str]] | None env: an override environment over the context env, defaults to None
-    :param Iterable[io.IOBase] | IO | None writers: allows for specifying additional writers to tee the output to
+    :param Iterable[io.IOBase] | None writers: allows for specifying additional writers to tee the output to
     :return Process: the resulting :type:`Process` object; captures `stdout` and `stderr` and other information
     """
     # Get a safe-to-print version of the input command
@@ -597,17 +598,15 @@ def run(
         else:
             run_env[key] = val if isinstance(val, str) else os.pathsep.join(val + os.environ.get(key, "").split(os.pathsep))
 
-    # If the runlog file is enabled, log the command and its environment
-    if ctx.runlog_file is not None:
-        ctx.runlog_file.write(f"{'=' * 100}\n")
-        ctx.runlog_file.write(f"Running command:            '{cmd_str}'\n")
-        ctx.runlog_file.write(f"Start time of command:      {datetime.now().strftime('%Y/%m/%d %H:%M:%S.%f')}\n")
-        ctx.runlog_file.write(f"Current working directory:  '{os.getcwd()}'\n")
-        ctx.runlog_file.write(f"Using command environment:\n")
-        for idx, (key, val) in enumerate(run_env.items()):
-            ctx.runlog_file.write(f"  env[{idx:03d}]: {key}={val}\n")
-        ctx.runlog_file.write("Output (if any):\n\n")
-        ctx.runlog_file.flush()
+    # If the runlog file is enabled, log the command and its environment (also write to any writers)
+    for log in chain([ctx.runlog_file] if ctx.runlog_file is not None else [], writers if writers is not None else []):
+        log.write(
+            f"\n{'=' * 100}\n"
+            f"Running command:            '{cmd_str}'\n"
+            f"Start time of command:      '{datetime.now().strftime('%Y/%m/%d %H:%M:%S.%f')}'\n"
+            f"Current working directory:  '{os.getcwd()}'\n\n"
+        )
+        log.flush()
 
     # Get all writers for the output tee's (e.g. runlog file, stderr, etc)
     tee_writers: list[io.IOBase | IO] = list(writers) if writers is not None else []
@@ -964,3 +963,24 @@ def dir_has_up_to_date_repo(path: str | os.PathLike, repo: str) -> bool:
         return local.stdout.strip() == remote.stdout.strip()
     except:
         return False
+
+
+def set_fd_limit(new_lim=65536) -> tuple[int, int]:
+    """
+    Sets the soft limit on the maximum number of open file descriptors on the system; if the requested
+    soft limit exceeds the system's hard limit, an exception is raised.
+
+    Also returns the current/old soft & hard limits.
+
+    :param int new_lim: the new requested soft limit, defaults to 65536
+    :raises ValueError: raised if the requested soft limit exceeds the system's hard limit
+    :return tuple[int, int]: a pair of the current (old) soft & hard limit
+    """
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+
+    # Verify that the new limit doesn't exceed the maximum hard limit
+    if new_lim > hard:
+        raise ValueError(f"Requested limit exceeds hard limit (requested: {new_lim}; max: {hard})!")
+
+    resource.setrlimit(resource.RLIMIT_NOFILE, (new_lim, hard))
+    return (soft, hard)

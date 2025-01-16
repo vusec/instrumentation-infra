@@ -14,7 +14,7 @@ from .context import LOG_LVL_TRC, Context, ContextPaths, ExtLogger, add_custom_l
 from .instance import Instance
 from .package import Package
 from .target import Target
-from .util import FatalError, Index, LazyIndex
+from .util import FatalError, Index, LazyIndex, set_fd_limit
 from .util import get_stream_formatter, get_file_formatter
 
 # disable .pyc file generation
@@ -65,6 +65,8 @@ class Setup:
                            Needed to allow build scripts to call back into the
                            setup script for build hooks.
         """
+        set_fd_limit(new_lim=65536)
+
         self.instances = Index("instance")
         self.targets = Index("target")
         self.commands = Index("command")
