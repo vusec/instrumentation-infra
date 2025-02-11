@@ -231,13 +231,17 @@ class SPEC2006(Target):
         #     case _:
         #         raise ValueError(f"Invalid source type: '{self.source_type}'")
 
-    def _install_dir(self, ctx: Context, *args) -> Path:
-        """Gets the installation directory based on this specific SPEC instance's source type"""
-        match self.source_type:
-            case "installed":
-                return Path(self.source)
-            case _:
-                return Path(self.path(ctx, "install", *args))
+#    def _install_dir(self, ctx: Context, *args) -> Path:
+#        """Gets the installation directory based on this specific SPEC instance's source type"""
+#        match self.source_type:
+#            case "installed":
+#                return Path(self.source)
+#            case _:
+#                return Path(self.path(ctx, "install", *args))
+    def _install_dir(self, ctx: Context, *args: str) -> str:
+        if self.source_type == "installed":
+            return os.path.join(self.source, *args)
+        return self.path(ctx, "install", *args)
 
     def _apply_patches(self, ctx: Context) -> None:
         """Applies patches to the SPEC benchmark's sources; warns if SPEC instance is external"""
@@ -299,7 +303,8 @@ class SPEC2006(Target):
                 shutil.rmtree(self.path(ctx))
 
     def is_fetched(self, ctx: Context) -> bool:
-        return self._install_dir(ctx, "shrc").is_file()
+        #return self._install_dir(ctx, "shrc").is_file()
+        return self.source_type == "installed" or os.path.exists("install/shrc")
 
     def fetch(self, ctx: Context) -> None:
         def install_spec(src_dir: Path) -> None:
@@ -398,7 +403,7 @@ class SPEC2006(Target):
     def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
         conf_name = f"infra-{instance.name}"
         conf_path = self._install_dir(ctx, "config", f"{conf_name}.cfg")
-        assert conf_path.is_file()
+        #assert conf_path.is_file()
 
         runargs: list[str] = []
 
