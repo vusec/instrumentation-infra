@@ -149,6 +149,7 @@ class SPEC2017(Target):
             "hostname": "machine hostname",
             "workload": "run workload (test / ref / train)",
             "inputs": "number of different benchmark inputs",
+            **RusageCounters.reportable_fields()
         }
         for reporter in self.reporters:
             fields.update(reporter.reportable_fields())
@@ -187,7 +188,7 @@ class SPEC2017(Target):
         )
 
     def dependencies(self) -> Iterator[Package]:
-        yield Bash("4.3")
+        #yield Bash("4.3")
         if self.nothp:
             yield Nothp()
         yield RusageCounters()
@@ -319,12 +320,12 @@ class SPEC2017(Target):
         if self.nothp:
             wrapper += " nothp"
         if self.force_cpu >= 0:
-            if isinstance(pool, ProcessPool) and pool.parallelmax > 1:
-                ctx.log.warning(
-                    f"Ignoring force_cpu={self.force_cpu} for " "SPEC2017 because using parallel=proc with " "parallelmax > 1"
-                )
-            else:
-                wrapper += f" taskset -c {self.force_cpu}"
+            #if isinstance(pool, ProcessPool) and pool.parallelmax > 1:
+            #    ctx.log.warning(
+            #        f"Ignoring force_cpu={self.force_cpu} for " "SPEC2017 because using parallel=proc with " "parallelmax > 1"
+            #    )
+            #else:
+            wrapper += f" taskset -c {self.force_cpu}"
 
         cmd = f"{wrapper} runcpu --config={config} --nobuild {qjoin(runargs)} {{bench}}"
 
@@ -413,9 +414,9 @@ class SPEC2017(Target):
                 jobid = f"run-{instance.name}-{bench}"
                 outfile = outfile_path(ctx, self, instance, bench)
 
-                def onsuccess_parse_log(job: Job) -> None:
-                    for job_outfile in job.outfiles:
-                        process_log(ctx, job_outfile, self, write_cache=True)
+                #def onsuccess_parse_log(job: Job) -> None:
+                #    for job_outfile in job.outfiles:
+                #        process_log(ctx, job_outfile, self, write_cache=True)
 
                 self._run_bash(
                     ctx,
@@ -424,7 +425,7 @@ class SPEC2017(Target):
                     jobid=jobid,
                     outfile=outfile,
                     nnodes=ctx.args.iterations,
-                    onsuccess=onsuccess_parse_log,
+                    #onsuccess=onsuccess_parse_log,
                 )
         else:
             self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)), teeout=True)
@@ -499,6 +500,37 @@ class SPEC2017(Target):
                 print(f"     EXTRA_PORTABILITY = -DSPEC_LP64")
                 print(f"")
 
+                # if set, configure pre- and/or post-build hooks to be executed
+                if ctx.hooks.pre_build:
+                    print("")
+                    print(
+                        f"build_pre_bench = {ctx.paths.setup} -v warning exec-hook pre-build "
+                        f"{instance.name} `echo ${{commandexe}} "
+                        f'| sed "s/_\\[a-z0-9\\]\\\\+\\\\.{conf_name}\\\\\\$//"`'
+                    )
+                    print("")
+                if ctx.hooks.post_build:
+                    print("")
+                    print(
+                        f"build_post_bench = {ctx.paths.setup} -v warning exec-hook post-build "
+                        f"{instance.name} `echo ${{commandexe}} "
+                        f'| sed "s/_\\[a-z0-9\\]\\\\+\\\\.{conf_name}\\\\\\$//"`'
+                    )
+
+                # also configure pre- and post-run hooks to be executed
+                if ctx.hooks.pre_run:
+                    print("")
+                    print(
+                        f"monitor_pre_bench = {ctx.paths.setup} -v warning exec-hook pre-run "
+                        f"{instance.name} ${{commandexe}}"
+                    )
+                if ctx.hooks.post_run:
+                    print("")
+                    print(
+                        f"monitor_post_bench = {ctx.paths.setup} -v warning exec-hook post-run "
+                        f"{instance.name} ${{commandexe}}"
+                    )
+
                 arch_suffixes = {
                     "x86_64": "X64",
                     "aarch64": "AARCH64",
@@ -552,20 +584,21 @@ class SPEC2017(Target):
         return config_name
 
     def run_hooks_pre_build(self, ctx: Context, instance: Instance) -> None:
-        if ctx.hooks.pre_build:
-            for bench in self._get_benchmarks(ctx, instance):
-                path = self._install_path(ctx, "benchspec", "CPU2006", bench)
-                os.chdir(path)
-                for hook in ctx.hooks.pre_build:
-                    ctx.log.info(f"Running hook {hook} on {bench} in {path}")
-                    hook(ctx, path)
-
-    # override post-build hook runner rather than defining `binary_paths` since
-    # we add hooks to the generated SPEC config file and call them through the
-    # exec-hook setup command instead
-    def run_hooks_post_build(self, ctx: Context, instance: Instance) -> None:
+        """Overridden because directly handled through SPEC config monitor wrappers"""
         pass
 
+    def run_hooks_post_build(self, ctx: Context, instance: Instance) -> None:
+        """Overridden because directly handled through SPEC config monitor wrappers"""
+        pass
+
+    def run_hooks_pre_run(self, ctx: Context, instance: Instance) -> None:
+        """Overridden because directly handled through SPEC config monitor wrappers"""
+        pass
+
+    def run_hooks_post_run(self, ctx: Context, instance: Instance) -> None:
+        """Overridden because directly handled through SPEC config monitor wrappers"""
+        pass
+    
     def _get_benchmarks(self, ctx: Context, instance: Instance) -> Iterable[str]:
         benchmarks = set()
         for bset in ctx.args.benchmarks:
