@@ -577,7 +577,7 @@ class SPEC2006(Target):
                 print(f"CXXOPTIMIZE = -std=c++98")
 
                 # if set, configure pre- and/or post-build hooks to be executed
-                if ctx.hooks.post_build:
+                if ctx.hooks.pre_build:
                     print("")
                     print(
                         f"build_pre_bench = {ctx.paths.setup} -v warning exec-hook pre-build "
