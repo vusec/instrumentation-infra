@@ -343,6 +343,9 @@ class Pool(metaclass=ABCMeta):
                             with self.__condition:
                                 self.__curr_jobs.remove(job)
                                 self.__condition.notify_all()
+                        else:
+                            # This job did not finish, wait a bit before polling the next job
+                            time.sleep(self.poll_interval)
 
                     except Exception as err:
                         # Log but don't re-raise any jobs that threw an error; just remove them
