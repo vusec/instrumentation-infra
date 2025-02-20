@@ -169,6 +169,7 @@ def fetch_target(ctx: Context, target: Target) -> None:
             ctx.log.warning(f"Only running as a dry-run; not fetching target: {target.name}")
         else:
             ctx.log.info(f"Target {target.name} not found; fetching")
+            target.fetch(ctx)
 
 
 def fetch_package(ctx: Context, package: Package) -> None:
