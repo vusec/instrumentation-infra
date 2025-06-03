@@ -65,7 +65,7 @@ class Setup:
                            Needed to allow build scripts to call back into the
                            setup script for build hooks.
         """
-        set_fd_limit(new_lim=65536)
+        set_fd_limit(new_lim=32768)
 
         self.instances = Index("instance")
         self.targets = Index("target")

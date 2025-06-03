@@ -965,14 +965,14 @@ def dir_has_up_to_date_repo(path: str | os.PathLike, repo: str) -> bool:
         return False
 
 
-def set_fd_limit(new_lim=65536) -> tuple[int, int]:
+def set_fd_limit(new_lim=32768) -> tuple[int, int]:
     """
     Sets the soft limit on the maximum number of open file descriptors on the system; if the requested
     soft limit exceeds the system's hard limit, an exception is raised.
 
     Also returns the current/old soft & hard limits.
 
-    :param int new_lim: the new requested soft limit, defaults to 65536
+    :param int new_lim: the new requested soft limit, defaults to 32768
     :raises ValueError: raised if the requested soft limit exceeds the system's hard limit
     :return tuple[int, int]: a pair of the current (old) soft & hard limit
     """
