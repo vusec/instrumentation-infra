@@ -278,34 +278,43 @@ class Context:
 
     def add_flags(
         self,
-        flags: Iterable[str] | str,
-        cc: bool = False,
-        cxx: bool = False,
-        ld: bool = False,
-        lib_ld: bool = False,
-        dups: bool = True,
-    ) -> None:
-        """Helper function to add one or more flags to the context's cflags/cxxflags/ldflags/lib_ldflags
-        lists conveniently with a single call. By default, allows insertion of duplicate flags. Can
-        be disabled by setting :param:`dups` to `False`.
-
-        :param Iterable[str] | str flags: a single flag or an iterable containing flags
-        :param bool cc: add the flag(s) to the C compiler flags, defaults to False
-        :param bool cxx: add the flag(s) to the C++ compiler flags, defaults to False
-        :param bool ld: add the flag(s) to the linker flags, defaults to False
-        :param bool lib_ld: add the flag(s) to the lib_linker flags, defaults to False
-        :param bool dups: always add flag(s) even if they are already added, defaults to True
+        *flags: str,
+        scopes: Iterable[str] | None = None,
+        allow_dups: bool = False,
+    ) -> "Context":
         """
-        flags = [flags] if isinstance(flags, str) else list(flags)
-        for flag in flags:
-            if cc and (flag not in self.cflags or dups):
-                self.cflags.append(flag)
-            if cxx and (flag not in self.cxxflags or dups):
-                self.cxxflags.append(flag)
-            if ld and (flag not in self.ldflags or dups):
-                self.ldflags.append(flag)
-            if lib_ld and (flag not in self.lib_ldflags or dups):
-                self.lib_ldflags.append(flag)
+        Add one or more flags (auto-splitting on whitespace) to the given scopes.
+
+        :param flags:       One or more flag-strings; e.g. "-g3", "-Xclang -verify"
+        :param scopes:      Which scopes to populate; any of "cc","cxx","ld","lib_ld".
+                            Defaults to all.
+        :param allow_dups:  If False, skip flags already present.
+        :returns:           self (for chaining)
+        """
+        # Default to all scopes if not passed
+        scopes = scopes or ("cc", "cxx", "ld", "lib_ld")
+
+        # Split each raw flag on whitespace, strip, drop empties
+        clean = [flag for raw in flags if (parts := raw.split()) for part in parts if (flag := part.strip())]
+
+        # Append each cleaned flag to the selected flag arrays (match scope)
+        for flag in clean:
+            for scope in scopes:
+                match scope:
+                    case "cc":
+                        target = self.cflags
+                    case "cxx":
+                        target = self.cxxflags
+                    case "ld":
+                        target = self.ldflags
+                    case "lib_ld":
+                        target = self.lib_ldflags
+                    case _:
+                        raise ValueError(f"Unknown scope selected: {scope}")
+                if allow_dups or flag not in target:
+                    target.append(flag)
+
+        return self
 
     def copy(self) -> "Context":
         """

@@ -545,7 +545,7 @@ class LLVM(Package):
 
         # If LLD was built, use it as a linker by setting '-fuse-ld=lld` and symlinking `ld` to `ld.lld`
         if self.lld:
-            ctx.add_flags("-fuse-ld=lld", cc=False, cxx=False, ld=True, lib_ld=False, dups=False)
+            ctx.add_flags("-fuse-ld=lld", scopes=("ld",))
 
             if (lld_bin := bins_dir / "ld.lld").is_file():
                 if not (ld_link := bins_dir / "ld").is_file():
