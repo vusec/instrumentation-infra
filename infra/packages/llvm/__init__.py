@@ -500,12 +500,17 @@ class LLVM(Package):
         if not conf_bin.is_file():
             raise FileNotFoundError(f"Failed to found llvm-config binary: {conf_bin}!")
 
+        incs_dir = Path(run(ctx, [conf_bin, "--includedir"]).stdout.strip())
         root_dir = Path(run(ctx, [conf_bin, "--obj-root"]).stdout.strip())
         bins_dir = Path(run(ctx, [conf_bin, "--bindir"]).stdout.strip())
         libs_dir = Path(run(ctx, [conf_bin, "--libdir"]).stdout.strip())
 
-        if not root_dir.is_dir() or not bins_dir.is_dir() or not libs_dir.is_dir():
+        if not incs_dir.is_dir() or not root_dir.is_dir() or not bins_dir.is_dir() or not libs_dir.is_dir():
             raise FileNotFoundError(f"No LLVM root/bins/libs dir: ({root_dir}:{bins_dir}:{libs_dir})")
+
+        # Add compiler & linker flags to ensure the library & include directories are available
+        ctx.add_flags(f"-I{incs_dir}", scopes=("cc", "cxx", "ld"))
+        ctx.add_flags(f"-L{libs_dir}", scopes=("ld",))
 
         # Prepend LLVM's directories to the front of $PATH/$LD_LIBRARY_PATH so they're prioritised
         ctx.log.debug(f"Installing {bins_dir} into $PATH for {self.ident()}")
