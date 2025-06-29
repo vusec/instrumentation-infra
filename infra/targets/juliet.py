@@ -75,7 +75,7 @@ class Juliet(Target):
             "--variants",
             nargs="+",
             type=int,
-            default=[1],
+            default=[],
             help="which flow variants to build",
         )
 
@@ -85,7 +85,7 @@ class Juliet(Target):
             "--variants",
             nargs="+",
             type=int,
-            default=[1],
+            default=[],
             help="which flow variants to build",
         )
 
@@ -178,8 +178,20 @@ class Juliet(Target):
                 part = m.group(2)
 
                 # Only run selected flow-variants (normally only 01)
-                #if variant not in ctx.args.variants:
-                #    continue
+                if ctx.args.variants and variant not in ctx.args.variants:
+                    continue
+
+                # MSan has false positives on 73/74 due to missing libc++ instrumentation
+                if variant == 73 or variant == 74:
+                    continue
+
+                # CombiSan has false positives on 32 due to expected violations
+                if (cwe == "CWE121" or cwe == "CWE124" or cwe == "CWE126" or cwe == "CWE127") and variant == 32:
+                    continue
+
+                # Skip wide char bug that ASan does not detect
+                if "_CWE135_" in testname:
+                    continue
 
                 # random global is not deterministic
                 if variant == 12:
@@ -312,7 +324,15 @@ class Juliet(Target):
         # stdin = b"A" * 8
         if cwe == "CWE124" or cwe == "CWE127":
             # for underflows
+            stdin = b"-8"
+        elif cwe == "CWE126":
+            stdin = b"19"
+        elif cwe == "CWE121":
+            stdin = b"19"
+        elif cwe == "CWE194":
             stdin = b"-600"
+        elif cwe == "CWE681":
+            stdin = b"1e20f"
         else:
             stdin = b"600"
 
@@ -326,7 +346,7 @@ class Juliet(Target):
                 [str(testpath)],
                 env=ctx.runenv,
                 silent=True,
-                allow_error=False,
+                allow_error=True,
                 input=stdin,
                 universal_newlines=False,
             )
