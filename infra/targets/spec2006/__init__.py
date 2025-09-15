@@ -558,8 +558,11 @@ class SPEC2006(Target):
                     "482.sphinx3=default=default=default": {
                         "CPORTABILITY": ["-fsigned-char"]
                     },
+                    "445.gobmk=default=default=default": {
+                        "CPORTABILITY": ["-fwrapv-pointer"]
+                    },
                     "483.xalancbmk=default=default=default": {
-                        "CXXPORTABILITY": ["-DSPEC_CPU_LINUX"]
+                        "CXXPORTABILITY": ["-DSPEC_CPU_LINUX", "-fdelayed-template-parsing"]
                     },
                     "481.wrf=default=default=default": {
                         "extra_lines": ["wrf_data_header_size = 8"],

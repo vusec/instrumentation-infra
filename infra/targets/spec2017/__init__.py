@@ -525,7 +525,8 @@ class SPEC2017(Target):
                         "PORTABILITY": [f"-DSPEC_LINUX_{arch_suffixes[ctx.arch]}"],
                     },
                     "523.xalancbmk_r,623.xalancbmk_s": {
-                        "PORTABILITY": ["-DSPEC_LINUX"],
+			# xalancbmk has a bug that requires -fdelayed-template-parsing to bypass (see online)
+                        "PORTABILITY": ["-DSPEC_LINUX", "-fdelayed-template-parsing"],
                     },
                     "502.gcc_r,602.gcc_s=peak": {
                         "LDOPTIMIZE": ["-z", "muldefs"],
