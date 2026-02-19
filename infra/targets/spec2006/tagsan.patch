@@ -1,0 +1,31 @@
+diff ORIG_SPEC_CPU2006v1.2/benchspec/CPU2006/403.gcc/src/ggc-page.c  RSAN_SPEC_CPU2006v1.2/benchspec/CPU2006/403.gcc/src/ggc-page.c
+index d93a509cd..5d133d8cf 100644
+--- ORIG_SPEC_CPU2006v1.2/benchspec/CPU2006/403.gcc/src/ggc-page.c
++++  RSAN_SPEC_CPU2006v1.2/benchspec/CPU2006/403.gcc/src/ggc-page.c
+@@ -393,7 +393,7 @@ ggc_allocated_p (p)
+   base = &G.lookup[0];
+ #else
+   page_table table = G.lookup;
+-  size_t high_bits = (size_t) p & ~ (size_t) 0xffffffff;
++  size_t high_bits = (size_t) p & ~ (size_t) 0xffff0000ffffffff;
+   while (1)
+     {
+       if (table == NULL)
+@@ -426,7 +426,7 @@ lookup_page_table_entry(p)
+   base = &G.lookup[0];
+ #else
+   page_table table = G.lookup;
+-  size_t high_bits = (size_t) p & ~ (size_t) 0xffffffff;
++  size_t high_bits = (size_t) p & ~ (size_t) 0xffff0000ffffffff;
+   while (table->high_bits != high_bits)
+     table = table->next;
+   base = &table->table[0];
+@@ -453,7 +453,7 @@ set_page_table_entry(p, entry)
+   base = &G.lookup[0];
+ #else
+   page_table table;
+-  size_t high_bits = (size_t) p & ~ (size_t) 0xffffffff;
++  size_t high_bits = (size_t) p & ~ (size_t) 0xffff0000ffffffff;
+   for (table = G.lookup; table; table = table->next)
+     if (table->high_bits == high_bits)
+       goto found;
