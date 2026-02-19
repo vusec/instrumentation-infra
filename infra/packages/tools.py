@@ -149,7 +149,7 @@ class RusageCounters(ReportableTool):
 
     @classmethod
     def parse_results(
-        cls, ctx: Context, path: str, allow_missing: bool = False
+        cls, ctx: Context, path: str, allow_missing: bool = True
     ) -> ResultDict:
         return super().parse_results(ctx, path, allow_missing)
 
