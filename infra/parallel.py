@@ -58,7 +58,7 @@ class Job:
 
     @property
     def stderr_io(self) -> IO | None:
-        return self.proc.stdout_io
+        return self.proc.stderr_io
 
     def poll(self) -> int | None:
         return self.proc.poll()
@@ -71,6 +71,7 @@ class Job:
 class ProcessJob(Job):
     stdout_handle: IO | None = None
     stderr_handle: IO | None = None
+    outfiles: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -336,6 +337,7 @@ class ProcessPool(Pool):
                     errs="",
                     stdout_handle=open(f"{outfile}.stdout.log", mode="w") if proc.stdout_io is not None else None,
                     stderr_handle=open(f"{outfile}.stderr.log", mode="w") if proc.stderr_io is not None else None,
+                    outfiles=outfiles,
                 )
             else:
                 RuntimeError(f"Failed to create process {jobid} for command: {cmd}")

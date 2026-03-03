@@ -419,8 +419,11 @@ class Process:
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no stdout!")
 
-        if isinstance(self.proc.stdout, IO):
+        if isinstance(self.proc.stdout, (io.IOBase, io.TextIOWrapper)):
             return self.proc.stdout
+
+        if self.proc.stdout is None:
+            return None
 
         raise ValueError(f"Cannot get stdout IO stream; stdout is {type(self.proc.stdout)}")
 
@@ -437,8 +440,11 @@ class Process:
         if self.proc is None:
             raise ProcessLookupError("Invalid (None) process has no stderr!")
 
-        if isinstance(self.proc.stderr, IO):
+        if isinstance(self.proc.stderr, (io.IOBase, io.TextIOWrapper)):
             return self.proc.stderr
+
+        if self.proc.stderr is None:
+            return None
 
         raise ValueError(f"Cannot get stderr IO stream; stderr is {type(self.proc.stderr)}")
 
