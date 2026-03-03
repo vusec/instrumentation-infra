@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 import csv
@@ -144,6 +145,11 @@ class ReportCommand(Command):
                 choices=self.instances,
                 help="report each field as overhead relative to this baseline",
             )
+            tparser.add_argument(
+                "--show-baseline",
+                action="store_true",
+                help="if reporting overheads, also report the raw baseline values",
+            )
 
             tparser.add_argument(
                 "--groupby",
@@ -286,10 +292,12 @@ class ReportCommand(Command):
                     if f in result:
                         grouped.setdefault((key, f), []).append(result[f])
 
+        show_baseline = getattr(ctx.args, "show_baseline", False)
+
         header = [ctx.args.groupby]
         human_header = ["\n\n" + ctx.args.groupby]
         for instance in instances:
-            if instance == baseline_instance:
+            if not show_baseline and instance == baseline_instance:
                 continue
 
             for i, (f, aggr) in enumerate(fields):
@@ -299,22 +307,27 @@ class ReportCommand(Command):
                     human_header.append(prefix + ag)
                     prefix = "\n\n"
 
+        output_mode = getattr(ctx.args, "output_mode", "table")
+
         data: list[list[ResultVal | None]] = []
+        per_instance: dict[str, dict[str, dict[str, ResultVal | None]]] = {}
         for groupby_value in groupby_values:
-            baseline_results = {}
+            baseline_results: dict[tuple[str, str, str], ResultVal] = {}
             if baseline_instance:
                 key = groupby_value, baseline_instance
                 for f, aggr in fields:
                     for ag in aggr:
                         series = grouped.get((key, f), [-1])
                         value = _aggregate_fns[ag](series)
-                        baseline_results[(groupby_value, f)] = value
+                        baseline_results[(groupby_value, f, ag)] = value
 
             row: list[ResultVal | None] = [groupby_value]
             for instance in instances:
-                if instance == baseline_instance:
+                if not show_baseline and instance == baseline_instance:
                     continue
 
+                if output_mode == "json":
+                    per_instance.setdefault(instance, {})
                 key = groupby_value, instance
                 for f, aggr in fields:
                     for ag in aggr:
@@ -323,9 +336,22 @@ class ReportCommand(Command):
                         else:
                             series = grouped[(key, f)]
                             value = _aggregate_fns[ag](series)
-                            if baseline_results and isinstance(value, (int, float)):
-                                value /= baseline_results[(groupby_value, f)]
+                            if (
+                                instance != baseline_instance
+                                and baseline_results
+                                and isinstance(value, (int, float))
+                            ):
+                                value /= baseline_results[
+                                    (groupby_value, f, ag)
+                                ]
                         row.append(value)
+                        if output_mode == "json":
+                            per_instance[instance].setdefault(
+                                str(groupby_value), {}
+                            )
+                            per_instance[instance][str(groupby_value)][
+                                f"{f}:{ag}"
+                            ] = value
             data.append(row)
 
         if baseline_instance:
@@ -349,7 +375,10 @@ class ReportCommand(Command):
             data.append(aggregate_row)
             table_options["inner_footing_row_border"] = True
 
-        report_table(ctx, header, human_header, data, title, **table_options)
+        if output_mode == "json":
+            _report_json(per_instance)
+        else:
+            report_table(ctx, header, human_header, data, title, **table_options)
 
     def _parse_fields(self, ctx: Context, target: Target) -> FieldAggregators:
         for arg in chain.from_iterable(ctx.args.field):
@@ -408,6 +437,13 @@ def add_table_report_args(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
+        "--output-mode",
+        choices=("table", "json"),
+        default="table",
+        help="output format: table (default) or machine-readable JSON",
+    )
+
+    parser.add_argument(
         "--precision",
         type=int,
         default=3,
@@ -423,6 +459,27 @@ def add_table_report_args(parser: argparse.ArgumentParser) -> None:
             dest="table",
             help="short for --table=" + mode,
         )
+
+
+def _report_json(
+    per_instance: dict[str, dict[str, dict[str, Any]]],
+) -> None:
+    """Print aggregated results as machine-readable JSON.
+
+    The output structure is::
+
+        {
+            "<instance>": {
+                "<groupby_value>": {
+                    "<field>:<aggregator>": <value>,
+                    ...
+                },
+                ...
+            },
+            ...
+        }
+    """
+    print(json.dumps(per_instance, indent=2))
 
 
 def report_table(
