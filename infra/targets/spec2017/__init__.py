@@ -415,6 +415,8 @@ class SPEC2017(Target):
 
                 def onsuccess_parse_log(job: Job) -> None:
                     for job_outfile in job.outfiles:
+                        if job_outfile.endswith(".stderr.log"):
+                            continue
                         process_log(ctx, job_outfile, self, write_cache=True)
 
                 self._run_bash(

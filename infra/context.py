@@ -182,6 +182,12 @@ class Context:
     #: In practice it is either empty or ``['-flto']`` when compiling with LLVM.
     lib_ldflags: list[str] = field(default_factory=list)
 
+    #: Random seed for randomized builds (set by ``run-random`` command).
+    rngseed: str = ""
+
+    #: Unique identifier per build iteration (set by ``run-random`` command).
+    uniqueid: str = ""
+
     def add_flags(
         self,
         flags: Iterable[str] | str,

@@ -4,3 +4,4 @@ from .config import ConfigCommand, PkgConfigCommand
 from .exec_hook import ExecHookCommand
 from .report import ReportCommand
 from .run import RunCommand
+from .run_random import RunRandomCommand

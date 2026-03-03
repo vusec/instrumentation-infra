@@ -247,6 +247,7 @@ class Setup:
         self.add_command(commands.ConfigCommand())
         self.add_command(commands.PkgConfigCommand())
         self.add_command(commands.ExecHookCommand())
+        self.add_command(commands.RunRandomCommand())
 
         self._parse_argv()
         self._create_dirs()
