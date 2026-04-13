@@ -1,0 +1,30 @@
+diff ORIG_SPEC_CPU2017/benchspec/CPU/502.gcc_r/src/ggc-page.c TAGSAN_SPEC_CPU2017/benchspec/CPU/502.gcc_r/src/ggc-page.c
+--- ORIG_SPEC_CPU2017/benchspec/CPU/502.gcc_r/src/ggc-page.c
++++ TAGSAN_SPEC_CPU2017/benchspec/CPU/502.gcc_r/src/ggc-page.c
+@@ -568,7 +568,7 @@ ggc_allocated_p (const void *p)
+   base = &G.lookup[0];
+ #else
+   page_table table = G.lookup;
+-  size_t high_bits = (size_t) p & ~ (size_t) 0xffffffff;
++  size_t high_bits = (size_t) p & ~ (size_t) 0xffff0000ffffffff;
+   while (1)
+     {
+       if (table == NULL)
+@@ -600,7 +600,7 @@ lookup_page_table_entry (const void *p)
+   base = &G.lookup[0];
+ #else
+   page_table table = G.lookup;
+-  size_t high_bits = (size_t) p & ~ (size_t) 0xffffffff;
++  size_t high_bits = (size_t) p & ~ (size_t) 0xffff0000ffffffff;
+   while (table->high_bits != high_bits)
+     table = table->next;
+   base = &table->table[0];
+@@ -625,7 +625,7 @@ set_page_table_entry (void *p, page_entry *entry)
+   base = &G.lookup[0];
+ #else
+   page_table table;
+-  size_t high_bits = (size_t) p & ~ (size_t) 0xffffffff;
++  size_t high_bits = (size_t) p & ~ (size_t) 0xffff0000ffffffff;
+   for (table = G.lookup; table; table = table->next)
+     if (table->high_bits == high_bits)
+       goto found;
