@@ -1,0 +1,91 @@
+diff --git a/benchspec/CPU/523.xalancbmk_r/src/XMLUTF8Transcoder.cpp b/benchspec/CPU/523.xalancbmk_r/src/XMLUTF8Transcoder.cpp
+index 3cde772..a5e76a1 100644
+--- a/benchspec/CPU/523.xalancbmk_r/src/XMLUTF8Transcoder.cpp
++++ b/benchspec/CPU/523.xalancbmk_r/src/XMLUTF8Transcoder.cpp
+@@ -158,8 +158,9 @@ XMLUTF8Transcoder::transcodeFrom(const  XMLByte* const          srcData
+             do
+             {
+                 *outPtr++ = XMLCh(*srcPtr++);
+-            } while (*srcPtr <= 127    &&
++            } while (
+                       srcPtr != srcEnd &&
++                      *srcPtr <= 127    &&
+                       outPtr != outEnd );
+             memset(sizePtr,1,srcPtr - srcPtr_save);
+             sizePtr += srcPtr - srcPtr_save;
+diff --git a/benchspec/CPU/525.x264_r/src/ldecod_src/image.c b/benchspec/CPU/525.x264_r/src/ldecod_src/image.c
+index 2f124c2..5c49ab7 100644
+--- a/benchspec/CPU/525.x264_r/src/ldecod_src/image.c
++++ b/benchspec/CPU/525.x264_r/src/ldecod_src/image.c
+@@ -2470,7 +2470,7 @@ void decode_one_slice(Slice *currSlice)
+ #if (MVC_EXTENSION_ENABLE)
+ int GetVOIdx(VideoParameters *p_Vid, int iViewId)
+ {
+-  int iVOIdx = -1;
++  int iVOIdx = 0;
+   int *piViewIdMap;
+   if(p_Vid->active_subset_sps)
+   {
+diff --git a/benchspec/CPU/525.x264_r/src/x264_src/common/mvpred.c b/benchspec/CPU/525.x264_r/src/x264_src/common/mvpred.c
+index 54b4d5a..0193fd5 100644
+--- a/benchspec/CPU/525.x264_r/src/x264_src/common/mvpred.c
++++ b/benchspec/CPU/525.x264_r/src/x264_src/common/mvpred.c
+@@ -293,7 +293,7 @@ static int x264_mb_predict_mv_direct16x16_spatial( x264_t *h )
+         return 0;
+     }
+ 
+-    if( !M64( mv ) || IS_INTRA( type_col ) || (ref[0]&&ref[1]) )
++    if( /*!M64( mv )*/ !mv[0] && !mv[1] || IS_INTRA( type_col ) || (ref[0]&&ref[1]) )
+         return 1;
+ 
+     /* Don't do any checks other than the ones we have to, based
+diff --git a/benchspec/CPU/531.deepsjeng_r/src/neval.cpp b/benchspec/CPU/531.deepsjeng_r/src/neval.cpp
+index 2d6745a..dab579d 100644
+--- a/benchspec/CPU/531.deepsjeng_r/src/neval.cpp
++++ b/benchspec/CPU/531.deepsjeng_r/src/neval.cpp
+@@ -107,7 +107,7 @@ static void passer_eval(state_t *s, pawntt_t *pawntt, int phase_scale, t_eval_co
+         w_score += w_passer[ra - 1];      
+         
+         if (s->sboard[sq - 1] == wpawn
+-            || s->sboard[sq + 9] == wpawn
++            || (sq != 55 && s->sboard[sq + 9] == wpawn)
+             || s->sboard[sq + 7] == wpawn) {
+             w_score += w_passer_pawn_supported[ra - 1];
+         }        
+@@ -220,7 +220,7 @@ static void passer_eval(state_t *s, pawntt_t *pawntt, int phase_scale, t_eval_co
+         b_score -= w_passer[(7 - ra) - 1];   
+         
+         if (s->sboard[sq + 1] == bpawn
+-            || s->sboard[sq - 9] == bpawn
++            || (sq > 8 && s->sboard[sq - 9] == bpawn)
+             || s->sboard[sq - 7] == bpawn) {
+             b_score -= w_passer_pawn_supported[(7 - ra) - 1];
+         }                                       
+--- bad/benchspec/CPU/502.gcc_r/src/reload1.c   2022-07-06 10:00:38.064986081 +0200
++++ good/benchspec/CPU/502.gcc_r/src/reload1.c  2022-07-06 10:21:47.431981984 +0200
+@@ -1858,20 +1858,25 @@
+ /* We decided to spill hard register SPILLED, which has a size of
+    SPILLED_NREGS.  Determine how pseudo REG, which is live during the insn,
+    is affected.  We will add it to SPILLED_PSEUDOS if necessary, and we will
+    update SPILL_COST/SPILL_ADD_COST.  */
+ 
+ static void
+ count_spilled_pseudo (int spilled, int spilled_nregs, int reg)
+ {
+   int freq = REG_FREQ (reg);
+   int r = reg_renumber[reg];
++
++  // ASAN FIX: Avoid unused OOB read with r=-1 below.
++  if (ira_conflicts_p && r < 0)
++    return;
++
+   int nregs = hard_regno_nregs[r][PSEUDO_REGNO_MODE (reg)];
+ 
+   /* Ignore spilled pseudo-registers which can be here only if IRA is
+      used.  */
+   if ((ira_conflicts_p && r < 0)
+       || REGNO_REG_SET_P (&spilled_pseudos, reg)
+       || spilled + spilled_nregs <= r || r + nregs <= spilled)
+     return;
+ 
+   SET_REGNO_REG_SET (&spilled_pseudos, reg);
