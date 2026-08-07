@@ -7,6 +7,8 @@ import re
 import shutil
 from collections import defaultdict
 from contextlib import redirect_stdout
+import sys
+from time import sleep
 from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Type, Union
 
 from ...commands.report import outfile_path
@@ -231,13 +233,13 @@ class SPEC2006(Target):
         #     case _:
         #         raise ValueError(f"Invalid source type: '{self.source_type}'")
 
-#    def _install_dir(self, ctx: Context, *args) -> Path:
-#        """Gets the installation directory based on this specific SPEC instance's source type"""
-#        match self.source_type:
-#            case "installed":
-#                return Path(self.source)
-#            case _:
-#                return Path(self.path(ctx, "install", *args))
+    #    def _install_dir(self, ctx: Context, *args) -> Path:
+    #        """Gets the installation directory based on this specific SPEC instance's source type"""
+    #        match self.source_type:
+    #            case "installed":
+    #                return Path(self.source)
+    #            case _:
+    #                return Path(self.path(ctx, "install", *args))
     def _install_dir(self, ctx: Context, *args: str) -> str:
         if self.source_type == "installed":
             return os.path.join(self.source, *args)
@@ -273,15 +275,12 @@ class SPEC2006(Target):
         cmd = [
             "bash",
             "-c",
-            "\n"
-            + _unindent(
-                f"""
+            "\n" + _unindent(f"""
             cd {self._install_dir(ctx)}
             source shrc
             source "{config_root}/scripts/kill-tree-on-interrupt.inc"
             {command}
-            """
-            ),
+            """),
         ]
         if pool:
             pool.run(ctx, cmd, **kwargs)
@@ -300,13 +299,21 @@ class SPEC2006(Target):
             case "installed":
                 ctx.log.info(f"Not cleaning external SPEC installation: {self._install_dir(ctx)}")
             case _:
-                shutil.rmtree(self.path(ctx))
+                # Only clean the benchmarks, not SPEC
+                for bench in self._get_benchmarks(ctx):
+                    if os.path.exists(bench_dir := self._install_dir(ctx, "benchspec", "CPU2006", bench)):
+                        shutil.rmtree(f"{bench_dir}/build", ignore_errors=True)
+                        shutil.rmtree(f"{bench_dir}/run", ignore_errors=True)
 
     def is_fetched(self, ctx: Context) -> bool:
-        #return self._install_dir(ctx, "shrc").is_file()
-        return self.source_type == "installed" or os.path.exists("install/shrc")
+        return self.source_type == "installed" or os.path.exists(self._install_dir(ctx, "shrc"))
 
     def fetch(self, ctx: Context) -> None:
+        # If rebuilding dependencies, don't reinstall SPEC itself but only rebuild the benchmarks
+        if self.is_fetched(ctx):
+            ctx.log.warning(f"Not re-installing SPEC; already installed to {self._install_dir(ctx)}")
+            return
+
         def install_spec(src_dir: Path) -> None:
             assert src_dir.is_dir() and any(src_dir.iterdir())
             os.chdir(src_dir)
@@ -348,7 +355,7 @@ class SPEC2006(Target):
                 install_spec(mnt_dir)
 
                 ctx.log.info(f"Unmounting SPEC2006 ISO from {mnt_dir}")
-                run(ctx, ["fusermount", "-u", mnt_dir], teeout=True)
+                run(ctx, ["fusermount", "-uz", mnt_dir], teeout=True)
                 shutil.rmtree(mnt_dir, ignore_errors=True)
 
             case "mounted":
@@ -383,11 +390,11 @@ class SPEC2006(Target):
         RusageCounters().configure(ctx)
 
         # get SPEC config
-        os.chdir(self.path(ctx))
+        os.chdir(self._install_dir(ctx))
         config = self._make_spec_config(ctx, instance)
 
         # build selected
-        os.chdir(self.path(ctx))
+        os.chdir(self._install_dir(ctx))
         for bench in self._get_benchmarks(ctx, instance):
             cmd = f"killwrap_tree runspec --config={config} --action=build {bench}"
             if pool:
@@ -403,7 +410,7 @@ class SPEC2006(Target):
     def run(self, ctx: Context, instance: Instance, pool: Optional[Pool] = None) -> None:
         conf_name = f"infra-{instance.name}"
         conf_path = self._install_dir(ctx, "config", f"{conf_name}.cfg")
-        #assert conf_path.is_file()
+        # assert conf_path.is_file()
 
         runargs: list[str] = []
 
@@ -449,8 +456,7 @@ class SPEC2006(Target):
             if isinstance(pool, PrunPool):
                 # prepare output dir on local disk before running,
                 # and move output files to network disk after completion
-                cmd = _unindent(
-                    f"""
+                cmd = _unindent(f"""
                 set -ex
 
                 benchdir="benchspec/CPU2006/{{bench}}"
@@ -516,8 +522,7 @@ class SPEC2006(Target):
 
                 # clean up
                 rm -rf "{output_root}"
-                """
-                )
+                """)
 
                 # the script is passed like this: prun ... bash -c '<script>'
                 # this means that some escaping is necessary: use \$ instead of
@@ -672,11 +677,11 @@ class SPEC2006(Target):
         """Overridden because directly handled through SPEC config monitor wrappers"""
         pass
 
-    def _get_benchmarks(self, ctx: Context, instance: Instance) -> Iterable[str]:
+    def _get_benchmarks(self, ctx: Context, instance: Instance | None = None) -> Iterable[str]:
         benchmarks = set()
         for bset in ctx.args.benchmarks:
             for bench in self.benchmarks[bset]:
-                if not getattr(instance, "exclude_spec2006_benchmark", lambda _: False)(bench):
+                if instance is None or not getattr(instance, "exclude_spec2006_benchmark", lambda _: False)(bench):
                     benchmarks.add(bench)
         return sorted(benchmarks)
 

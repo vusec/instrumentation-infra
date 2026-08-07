@@ -2,6 +2,7 @@ import argparse
 import getpass
 import logging
 import os
+from pathlib import Path
 import re
 import shutil
 from collections import defaultdict
@@ -149,7 +150,7 @@ class SPEC2017(Target):
             "hostname": "machine hostname",
             "workload": "run workload (test / ref / train)",
             "inputs": "number of different benchmark inputs",
-            **RusageCounters.reportable_fields()
+            **RusageCounters.reportable_fields(),
         }
         for reporter in self.reporters:
             fields.update(reporter.reportable_fields())
@@ -188,15 +189,38 @@ class SPEC2017(Target):
         )
 
     def dependencies(self) -> Iterator[Package]:
-        #yield Bash("4.3")
+        # yield Bash("4.3")
         if self.nothp:
             yield Nothp()
         yield RusageCounters()
 
+    def is_clean(self, ctx: Context) -> bool:
+        match self.source_type:
+            case "installed":
+                return True
+            case _:
+                return not any(Path(self.path(ctx)).iterdir())
+
+    def clean(self, ctx: Context) -> None:
+        match self.source_type:
+            case "installed":
+                ctx.log.info(f"Not cleaning external SPEC installation: {self._install_path(ctx)}")
+            case _:
+                # Only clean the benchmarks, not SPEC
+                for bench in self._get_benchmarks(ctx):
+                    if os.path.exists(bench_dir := self._install_path(ctx, "benchspec", "CPU2017", bench)):
+                        shutil.rmtree(f"{bench_dir}/build", ignore_errors=True)
+                        shutil.rmtree(f"{bench_dir}/run", ignore_errors=True)
+
     def is_fetched(self, ctx: Context) -> bool:
-        return self.source_type == "installed" or os.path.exists("install/shrc")
+        return self.source_type == "installed" or os.path.exists(self._install_path(ctx, "shrc"))
 
     def fetch(self, ctx: Context) -> None:
+        # If rebuilding dependencies, don't reinstall SPEC itself but only rebuild the benchmarks
+        if self.is_fetched(ctx):
+            ctx.log.warning(f"Not re-installing SPEC; already installed to {self._install_path(ctx)}")
+            return
+
         def do_install(srcdir: str) -> None:
             os.chdir(srcdir)
             install_path = self._install_path(ctx)
@@ -217,7 +241,7 @@ class SPEC2017(Target):
             do_install(mountdir)
             ctx.log.debug("unmounting SPEC-CPU2017 ISO")
             os.chdir(self.path(ctx))
-            run(ctx, ["fusermount", "-u", mountdir])
+            run(ctx, ["fusermount", "-uz", mountdir])
             os.rmdir(mountdir)
 
         elif self.source_type == "mounted":
@@ -266,7 +290,7 @@ class SPEC2017(Target):
         # add flags to compile with runtime support for benchmark utils
         RusageCounters().configure(ctx)
 
-        os.chdir(self.path(ctx))
+        os.chdir(self._install_path(ctx))
         config = self._make_spec_config(ctx, instance)
         print_output = ctx.loglevel == logging.DEBUG
 
@@ -320,11 +344,11 @@ class SPEC2017(Target):
         if self.nothp:
             wrapper += " nothp"
         if self.force_cpu >= 0:
-            #if isinstance(pool, ProcessPool) and pool.parallelmax > 1:
+            # if isinstance(pool, ProcessPool) and pool.parallelmax > 1:
             #    ctx.log.warning(
             #        f"Ignoring force_cpu={self.force_cpu} for " "SPEC2017 because using parallel=proc with " "parallelmax > 1"
             #    )
-            #else:
+            # else:
             wrapper += f" taskset -c {self.force_cpu}"
 
         cmd = f"{wrapper} runcpu --config={config} --nobuild {qjoin(runargs)} {{bench}}"
@@ -335,8 +359,7 @@ class SPEC2017(Target):
             if isinstance(pool, PrunPool):
                 # prepare output dir on local disk before running,
                 # and move output files to network disk after completion
-                cmd = _unindent(
-                    f"""
+                cmd = _unindent(f"""
                 set -ex
 
                 benchdir="benchspec/CPU2017/{{bench}}"
@@ -402,8 +425,7 @@ class SPEC2017(Target):
 
                 # clean up
                 rm -rf "{output_root}"
-                """
-                )
+                """)
 
                 # the script is passed like this: prun ... bash -c '<script>'
                 # this means that some escaping is necessary: use \$ instead of
@@ -414,7 +436,7 @@ class SPEC2017(Target):
                 jobid = f"run-{instance.name}-{bench}"
                 outfile = outfile_path(ctx, self, instance, bench)
 
-                #def onsuccess_parse_log(job: Job) -> None:
+                # def onsuccess_parse_log(job: Job) -> None:
                 #    for job_outfile in job.outfiles:
                 #        process_log(ctx, job_outfile, self, write_cache=True)
 
@@ -425,7 +447,7 @@ class SPEC2017(Target):
                     jobid=jobid,
                     outfile=outfile,
                     nnodes=ctx.args.iterations,
-                    #onsuccess=onsuccess_parse_log,
+                    # onsuccess=onsuccess_parse_log,
                 )
         else:
             self._run_bash(ctx, cmd.format(bench=qjoin(benchmarks)), teeout=True)
@@ -442,15 +464,12 @@ class SPEC2017(Target):
         cmd = [
             "bash",
             "-c",
-            "\n"
-            + _unindent(
-                f"""
+            "\n" + _unindent(f"""
             cd {self._install_path(ctx)}
             source shrc
             source "{config_root}/scripts/kill-tree-on-interrupt.inc"
             {command}
-            """
-            ),
+            """),
         ]
         if pool:
             pool.run(ctx, cmd, pass_callback=onsuccess, **kwargs)
@@ -506,7 +525,7 @@ class SPEC2017(Target):
                     print(
                         f"build_pre_bench = {ctx.paths.setup} -v warning exec-hook pre-build "
                         f"{instance.name} `echo ${{commandexe}} "
-                        f'| sed "s/_\\[a-z0-9\\]\\\\+\\\\.{conf_name}\\\\\\$//"`'
+                        f'| sed "s/_\\[a-z0-9\\]\\\\+\\\\.{config_name}\\\\\\$//"`'
                     )
                     print("")
                 if ctx.hooks.post_build:
@@ -514,7 +533,7 @@ class SPEC2017(Target):
                     print(
                         f"build_post_bench = {ctx.paths.setup} -v warning exec-hook post-build "
                         f"{instance.name} `echo ${{commandexe}} "
-                        f'| sed "s/_\\[a-z0-9\\]\\\\+\\\\.{conf_name}\\\\\\$//"`'
+                        f'| sed "s/_\\[a-z0-9\\]\\\\+\\\\.{config_name}\\\\\\$//"`'
                     )
 
                 # also configure pre- and post-run hooks to be executed
@@ -598,14 +617,12 @@ class SPEC2017(Target):
     def run_hooks_post_run(self, ctx: Context, instance: Instance) -> None:
         """Overridden because directly handled through SPEC config monitor wrappers"""
         pass
-    
-    def _get_benchmarks(self, ctx: Context, instance: Instance) -> Iterable[str]:
+
+    def _get_benchmarks(self, ctx: Context, instance: Instance | None = None) -> Iterable[str]:
         benchmarks = set()
         for bset in ctx.args.benchmarks:
             for bench in self.benchmarks[bset]:
-                if not hasattr(instance, "exclude_spec2017_benchmark") or not getattr(instance, "exclude_spec2017_benchmark")(
-                    bench
-                ):
+                if instance is None or not getattr(instance, "exclude_spec2017_benchmark", lambda _: False)(bench):
                     benchmarks.add(bench)
         return sorted(benchmarks)
 
