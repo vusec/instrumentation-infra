@@ -1,0 +1,275 @@
+diff --git a/benchspec/CPU/714.cpython_r/src/cpython/Parser/pegen.c b/benchspec/CPU/714.cpython_r/src/cpython/Parser/pegen.c
+index 20619016..7fb4e435 100644
+--- a/benchspec/CPU/714.cpython_r/src/cpython/Parser/pegen.c
++++ b/benchspec/CPU/714.cpython_r/src/cpython/Parser/pegen.c
+@@ -558,6 +558,7 @@ expr_ty _PyPegen_soft_keyword_token(Parser *p) {
+ }
+ 
+ static PyObject *
++__attribute__((no_sanitize("hwaddress")))
+ parsenumber_raw(const char *s)
+ {
+     const char *end;
+diff --git a/benchspec/CPU/714.cpython_r/src/cpython/Python/mystrtoul.c b/benchspec/CPU/714.cpython_r/src/cpython/Python/mystrtoul.c
+index 45b1382c..6f99267f 100644
+--- a/benchspec/CPU/714.cpython_r/src/cpython/Python/mystrtoul.c
++++ b/benchspec/CPU/714.cpython_r/src/cpython/Python/mystrtoul.c
+@@ -95,6 +95,7 @@ static const int digitlimit[] = {
+ **              exceptions - we don't check for them.
+ */
+ unsigned long
++__attribute__((no_sanitize("hwaddress")))
+ PyOS_strtoul(const char *str, char **ptr, int base)
+ {
+     unsigned long result = 0; /* return value of the function */
+diff --git a/benchspec/CPU/721.gcc_r/src/gcc/ggc-common.cc b/benchspec/CPU/721.gcc_r/src/gcc/ggc-common.cc
+index 5fa5dc3b..29a81a81 100644
+--- a/benchspec/CPU/721.gcc_r/src/gcc/ggc-common.cc
++++ b/benchspec/CPU/721.gcc_r/src/gcc/ggc-common.cc
+@@ -69,6 +69,7 @@ ggc_register_root_tab (const struct ggc_root_tab* rt)
+ /* Mark all the roots in the table RT.  */
+ 
+ static void
++__attribute__((no_sanitize("hwaddress")))
+ ggc_mark_root_tab (const_ggc_root_tab_t rt)
+ {
+   size_t i;
+diff --git a/benchspec/CPU/721.gcc_r/src/gcc/ggc-page.cc b/benchspec/CPU/721.gcc_r/src/gcc/ggc-page.cc
+index 79521293..6b47e4e6 100644
+--- a/benchspec/CPU/721.gcc_r/src/gcc/ggc-page.cc
++++ b/benchspec/CPU/721.gcc_r/src/gcc/ggc-page.cc
+@@ -593,7 +593,7 @@ safe_lookup_page_table_entry (const void *p)
+   base = &G.lookup[0];
+ #else
+   page_table table = G.lookup;
+-  uintptr_t high_bits = (uintptr_t) p & ~ (uintptr_t) 0xffffffff;
++  uintptr_t high_bits = (uintptr_t) p & ~ (uintptr_t) 0xffff0000ffffffff;
+   while (1)
+     {
+       if (table == NULL)
+@@ -627,7 +627,7 @@ lookup_page_table_entry (const void *p)
+   base = &G.lookup[0];
+ #else
+   page_table table = G.lookup;
+-  uintptr_t high_bits = (uintptr_t) p & ~ (uintptr_t) 0xffffffff;
++  uintptr_t high_bits = (uintptr_t) p & ~ (uintptr_t) 0xffff0000ffffffff;
+   while (table->high_bits != high_bits)
+     table = table->next;
+   base = &table->table[0];
+@@ -652,7 +652,7 @@ set_page_table_entry (void *p, page_entry *entry)
+   base = &G.lookup[0];
+ #else
+   page_table table;
+-  uintptr_t high_bits = (uintptr_t) p & ~ (uintptr_t) 0xffffffff;
++  uintptr_t high_bits = (uintptr_t) p & ~ (uintptr_t) 0xffff0000ffffffff;
+   for (table = G.lookup; table; table = table->next)
+     if (table->high_bits == high_bits)
+       goto found;
+diff --git a/benchspec/CPU/721.gcc_r/src/include/obstack.h b/benchspec/CPU/721.gcc_r/src/include/obstack.h
+index e921f4ba..8c55ca7d 100644
+--- a/benchspec/CPU/721.gcc_r/src/include/obstack.h
++++ b/benchspec/CPU/721.gcc_r/src/include/obstack.h
+@@ -128,7 +128,10 @@
+    aligning P to the next multiple of A + 1.  B and P must be of type
+    char *.  A + 1 must be a power of 2.  */
+ 
+-#define __BPTR_ALIGN(B, P, A) ((B) + (((P) - (B) + (A)) & ~(A)))
++// #define __BPTR_ALIGN(B, P, A) ((B) + (((P) - (B) + (A)) & ~(A)))
++// cast everything to uint64_t and mask using MASK = ~(0x3FULL << 57)
++#define MASK ~(0x3FULL << 57)
++#define __BPTR_ALIGN(B, P, A) ((B) + ((((uint64_t)(P) & MASK) - ((uint64_t)(B) & MASK) + (A)) & ~(A)))
+ 
+ /* Similar to __BPTR_ALIGN (B, P, A), except optimize the common case
+    where pointers can be converted to integers, aligned as integers,
+@@ -139,7 +142,7 @@
+ 
+ #define __PTR_ALIGN(B, P, A)						      \
+   __BPTR_ALIGN (sizeof (ptrdiff_t) < sizeof (void *) ? (B) : (char *) 0,      \
+-                P, A)
++                P, A)// FSAN
+ 
+ #ifndef __attribute_pure__
+ # if defined __GNUC_MINOR__ && __GNUC__ * 1000 + __GNUC_MINOR__ >= 2096 && !defined(SPEC)
+diff --git a/benchspec/CPU/721.gcc_r/src/libiberty/obstack.c b/benchspec/CPU/721.gcc_r/src/libiberty/obstack.c
+index 7c5e96ae..d3d6d441 100644
+--- a/benchspec/CPU/721.gcc_r/src/libiberty/obstack.c
++++ b/benchspec/CPU/721.gcc_r/src/libiberty/obstack.c
+@@ -147,7 +147,7 @@ _obstack_begin_worker (struct obstack *h,
+     (*obstack_alloc_failed_handler) ();
+   h->chunk = chunk;
+   h->next_free = h->object_base = __PTR_ALIGN ((char *) chunk, chunk->contents,
+-                                               alignment - 1);
++                                               alignment - 1); // FSAN
+   h->chunk_limit = chunk->limit = (char *) chunk + h->chunk_size;
+   chunk->prev = 0;
+   /* The initial chunk now contains no empty object.  */
+diff --git a/benchspec/CPU/723.llvm_r/src/include/llvm/Support/MD5.h b/benchspec/CPU/723.llvm_r/src/include/llvm/Support/MD5.h
+index 70d04660..6a729030 100644
+--- a/benchspec/CPU/723.llvm_r/src/include/llvm/Support/MD5.h
++++ b/benchspec/CPU/723.llvm_r/src/include/llvm/Support/MD5.h
+@@ -98,7 +98,7 @@ private:
+   typedef uint32_t MD5_u32plus;
+ 
+   // Internal State
+-  struct {
++  struct vusecrocks{
+     MD5_u32plus a = 0x67452301;
+     MD5_u32plus b = 0xefcdab89;
+     MD5_u32plus c = 0x98badcfe;
+diff --git a/benchspec/CPU/729.abc_r/src/berkeley-abc/src/opt/dau/dauMerge.c b/benchspec/CPU/729.abc_r/src/berkeley-abc/src/opt/dau/dauMerge.c
+index e654684c..3f508b37 100644
+--- a/benchspec/CPU/729.abc_r/src/berkeley-abc/src/opt/dau/dauMerge.c
++++ b/benchspec/CPU/729.abc_r/src/berkeley-abc/src/opt/dau/dauMerge.c
+@@ -560,7 +560,7 @@ void Dau_DsdRemoveBraces( char * pDsd, int * pMatches )
+     for ( q = p; *p; p++ )
+         if ( *p != ' ' )
+         {
+-            if ( *p == '!' && *(q-1) == '!' && p != q )
++            if ( *p == '!'  && p != q && *(q-1) == '!' )
+             {
+                 q--;
+                 continue;
+diff --git a/benchspec/CPU/772.marian_r/src/marian/3rd_party/sentencepiece/src/builtin_pb/sentencepiece.pb.cc b/benchspec/CPU/772.marian_r/src/marian/3rd_party/sentencepiece/src/builtin_pb/sentencepiece.pb.cc
+index 0da509f7..7ecec20e 100644
+--- a/benchspec/CPU/772.marian_r/src/marian/3rd_party/sentencepiece/src/builtin_pb/sentencepiece.pb.cc
++++ b/benchspec/CPU/772.marian_r/src/marian/3rd_party/sentencepiece/src/builtin_pb/sentencepiece.pb.cc
+@@ -133,9 +133,12 @@ SentencePieceText_SentencePiece::SentencePieceText_SentencePiece(const SentenceP
+ void SentencePieceText_SentencePiece::SharedCtor() {
+   piece_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+   surface_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+-  ::memset(&id_, 0, static_cast<size_t>(
+-      reinterpret_cast<char*>(&end_) -
+-      reinterpret_cast<char*>(&id_)) + sizeof(end_));
++  // ::memset(&id_, 0, static_cast<size_t>(
++  //     reinterpret_cast<char*>(&end_) -
++  //     reinterpret_cast<char*>(&id_)) + sizeof(end_));
++  ::memset(&id_, 0, sizeof(id_));
++  ::memset(&begin_, 0, sizeof(begin_));
++  ::memset(&end_, 0, sizeof(end_));
+ }
+ 
+ SentencePieceText_SentencePiece::~SentencePieceText_SentencePiece() {
+@@ -174,9 +177,13 @@ void SentencePieceText_SentencePiece::Clear() {
+     }
+   }
+   if (cached_has_bits & 28u) {
+-    ::memset(&id_, 0, static_cast<size_t>(
+-        reinterpret_cast<char*>(&end_) -
+-        reinterpret_cast<char*>(&id_)) + sizeof(end_));
++    // memset end, id, begin
++    ::memset(&id_, 0, sizeof(id_));
++    ::memset(&begin_, 0, sizeof(begin_));
++    ::memset(&end_, 0, sizeof(end_));
++    // ::memset(&id_, 0, static_cast<size_t>(
++    //     reinterpret_cast<char*>(&end_) -
++    //     reinterpret_cast<char*>(&id_)) + sizeof(end_));
+   }
+   _has_bits_.Clear();
+   _internal_metadata_.Clear();
+diff --git a/benchspec/CPU/772.marian_r/src/marian/3rd_party/sentencepiece/src/builtin_pb/sentencepiece_model.pb.cc b/benchspec/CPU/772.marian_r/src/marian/3rd_party/sentencepiece/src/builtin_pb/sentencepiece_model.pb.cc
+index 4c5326fa..7712ae5d 100644
+--- a/benchspec/CPU/772.marian_r/src/marian/3rd_party/sentencepiece/src/builtin_pb/sentencepiece_model.pb.cc
++++ b/benchspec/CPU/772.marian_r/src/marian/3rd_party/sentencepiece/src/builtin_pb/sentencepiece_model.pb.cc
+@@ -339,9 +339,20 @@ void TrainerSpec::SharedCtor() {
+   bos_piece_.UnsafeSetDefault(&::sentencepiece::TrainerSpec::_i_give_permission_to_break_this_code_default_bos_piece_.get());
+   eos_piece_.UnsafeSetDefault(&::sentencepiece::TrainerSpec::_i_give_permission_to_break_this_code_default_eos_piece_.get());
+   pad_piece_.UnsafeSetDefault(&::sentencepiece::TrainerSpec::_i_give_permission_to_break_this_code_default_pad_piece_.get());
+-  ::memset(&self_test_sample_size_, 0, static_cast<size_t>(
+-      reinterpret_cast<char*>(&train_extremely_large_corpus_) -
+-      reinterpret_cast<char*>(&self_test_sample_size_)) + sizeof(train_extremely_large_corpus_));
++  // ::memset(&self_test_sample_size_, 0, static_cast<size_t>(
++  //     reinterpret_cast<char*>(&train_extremely_large_corpus_) -
++  //     reinterpret_cast<char*>(&self_test_sample_size_)) + sizeof(train_extremely_large_corpus_));
++  self_test_sample_size_ = 0;
++  input_sentence_size_ = 0;
++  mining_sentence_size_ = 0;
++  training_sentence_size_ = 0;
++  treat_whitespace_as_suffix_ = false;
++  split_digits_ = false;
++  byte_fallback_ = false;
++  use_all_vocab_ = false;
++  unk_id_ = -1;
++  train_extremely_large_corpus_ = false;
++
+   model_type_ = 1;
+   vocab_size_ = 8000;
+   character_coverage_ = 0.9995f;
+@@ -426,14 +437,25 @@ void TrainerSpec::Clear() {
+     }
+   }
+   if (cached_has_bits & 65280u) {
+-    ::memset(&self_test_sample_size_, 0, static_cast<size_t>(
+-        reinterpret_cast<char*>(&use_all_vocab_) -
+-        reinterpret_cast<char*>(&self_test_sample_size_)) + sizeof(use_all_vocab_));
++    // ::memset(&self_test_sample_size_, 0, static_cast<size_t>(
++    //     reinterpret_cast<char*>(&use_all_vocab_) -
++    //     reinterpret_cast<char*>(&self_test_sample_size_)) + sizeof(use_all_vocab_));
++    self_test_sample_size_ = 0;
++    self_test_sample_size_ = 0;
++    input_sentence_size_ = 0;
++    mining_sentence_size_ = 0;
++    training_sentence_size_ = 0;
++    treat_whitespace_as_suffix_ = false;
++    split_digits_ = false;
++    byte_fallback_ = false;
++    use_all_vocab_ = false;
+   }
+   if (cached_has_bits & 16711680u) {
+-    ::memset(&unk_id_, 0, static_cast<size_t>(
+-        reinterpret_cast<char*>(&train_extremely_large_corpus_) -
+-        reinterpret_cast<char*>(&unk_id_)) + sizeof(train_extremely_large_corpus_));
++    // ::memset(&unk_id_, 0, static_cast<size_t>(
++    //     reinterpret_cast<char*>(&train_extremely_large_corpus_) -
++    //     reinterpret_cast<char*>(&unk_id_)) + sizeof(train_extremely_large_corpus_));
++    unk_id_ = 0;
++    train_extremely_large_corpus_ = false;
+     model_type_ = 1;
+     vocab_size_ = 8000;
+     character_coverage_ = 0.9995f;
+@@ -1841,9 +1863,11 @@ void NormalizerSpec::SharedCtor() {
+   name_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+   precompiled_charsmap_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+   normalization_rule_tsv_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+-  ::memset(&encode_case_, 0, static_cast<size_t>(
+-      reinterpret_cast<char*>(&decode_case_) -
+-      reinterpret_cast<char*>(&encode_case_)) + sizeof(decode_case_));
++  // ::memset(&encode_case_, 0, static_cast<size_t>(
++  //     reinterpret_cast<char*>(&decode_case_) -
++  //     reinterpret_cast<char*>(&encode_case_)) + sizeof(decode_case_));
++  encode_case_ = false;
++  decode_case_ = false;
+   add_dummy_prefix_ = true;
+   remove_extra_whitespaces_ = true;
+   escape_whitespaces_ = true;
+@@ -1888,9 +1912,11 @@ void NormalizerSpec::Clear() {
+       normalization_rule_tsv_.ClearNonDefaultToEmptyNoArena();
+     }
+   }
+-  ::memset(&encode_case_, 0, static_cast<size_t>(
+-      reinterpret_cast<char*>(&decode_case_) -
+-      reinterpret_cast<char*>(&encode_case_)) + sizeof(decode_case_));
++  // ::memset(&encode_case_, 0, static_cast<size_t>(
++  //     reinterpret_cast<char*>(&decode_case_) -
++  //     reinterpret_cast<char*>(&encode_case_)) + sizeof(decode_case_));
++  encode_case_ = false;
++  decode_case_ = false;
+   if (cached_has_bits & 224u) {
+     add_dummy_prefix_ = true;
+     remove_extra_whitespaces_ = true;
+@@ -3057,9 +3083,13 @@ ModelProto::ModelProto(const ModelProto& from)
+ }
+ 
+ void ModelProto::SharedCtor() {
+-  ::memset(&trainer_spec_, 0, static_cast<size_t>(
+-      reinterpret_cast<char*>(&denormalizer_spec_) -
+-      reinterpret_cast<char*>(&trainer_spec_)) + sizeof(denormalizer_spec_));
++  // ::memset(&trainer_spec_, 0, static_cast<size_t>(
++  //     reinterpret_cast<char*>(&denormalizer_spec_) -
++  //     reinterpret_cast<char*>(&trainer_spec_)) + sizeof(denormalizer_spec_));
++  trainer_spec_ = NULL;
++  normalizer_spec_ = NULL;
++  self_test_data_ = NULL;
++  denormalizer_spec_ = NULL;
+ }
+ 
+ ModelProto::~ModelProto() {
